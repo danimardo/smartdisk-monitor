@@ -12,6 +12,15 @@ rust-version = "1.77"
 name = "smartdisk_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "smartdisk-monitor"
+path = "src/main.rs"
+# Sin arnés de pruebas para el binario. `main.rs` es una línea que delega en la biblioteca y no
+# tiene ni tendrá tests, pero Cargo compilaría igualmente un ejecutable de prueba que hereda el
+# manifiesto de `requireAdministrator` (ADR-004) y que no puede arrancar sin elevación: falla con
+# ERROR_SXS_CANT_GEN_ACTCTX. Todo lo testeable vive en la biblioteca, que sí se prueba.
+test = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

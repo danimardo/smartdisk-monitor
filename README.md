@@ -13,6 +13,10 @@ pnpm install          # requiere Node 20+ y pnpm
 pnpm app:dev          # levanta Vite y la aplicación Tauri
 ```
 
+`pnpm app:dev` muestra el diálogo de UAC en cada arranque: la aplicación se ejecuta elevada por
+necesidad de acceso a los dispositivos (ADR-004). Las pruebas no lo necesitan, salvo la suite de
+aplicación real.
+
 | Comando | Qué hace |
 |---|---|
 | `pnpm app:dev` | Aplicación completa en modo desarrollo |

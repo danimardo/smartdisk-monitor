@@ -333,9 +333,44 @@ build real: es donde aparecen los problemas que el servidor de desarrollo escond
 
 ## 11. E2E: plano de aplicación real (`tauri-driver`)
 
-WebdriverIO con `tauri-driver` contra el ejecutable empaquetado. Requiere `msedgedriver` con la
-versión que coincida con el WebView2 instalado — **no está instalado hoy**, y montarlo es la tarea
-`T-PLAY-002`.
+WebdriverIO con `tauri-driver` contra el ejecutable empaquetado.
+
+### Efecto colateral sobre `cargo test`
+
+Al aplicar el manifiesto, `cargo test` empezó a fallar con `ERROR_SXS_CANT_GEN_ACTCTX`. La causa:
+Cargo compila también un arnés de pruebas para el binario, ese ejecutable hereda el
+`requireAdministrator` y no puede arrancarse desde un terminal sin elevar.
+
+Se resuelve declarando `test = false` en el target `[[bin]]`: `main.rs` es una línea que delega en
+la biblioteca, no tiene tests y no los va a tener. Todo lo testeable vive en la biblioteca, que sí
+se prueba y no lleva manifiesto.
+
+Queda escrito porque es de esas cosas que se olvidan y cuestan media hora la segunda vez.
+
+### Requiere terminal elevado
+
+La aplicación pide privilegios de administrador (ADR-004, manifiesto en `src-tauri/windows/`). Un
+programa **no puede pulsar el botón de UAC**, así que el driver tiene que ir ya elevado para que el
+hijo herede la elevación y el diálogo no aparezca.
+
+Consecuencia práctica: **esta suite, y solo esta, se ejecuta desde un terminal de administrador**.
+Las demás no lo necesitan. En los agentes Windows de GitHub el usuario ya es administrador, así que
+allí funciona sin nada especial.
+
+Se descartó compilar una variante sin elevación para las pruebas: probaría un binario distinto del
+que se entrega, y precisamente en la parte que gobierna el acceso a los discos.
+
+### El driver se sincroniza solo
+
+`msedgedriver` debe coincidir con la versión del WebView2 instalado, y ese runtime **se actualiza
+solo cada pocas semanas** (es el precio de haber elegido Evergreen en el ADR-020). Sin nada que lo
+gestione, la suite fallaría periódicamente con un error de protocolo que no tiene relación con el
+código.
+
+`scripts/ensure-webdriver.mjs` lo resuelve antes de cada ejecución: lee la versión del registro
+—igual que ya hace `verify-assets` con los hashes—, descarga el driver que corresponde y lo cachea.
+Si no existe un driver para esa versión exacta, **avisa con un mensaje claro** en vez de dejar que
+la suite falle treinta segundos después con un error críptico.
 
 ### Qué demuestra, y solo esto
 
@@ -472,6 +507,27 @@ legítimamente dinámicas, como la marca de antigüedad.
 Una captura **no sustituye una prueba funcional** y no se actualiza porque falle: se actualiza cuando
 el cambio es intencionado, se ha revisado y va en el mismo commit que lo provoca.
 
+### La línea base se genera en CI
+
+La misma pantalla no se dibuja igual en dos equipos: el suavizado de fuentes depende de la
+configuración de ClearType, y el desenfoque del material translúcido lo calcula la tarjeta gráfica
+—que los agentes de CI no tienen, así que Chromium lo hace por software—. Justo el material, que es
+lo que más interesa vigilar, es lo que peor se reproduce entre máquinas.
+
+Por eso **la comparación que decide es la de CI**:
+
+| Dónde | Qué hace |
+|---|---|
+| Local | Genera las capturas para poder mirarlas. **No compara** |
+| CI | Compara contra la línea base versionada en el repositorio |
+
+Aprobar un cambio visual intencionado: se sube, CI falla y adjunta la captura nueva como artefacto,
+se revisa, y la línea base actualizada va **en el mismo commit** que el cambio que la provoca.
+
+Se descartó generar la base en local con tolerancia amplia: la holgura necesaria para absorber la
+diferencia de desenfoque dejaría pasar regresiones reales, y una prueba así da tranquilidad sin dar
+cobertura.
+
 Frecuencia: rama principal. Es donde una regresión de tokens se detecta antes de llegar a release.
 
 ---
@@ -515,8 +571,27 @@ producto **miente sobre la salud de un disco**, que es el fallo más caro que pu
 Ejecución: programada semanal y antes de release. **Nunca en un pull request**, nunca sobre suites
 inestables, nunca durante una refactorización.
 
-Se empieza con un piloto sobre `health.ts`, se registra la línea base (mutantes, muertos,
-supervivientes, sin cobertura, timeouts, duración) y **no se fija el 100 % como objetivo**: un
+### El informe tiene que ser accionable, no exhaustivo
+
+Un motor de alertas de tamaño medio produce del orden de 400 a 600 mutantes, y cada uno obliga a
+recompilar: entre dos y tres horas de ejecución. El tiempo no es el problema —se ejecuta de
+madrugada y nadie espera—; el problema es que un informe con sesenta supervivientes **no lo revisa
+nadie**, y a la tercera semana deja de abrirse. Una herramienta que nadie mira no cubre ningún
+riesgo: solo da la sensación de que sí.
+
+Por eso se versiona una línea base en `docs/mutation-baseline.md` con los supervivientes conocidos y
+la razón por la que se aceptan: mutación equivalente, comportamiento no observable, código muerto.
+El informe semanal destaca únicamente **los supervivientes nuevos**.
+
+| | |
+|---|---|
+| Informe útil | «3 supervivientes nuevos» — se revisan los tres |
+| Informe inútil | «60 supervivientes» — no se revisa ninguno |
+
+**Un superviviente nuevo sin justificar bloquea la release.** Uno ya justificado en la línea base, no.
+
+Se empieza con un piloto sobre `health.ts` para fijar la primera línea base (mutantes, muertos,
+supervivientes, sin cobertura, timeouts, duración). **No se fija el 100 % como objetivo**: un
 superviviente puede ser una mutación equivalente, no un hueco.
 
 ---
@@ -606,6 +681,17 @@ Son los puntos donde un cambio local tiene efecto global.
 ## 24. Estructura y comandos
 
 Estructura propuesta, respetando la que ya existe:
+
+Dos configuraciones de Vitest, no una: los entornos son distintos y los tiempos también.
+`pnpm test` debe seguir siendo la suite rápida que se teclea mientras se programa.
+
+| Configuración | Entorno | Qué incluye | Duración |
+|---|---|---|---|
+| `vitest.config.ts` | Node | `src/lib/**/*.test.ts` | ~22 s |
+| `vitest.browser.config.ts` | Chromium | `src/lib/**/*.svelte.test.ts` | más lenta |
+
+Stryker apunta a la de Node y por tanto nunca abre un navegador, que era el riesgo real: mutar
+código exige lanzar la suite cientos de veces.
 
 ```text
 src/lib/**/*.test.ts        unit, junto al código (ya en uso)
@@ -756,13 +842,25 @@ T-MUT-002   cargo-mutants sobre el dominio cuando exista
 
 ## 31. Preguntas abiertas
 
-| # | Pregunta | Suposición provisional | Tarea |
-|---|---|---|---|
-| 1 | ¿Qué versión de `msedgedriver` exige el WebView2 instalado (152.0.4191.62)? | Coincide con la mayor del runtime | `T-PLAY-002` |
-| 2 | ¿`tauri-driver` puede pilotar una aplicación con `requireAdministrator`? | **Probablemente no sin elevar el propio driver.** Si no, la suite de aplicación real se limita a comprobar que arranca y pide elevación | `T-PLAY-004` |
-| 3 | ¿Stryker funciona con Vitest Browser Mode? | Se asume que **no**; se muta solo código de Node | `T-MUT-001` |
-| 4 | ¿El agente de CI de Windows renderiza las capturas igual que un equipo local? | Se asume que no: la línea base se genera **en CI**, nunca en local | `T-VIS-001` |
-| 5 | ¿Cuánto tarda `cargo-mutants` sobre el dominio? | Desconocido hasta que el dominio exista | `T-MUT-002` |
+Las cinco que planteaba la primera versión de este documento están **resueltas** (2026-09-04):
 
-Ninguna detiene el trabajo. Cada una tiene su suposición conservadora identificada como tal y su
-tarea para confirmarla.
+| # | Era | Resolución |
+|---|---|---|
+| 1 | ¿Qué versión de `msedgedriver` hace falta? | Ninguna fija: `scripts/ensure-webdriver.mjs` la deduce del registro y la descarga (§11) |
+| 2 | ¿Puede `tauri-driver` con una app elevada? | Sí, si el driver va elevado. Esa suite se ejecuta desde terminal de administrador (§11) |
+| 3 | ¿Stryker convive con Browser Mode? | No hace falta: dos configuraciones separadas, Stryker usa la de Node (§24) |
+| 4 | ¿CI dibuja igual que un equipo local? | No. La línea base se genera y compara en CI; en local solo se miran (§17) |
+| 5 | ¿Cuánto tarda `cargo-mutants`? | Horas, y da igual: lo que se acota es el informe, no el tiempo (§19) |
+
+De paso, la número 2 destapó que **la elevación del ADR-004 no estaba implementada**. Se corrigió con
+un manifiesto propio en `src-tauri/windows/app.manifest`, que además declara consciencia de DPI por
+monitor, necesaria para los escalados de 125 %, 150 % y 200 % que exige `AGENTS.md` §4.
+
+### Lo que sigue sin respuesta
+
+| # | Pregunta | Cuándo se sabrá |
+|---|---|---|
+| 1 | ¿Cuánto tarda de verdad la suite de componentes en navegador? | Al implementar `T-COMP-001` |
+| 2 | ¿Las doce capturas visuales son estables entre ejecuciones del mismo agente de CI? | Al implementar `T-VIS-001` |
+
+Ninguna bloquea. Se miden cuando toque.

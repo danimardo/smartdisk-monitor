@@ -28,6 +28,17 @@ El ejecutable solicitará `requireAdministrator`. Simplifica el acceso a disposi
 
 Mitigación: capacidades Tauri mínimas, sin shell genérica desde JavaScript y comandos privilegiados cerrados en Rust.
 
+**Implementación** (2026-09-04): manifiesto propio en `src-tauri/windows/app.manifest`, aplicado
+desde `build.rs`. Sin él, Tauri genera uno por defecto con `asInvoker` y la aplicación **no pediría
+elevación**, que es como estuvo hasta que lo destapó el diseño de la estrategia de pruebas.
+
+El manifiesto declara además `PerMonitorV2`: sin esa marca, Windows escala la ventana por su cuenta
+y el resultado se ve borroso al 125 %, 150 % y 200 %, justo los escalados que exige verificar
+`AGENTS.md` §4.
+
+Consecuencia para el desarrollo: `pnpm app:dev` muestra UAC en cada arranque, y la suite E2E de
+aplicación real necesita un terminal elevado (`docs/testing-strategy.md` §11).
+
 ## ADR-005 — smartctl como auxiliar independiente
 
 Estado: aceptada.

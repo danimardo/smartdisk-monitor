@@ -80,6 +80,7 @@ smartdisk-monitor/
       platform/                 Envolturas de API de Windows, aisladas para poder simularlas
     migrations/                 SQL numerado, nunca editado una vez publicado
     capabilities/               Política Tauri de mínimo privilegio
+    windows/app.manifest        requireAdministrator (ADR-004) + PerMonitorV2
 
   docs/                         Documentación normativa
   Design-system/                Paquete de entrega original, congelado como referencia
@@ -170,4 +171,10 @@ ejecución de test. La ruta se resuelve siempre por función, nunca por literal,
 por variable de entorno.
 
 Ejecutar la aplicación completa **sí** requiere elevación, también en desarrollo: es la única forma
-de que lo que se prueba sea lo que se entrega.
+de que lo que se prueba sea lo que se entrega. En la práctica, `pnpm app:dev` muestra el diálogo de
+UAC en cada arranque.
+
+Las suites de prueba **no** necesitan elevación, con una excepción: la de aplicación real
+(`test:e2e:app`), que arranca el ejecutable y por tanto debe lanzarse desde un terminal de
+administrador para que el hijo herede la elevación y UAC no bloquee la automatización
+(`docs/testing-strategy.md` §11).
