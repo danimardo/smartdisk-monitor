@@ -24,7 +24,7 @@ aplicación real.
 | `pnpm check` | Tipos y accesibilidad del frontend |
 | `pnpm test` | Pruebas del frontend |
 | `pnpm verify` | Recursos redistribuidos, tokens del diseño e i18n |
-| `pnpm docs` | Regenera `historias.md` |
+| `pnpm docs:build` | Regenera `historias.md` |
 | `cargo test` / `cargo clippy` | Backend, desde `src-tauri/` |
 
 `pnpm verify` es el que impide que el sistema de diseño se erosione: comprueba los hashes de la
@@ -57,6 +57,7 @@ El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/
 - [Decisiones técnicas](docs/decisions.md)
 - [Fallos conocidos y silencios](docs/known-issues.md)
 - [Constitución del proyecto](.specify/memory/constitution.md)
+- [Instrucciones para agentes de IA](AGENTS.md)
 - [Todo lo anterior en un solo documento](historias.md)
 - [Entrega del sistema de diseño](Design-system/HANDOFF.md)
 - [Reglas vinculantes de interfaz](Design-system/AGENTS.md)

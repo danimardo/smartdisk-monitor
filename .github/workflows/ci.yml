@@ -117,6 +117,7 @@ jobs:
       - name: El consolidado está al día
         # Si alguien cambia un documento normativo y no regenera historias.md, el consolidado
         # miente. Es la fuente que se entrega entera, así que no puede ir por detrás.
+        # Equivale a `pnpm docs:check`. El script `docs` colisionaba con un comando propio de pnpm.
         run: python tools/build-historias.py --check
 
   permisos:

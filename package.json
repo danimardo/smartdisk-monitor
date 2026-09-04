@@ -27,9 +27,10 @@
     "verify:tokens": "node scripts/verify-tokens.mjs",
     "verify:i18n": "node scripts/verify-i18n.mjs",
     "verify": "pnpm verify:assets && pnpm verify:tokens && pnpm verify:i18n && pnpm verify:boundaries",
-    "docs": "python tools/build-historias.py",
+    "docs:build": "python tools/build-historias.py",
     "test:coverage": "vitest run --config vitest.config.ts --coverage",
-    "verify:boundaries": "node scripts/verify-boundaries.mjs"
+    "verify:boundaries": "node scripts/verify-boundaries.mjs",
+    "docs:check": "python tools/build-historias.py --check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

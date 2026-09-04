@@ -102,7 +102,7 @@ aplicación real.
 | `pnpm check` | Tipos y accesibilidad del frontend |
 | `pnpm test` | Pruebas del frontend |
 | `pnpm verify` | Recursos redistribuidos, tokens del diseño e i18n |
-| `pnpm docs` | Regenera `historias.md` |
+| `pnpm docs:build` | Regenera `historias.md` |
 | `cargo test` / `cargo clippy` | Backend, desde `src-tauri/` |
 
 `pnpm verify` es el que impide que el sistema de diseño se erosione: comprueba los hashes de la
@@ -135,6 +135,7 @@ El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/
 - [Decisiones técnicas](docs/decisions.md)
 - [Fallos conocidos y silencios](docs/known-issues.md)
 - [Constitución del proyecto](.specify/memory/constitution.md)
+- [Instrucciones para agentes de IA](AGENTS.md)
 - [Todo lo anterior en un solo documento](historias.md)
 - [Entrega del sistema de diseño](Design-system/HANDOFF.md)
 - [Reglas vinculantes de interfaz](Design-system/AGENTS.md)
@@ -2165,7 +2166,30 @@ smartdisk-monitor/
 
   docs/                         Documentación normativa
   Design-system/                Paquete de entrega original, congelado como referencia
+
+  AGENTS.md                     Instrucciones para agentes de IA: fuente canónica
+  CLAUDE.md                     Importa AGENTS.md y añade lo específico de Claude Code
+  .claude/rules/                Reglas por ámbito; se cargan al tocar sus `paths:`
+  .claude/skills/               Procedimientos; se cargan al activarse
 ```
+
+#### Instrucciones para agentes de IA
+
+`AGENTS.md` es el núcleo y se carga en cada sesión: **objetivo, menos de 200 líneas**. No se
+escribe ahí nada que un agente pueda deducir leyendo el repositorio, porque cuanto más ruido, menos
+adherencia a lo que importa.
+
+| Si algo… | Va a |
+|---|---|
+| Hace falta en cualquier tarea | `AGENTS.md` |
+| Solo al tocar cierto código | `.claude/rules/<tema>.md` con `paths:` |
+| Es un procedimiento de varios pasos | `.claude/skills/<nombre>/SKILL.md` |
+| Es estado o historia del producto | `docs/` o `specs/` |
+| Debe cumplirse siempre y de forma determinista | Linter, prueba, verificador o CI |
+
+Los `@imports` **no ahorran contexto**: se expanden al arrancar. Lo que ahorra es `paths:` en las
+reglas y la carga diferida de las skills, de las que en el arranque solo entran nombre y
+descripción.
 
 **Regla de dependencias.** `domain/` no conoce Tauri, ni Windows, ni SQLite: recibe datos y devuelve
 decisiones. Es lo que permite probar el motor de alertas con fixtures y sin hardware.
