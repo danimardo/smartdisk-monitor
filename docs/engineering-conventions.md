@@ -15,7 +15,7 @@ no se hace una excepción local.
 | Node | 20 LTS | se fija en `.nvmrc` |
 | Gestor de paquetes | pnpm | `packageManager` en `package.json`; el lockfile se versiona |
 | SvelteKit | 2.x con `adapter-static` | ADR-014, SSR desactivado |
-| Svelte | 5 con runes | `AGENTS.md` §1 |
+| Svelte | 5 con runes | `ui-design.md` §1 |
 | TypeScript | 5.x, `strict: true` | sin `any` implícito, sin `@ts-ignore` sin justificar |
 | Tailwind | 3.x | solo utilidades mapeadas desde tokens |
 | SQLite | vía `rusqlite` con `bundled` | evita depender de la DLL del sistema |
@@ -86,10 +86,12 @@ smartdisk-monitor/
     windows/app.manifest        requireAdministrator (ADR-004) + PerMonitorV2
 
   docs/                         Documentación normativa
-  Design-system/                Paquete de entrega original, congelado como referencia
+  design/                       Bocetos navegables (.dc.html). Referencia visual, no código
 
   AGENTS.md                     Instrucciones para agentes de IA: fuente canónica
   CLAUDE.md                     Importa AGENTS.md y añade lo específico de Claude Code
+  GEMINI.md                     Importa AGENTS.md y añade lo específico de Gemini
+  CODEX.md                      Puntero a AGENTS.md, que Codex ya lee de forma nativa
   .claude/rules/                Reglas por ámbito; se cargan al tocar sus `paths:`
   .claude/skills/               Procedimientos; se cargan al activarse
   .claude/settings.json         Permisos y hooks (enforcement)
@@ -185,7 +187,7 @@ capturarlos, no al usarlos.
 - Rama principal protegida; el trabajo va en ramas por historia (`us-030-alertas-agrupadas`).
 - Commits en imperativo, en español, referenciando la historia.
 - Un *pull request* no se fusiona sin la definición de terminado de la historia y, si toca interfaz,
-  la de `AGENTS.md` §8.
+  la de `ui-design.md` §8.
 - Versionado semántico. Nombre y versión salen del manifiesto (ADR-011): no se escriben a mano en
   ningún otro sitio.
 - Las publicaciones son manuales en GitHub, sin actualizador automático (ADR-007).

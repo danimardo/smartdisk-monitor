@@ -69,7 +69,7 @@ describe("Button", () => {
     });
     const elemento = document.querySelector("button")!;
     // `whitespace-nowrap` hace que un texto largo desborde en vez de partirse: es justo el caso
-    // que la ventana mínima destapa (`Design-system/AGENTS.md` §8).
+    // que la ventana mínima destapa (`docs/ui-design.md` §8).
     expect(elemento.scrollWidth).toBeLessThanOrEqual(elemento.clientWidth + 1);
   });
 });

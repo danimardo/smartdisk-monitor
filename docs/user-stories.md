@@ -43,7 +43,7 @@ Como usuario quiero una interfaz coherente, accesible y reconocible para interpr
 
 Criterios de aceptación:
 
-- La interfaz cumple `Design-system/AGENTS.md` y utiliza el catálogo entregado en `Design-system/src/lib/components/`.
+- La interfaz cumple [`ui-design.md`](ui-design.md) y utiliza el catálogo cerrado de `src/lib/components/`.
 - Todos los valores visuales proceden de `tokens.css` o de su mapeo Tailwind; no existen colores, radios, sombras o tamaños tipográficos literales en componentes.
 - Funciona correctamente en temas claro y oscuro y hereda el acento de Windows, usando el respaldo definido si no está disponible.
 - El acento solo indica acción o selección; los estados usan tokens semánticos y nunca dependen exclusivamente del color.

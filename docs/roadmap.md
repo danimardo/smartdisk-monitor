@@ -13,7 +13,7 @@ Objetivo: reducir riesgos antes de construir la interfaz completa.
 - Crear esqueleto Tauri 2 + SvelteKit (`adapter-static`, SSR off) + TypeScript + Tailwind (ADR-014).
 - Añadir la tipografía Instrument Sans a `design-system/fonts/` con su licencia (ADR-018) y hacer que
   la compilación falle si falta.
-- Integrar `Design-system/design-system/tokens.css`, la configuración Tailwind, los módulos de diseño, i18n y el catálogo Svelte entregado.
+- Integrar `src/design-system/tokens.css`, la configuración Tailwind, los módulos de diseño, i18n y el catálogo Svelte entregado.
 - Validar los componentes entregados con Svelte 5 y el toolchain definitivo antes de modificarlos.
 - Montar un shell navegable con `AppShell`, `Sidebar` y `Toolbar` siguiendo el boceto v2 aprobado.
 - Verificar temas claro/oscuro, acento de Windows, fallback sin translucidez y movimiento reducido.
@@ -109,7 +109,7 @@ Salida: informe de viabilidad y fixtures anonimizados.
 - Licencia MIT, terceros y atribuciones.
 - Nombre y versión dinámicos.
 - Release manual en GitHub.
-- Validación completa contra la definición de terminado de `Design-system/AGENTS.md`.
+- Validación completa contra la definición de terminado de [`ui-design.md`](ui-design.md) §8.
 
 ## Después de 1.0 (P2)
 

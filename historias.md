@@ -20,7 +20,8 @@ regeneración.
 | Qué comandos y eventos existen entre UI y backend | Contrato UI ↔ backend |
 | Por qué se decidió algo | Registro de decisiones |
 | Qué se midió y qué sigue sin decidirse | Cuestiones abiertas y mediciones |
-| Cómo se escribe una pantalla | Reglas de interfaz (VINCULANTES) |
+| Cómo se escribe una pantalla | Sistema de diseño: reglas de interfaz (VINCULANTES) |
+| Dónde vive cada pieza del sistema de diseño | Sistema de diseño, §0 «Dónde vive cada cosa» |
 | Qué hay que probar, a qué nivel y cuándo | Estrategia integral de testing |
 
 ## Precedencia
@@ -29,7 +30,7 @@ Si dos documentos se contradicen, mandan en este orden:
 
 1. **Reglas de alerta** sobre el resumen de alertas de la especificación.
 2. **Contrato UI ↔ backend** sobre cualquier descripción informal de comandos.
-3. **Reglas de interfaz** (`AGENTS.md`) sobre cualquier criterio visual escrito en otro sitio.
+3. **Sistema de diseño** (`docs/ui-design.md`) sobre cualquier criterio visual escrito en otro sitio.
 4. **Cuestiones abiertas** sobre todo lo demás para lo que registre una decisión: recoge las
    correcciones posteriores, varias de ellas nacidas de medir sobre un Windows real.
 
@@ -53,23 +54,25 @@ añade en vez de resolverlo en el código.
 10. [Estrategia integral de testing](#10-estrategia-integral-de-testing) · `docs/testing-strategy.md`
 11. [Registro de decisiones técnicas](#11-registro-de-decisiones-técnicas) · `docs/decisions.md`
 12. [Cuestiones abiertas y mediciones](#12-cuestiones-abiertas-y-mediciones) · `docs/open-questions.md`
-13. [Reglas de interfaz (VINCULANTES)](#13-reglas-de-interfaz-vinculantes) · `Design-system/AGENTS.md`
-14. [Entrega del sistema de diseño](#14-entrega-del-sistema-de-diseño) · `Design-system/HANDOFF.md`
-15. [Sistema de diseño: principios](#15-sistema-de-diseño-principios) · `Design-system/design-system/README.md`
-16. [tokens.css — fuente única de verdad visual](#16-tokenscss-fuente-única-de-verdad-visual) · `Design-system/design-system/tokens.css`
-17. [tailwind.config.cjs — mapeo de tokens](#17-tailwindconfigcjs-mapeo-de-tokens) · `Design-system/tailwind.config.cjs`
-18. [design/types.ts — vocabulario de la UI](#18-designtypests-vocabulario-de-la-ui) · `Design-system/src/lib/design/types.ts`
-19. [design/health.ts — estado → color, umbrales](#19-designhealthts-estado-color-umbrales) · `Design-system/src/lib/design/health.ts`
-20. [design/format.ts — formato de presentación](#20-designformatts-formato-de-presentación) · `Design-system/src/lib/design/format.ts`
-21. [design/theme.svelte.ts — tema](#21-designthemesveltets-tema) · `Design-system/src/lib/design/theme.svelte.ts`
-22. [design/accent.ts — acento de Windows](#22-designaccentts-acento-de-windows) · `Design-system/src/lib/design/accent.ts`
-23. [i18n/index.ts — idioma, formato y plurales](#23-i18nindexts-idioma-formato-y-plurales) · `Design-system/src/lib/i18n/index.ts`
-24. [i18n/es.json](#24-i18nesjson) · `Design-system/src/lib/i18n/es.json`
-25. [i18n/en.json](#25-i18nenjson) · `Design-system/src/lib/i18n/en.json`
-26. [Tipografía empotrada](#26-tipografía-empotrada) · `Design-system/design-system/fonts/README.md`
-27. [smartctl redistribuido](#27-smartctl-redistribuido) · `third-party/smartmontools/README.md`
-28. [Licencia del código propio](#28-licencia-del-código-propio) · `LICENSE`
-29. [Avisos de terceros](#29-avisos-de-terceros) · `THIRD_PARTY_NOTICES.md`
+13. [Sistema de diseño: reglas de interfaz (VINCULANTES)](#13-sistema-de-diseño-reglas-de-interfaz-vinculantes) · `docs/ui-design.md`
+14. [Bocetos del sistema de diseño](#14-bocetos-del-sistema-de-diseño) · `design/README.md`
+15. [Sistema de diseño: principios](#15-sistema-de-diseño-principios) · `src/design-system/README.md`
+16. [tokens.css — fuente única de verdad visual](#16-tokenscss-fuente-única-de-verdad-visual) · `src/design-system/tokens.css`
+17. [tokens.json — los mismos tokens, para herramientas](#17-tokensjson-los-mismos-tokens-para-herramientas) · `src/design-system/tokens.json`
+18. [tailwind.config.cjs — mapeo de tokens](#18-tailwindconfigcjs-mapeo-de-tokens) · `tailwind.config.cjs`
+19. [components/index.ts — el catálogo cerrado](#19-componentsindexts-el-catálogo-cerrado) · `src/lib/components/index.ts`
+20. [design/types.ts — vocabulario de la UI](#20-designtypests-vocabulario-de-la-ui) · `src/lib/design/types.ts`
+21. [design/health.ts — estado → color, umbrales](#21-designhealthts-estado-color-umbrales) · `src/lib/design/health.ts`
+22. [design/format.ts — formato de presentación](#22-designformatts-formato-de-presentación) · `src/lib/design/format.ts`
+23. [design/theme.svelte.ts — tema](#23-designthemesveltets-tema) · `src/lib/design/theme.svelte.ts`
+24. [design/accent.ts — acento de Windows](#24-designaccentts-acento-de-windows) · `src/lib/design/accent.ts`
+25. [i18n/index.ts — idioma, formato y plurales](#25-i18nindexts-idioma-formato-y-plurales) · `src/lib/i18n/index.ts`
+26. [i18n/es.json](#26-i18nesjson) · `src/lib/i18n/es.json`
+27. [i18n/en.json](#27-i18nenjson) · `src/lib/i18n/en.json`
+28. [Tipografía empotrada](#28-tipografía-empotrada) · `src/design-system/fonts/README.md`
+29. [smartctl redistribuido](#29-smartctl-redistribuido) · `third-party/smartmontools/README.md`
+30. [Licencia del código propio](#30-licencia-del-código-propio) · `LICENSE`
+31. [Avisos de terceros](#31-avisos-de-terceros) · `THIRD_PARTY_NOTICES.md`
 
 
 ---
@@ -121,7 +124,10 @@ Las entradas marcadas `PROPUESTO` son valores por defecto pendientes de revisió
 entregárselo entero a una herramienta de generación o a quien se incorpore al proyecto. Se genera
 con `python tools/build-historias.py` y no se edita a mano.
 
-El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/) y es vinculante para la implementación de la interfaz.
+El sistema de diseño es vinculante para la implementación de la interfaz: las reglas están en
+[`docs/ui-design.md`](docs/ui-design.md), los tokens en `src/design-system/tokens.css`, el catálogo
+de componentes en `src/lib/components/` y los bocetos aprobados en [`design/`](design/). El §0 de
+`ui-design.md` es el mapa completo.
 
 ### Documentación
 
@@ -140,8 +146,8 @@ El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/
 - [Constitución del proyecto](.specify/memory/constitution.md)
 - [Instrucciones para agentes de IA](AGENTS.md)
 - [Todo lo anterior en un solo documento](historias.md)
-- [Entrega del sistema de diseño](Design-system/HANDOFF.md)
-- [Reglas vinculantes de interfaz](Design-system/AGENTS.md)
+- [Sistema de diseño: reglas vinculantes de interfaz](docs/ui-design.md)
+- [Bocetos aprobados](design/README.md)
 
 ### Identidad del proyecto
 
@@ -404,9 +410,9 @@ pedido y resolución servida está en [`open-questions.md`](docs/open-questions.
   de cada disco.
 - El formato de números y fechas sigue al **idioma elegido en la aplicación**, no al de Windows,
   conservando la variante regional del sistema cuando comparten idioma.
-- Sistema de diseño aprobado: **SmartDisk Monitor v2, material translúcido**, entregado en `Design-system/`.
-- `Design-system/AGENTS.md` es vinculante para cualquier implementación de interfaz.
-- `Design-system/design-system/tokens.css` es la fuente única de colores, tipografía, espaciado, radios, sombras, materiales y movimiento; no se permiten valores visuales literales en componentes.
+- Sistema de diseño aprobado: **SmartDisk Monitor v2, material translúcido**.
+- [`ui-design.md`](docs/ui-design.md) es vinculante para cualquier implementación de interfaz; su §0 dice dónde vive cada pieza.
+- `src/design-system/tokens.css` es la fuente única de colores, tipografía, espaciado, radios, sombras, materiales y movimiento; no se permiten valores visuales literales en componentes.
 - El acento de acciones y selección se hereda de Windows, con el azul de respaldo definido en los tokens. El acento nunca comunica salud.
 - Verde, ámbar, rojo y gris se reservan respectivamente para correcto, advertencia, crítico y desconocido/no compatible/sin datos. El color siempre se acompaña de texto o iconografía accesible.
 - Se usan exclusivamente tres niveles de material: chrome, tarjetas y overlays; no se apilan tarjetas ni se inventan niveles de desenfoque.
@@ -414,7 +420,7 @@ pedido y resolución servida está en [`open-questions.md`](docs/open-questions.
 - Movimiento funcional y breve, respetando `prefers-reduced-motion`.
 - Contraste mínimo AA, foco visible y navegación completa por teclado.
 - Las preferencias de idioma y tema se guardan en SQLite mediante `settings`, nunca en `localStorage`.
-- Panel general, detalle de disco, alertas y pruebas/diagnóstico siguen los bocetos aprobados de `Design-system/SmartDisk Monitor v2.dc.html`.
+- Panel general, detalle de disco, alertas y pruebas/diagnóstico siguen los bocetos aprobados de `design/SmartDisk Monitor v2.dc.html`.
 - Informes, Ajustes, asistente inicial, Acerca de y estados de systray deben componerse con el catálogo existente y someterse a revisión antes de introducir patrones nuevos.
 
 ### 9. Informes y diagnóstico
@@ -474,7 +480,7 @@ pedido y resolución servida está en [`open-questions.md`](docs/open-questions.
 - Un disco no compatible debe aparecer como desconocido/no disponible, no como averiado.
 - Todas las operaciones que generen carga o escriban datos requieren confirmación explícita.
 - La aplicación debe seguir respondiendo durante recopilaciones, exportaciones y pruebas.
-- Toda pantalla debe cumplir la definición de terminado de `Design-system/AGENTS.md` en temas claro y oscuro y en el tamaño mínimo de ventana.
+- Toda pantalla debe cumplir la definición de terminado de [`ui-design.md`](docs/ui-design.md) §8 en temas claro y oscuro y en el tamaño mínimo de ventana.
 - Todo texto visible debe proceder del sistema i18n; no se admiten literales de interfaz fuera de los
   diccionarios español e inglés, incluidos `aria-label`, títulos y textos alternativos.
 - La interfaz debe seguir siendo usable con veinte discos y con miles de eventos.
@@ -532,7 +538,7 @@ Como usuario quiero una interfaz coherente, accesible y reconocible para interpr
 
 Criterios de aceptación:
 
-- La interfaz cumple `Design-system/AGENTS.md` y utiliza el catálogo entregado en `Design-system/src/lib/components/`.
+- La interfaz cumple [`ui-design.md`](docs/ui-design.md) y utiliza el catálogo cerrado de `src/lib/components/`.
 - Todos los valores visuales proceden de `tokens.css` o de su mapeo Tailwind; no existen colores, radios, sombras o tamaños tipográficos literales en componentes.
 - Funciona correctamente en temas claro y oscuro y hereda el acento de Windows, usando el respaldo definido si no está disponible.
 - El acento solo indica acción o selección; los estados usan tokens semánticos y nunca dependen exclusivamente del color.
@@ -932,7 +938,7 @@ Objetivo: reducir riesgos antes de construir la interfaz completa.
 - Crear esqueleto Tauri 2 + SvelteKit (`adapter-static`, SSR off) + TypeScript + Tailwind (ADR-014).
 - Añadir la tipografía Instrument Sans a `design-system/fonts/` con su licencia (ADR-018) y hacer que
   la compilación falle si falta.
-- Integrar `Design-system/design-system/tokens.css`, la configuración Tailwind, los módulos de diseño, i18n y el catálogo Svelte entregado.
+- Integrar `src/design-system/tokens.css`, la configuración Tailwind, los módulos de diseño, i18n y el catálogo Svelte entregado.
 - Validar los componentes entregados con Svelte 5 y el toolchain definitivo antes de modificarlos.
 - Montar un shell navegable con `AppShell`, `Sidebar` y `Toolbar` siguiendo el boceto v2 aprobado.
 - Verificar temas claro/oscuro, acento de Windows, fallback sin translucidez y movimiento reducido.
@@ -1028,7 +1034,7 @@ Salida: informe de viabilidad y fixtures anonimizados.
 - Licencia MIT, terceros y atribuciones.
 - Nombre y versión dinámicos.
 - Release manual en GitHub.
-- Validación completa contra la definición de terminado de `Design-system/AGENTS.md`.
+- Validación completa contra la definición de terminado de [`ui-design.md`](docs/ui-design.md) §8.
 
 ### Después de 1.0 (P2)
 
@@ -1108,21 +1114,23 @@ ambos lados no puedan divergir en silencio.
 
 ### 2.1. Sistema de diseño e interfaz
 
-El paquete ubicado en `Design-system/` forma parte de la arquitectura del producto, no es una referencia opcional:
+El sistema de diseño forma parte de la arquitectura del producto, no es una referencia opcional. Vive dentro del árbol de la aplicación, en una sola copia:
 
-- `Design-system/AGENTS.md`: reglas vinculantes de implementación y definición de terminado.
-- `Design-system/HANDOFF.md`: contrato de integración y comandos Tauri esperados por la UI.
-- `Design-system/design-system/tokens.css`: fuente única de verdad visual, importada una sola vez al arrancar.
-- `Design-system/design-system/tokens.json`: representación de los mismos tokens para herramientas.
-- `Design-system/tailwind.config.cjs`: mapeo permitido de tokens a utilidades.
-- `Design-system/src/lib/components/`: catálogo cerrado de componentes Svelte.
-- `Design-system/src/lib/design/`: tipos de presentación, formato, salud, tema y acento de Windows.
-- `Design-system/src/lib/i18n/`: diccionarios y selección de idioma.
-- `Design-system/SmartDisk Monitor v2.dc.html`: referencia visual aprobada para las cuatro pantallas diseñadas.
+- [`ui-design.md`](docs/ui-design.md): reglas vinculantes de implementación y definición de terminado. Su §0 es el mapa de rutas.
+- `src/design-system/tokens.css`: fuente única de verdad visual, importada una sola vez al arrancar.
+- `src/design-system/tokens.json`: representación de los mismos tokens para herramientas.
+- `src/design-system/fonts/`: tipografía empotrada; la aplicación no descarga tipografías.
+- `tailwind.config.cjs`: mapeo permitido de tokens a utilidades.
+- `src/lib/components/`: catálogo cerrado de componentes Svelte, importado del barrel `$lib/components`.
+- `src/lib/design/`: tipos de presentación, formato, salud, tema y acento de Windows.
+- `src/lib/i18n/`: diccionarios y selección de idioma.
+- `design/SmartDisk Monitor v2.dc.html`: referencia visual aprobada para las cuatro pantallas diseñadas.
 
-La integración copiará estos recursos al esqueleto Tauri conservando su estructura lógica. La UI se montará con `AppShell`, `Sidebar` y `Toolbar`; ninguna pantalla creará su propio chrome. Los componentes nuevos solo se admitirán cuando el patrón aparezca en al menos tres pantallas y no pueda componerse con el catálogo existente.
+**No puede existir una segunda copia de estos recursos.** El paquete original del diseñador traía la suya y las dos divergieron en silencio hasta que el consolidado publicó tokens caducos; la copia se eliminó y `pnpm verify:tokens` impide que reaparezca (ADR-029).
 
-La comunicación UI-backend se definirá con DTO tipados coherentes con `Design-system/src/lib/design/types.ts`. Los valores opcionales permanecerán como `null`, las series conservarán huecos explícitos y toda métrica llevará procedencia y antigüedad cuando estén disponibles.
+La UI se monta con `AppShell`, `Sidebar` y `Toolbar`; ninguna pantalla crea su propio chrome. Los componentes nuevos solo se admiten cuando el patrón aparece en al menos tres pantallas y no puede componerse con el catálogo existente.
+
+La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types.ts`. Los valores opcionales permanecen como `null`, las series conservan huecos explícitos y toda métrica lleva procedencia y antigüedad cuando estén disponibles.
 
 ### 3. Componentes
 
@@ -1471,7 +1479,7 @@ Especificación normativa del motor de alertas. Sustituye a la prosa de
 esta tabla.
 
 Referencias: `docs/data-model.md` (`alert_groups`, `alert_occurrences`), `docs/open-questions.md`
-§B, `Design-system/src/lib/design/health.ts`.
+§B, `src/lib/design/health.ts`.
 
 ---
 
@@ -1792,7 +1800,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 
 ### 2. Tipos compartidos
 
-Los que ya viven en `Design-system/src/lib/design/types.ts` no se repiten aquí: `HealthState`,
+Los que ya viven en `src/lib/design/types.ts` no se repiten aquí: `HealthState`,
 `Severity`, `AlertStatus`, `TestStatus`, `MetricSource`, `MetricQuality`, `UnknownReason`,
 `Provenance`, `DiskSummary`, `VolumeSummary`, `AlertGroup`.
 
@@ -2134,7 +2142,7 @@ no se hace una excepción local.
 | Node | 20 LTS | se fija en `.nvmrc` |
 | Gestor de paquetes | pnpm | `packageManager` en `package.json`; el lockfile se versiona |
 | SvelteKit | 2.x con `adapter-static` | ADR-014, SSR desactivado |
-| Svelte | 5 con runes | `AGENTS.md` §1 |
+| Svelte | 5 con runes | `ui-design.md` §1 |
 | TypeScript | 5.x, `strict: true` | sin `any` implícito, sin `@ts-ignore` sin justificar |
 | Tailwind | 3.x | solo utilidades mapeadas desde tokens |
 | SQLite | vía `rusqlite` con `bundled` | evita depender de la DLL del sistema |
@@ -2205,10 +2213,12 @@ smartdisk-monitor/
     windows/app.manifest        requireAdministrator (ADR-004) + PerMonitorV2
 
   docs/                         Documentación normativa
-  Design-system/                Paquete de entrega original, congelado como referencia
+  design/                       Bocetos navegables (.dc.html). Referencia visual, no código
 
   AGENTS.md                     Instrucciones para agentes de IA: fuente canónica
   CLAUDE.md                     Importa AGENTS.md y añade lo específico de Claude Code
+  GEMINI.md                     Importa AGENTS.md y añade lo específico de Gemini
+  CODEX.md                      Puntero a AGENTS.md, que Codex ya lee de forma nativa
   .claude/rules/                Reglas por ámbito; se cargan al tocar sus `paths:`
   .claude/skills/               Procedimientos; se cargan al activarse
   .claude/settings.json         Permisos y hooks (enforcement)
@@ -2304,7 +2314,7 @@ capturarlos, no al usarlos.
 - Rama principal protegida; el trabajo va en ramas por historia (`us-030-alertas-agrupadas`).
 - Commits en imperativo, en español, referenciando la historia.
 - Un *pull request* no se fusiona sin la definición de terminado de la historia y, si toca interfaz,
-  la de `AGENTS.md` §8.
+  la de `ui-design.md` §8.
 - Versionado semántico. Nombre y versión salen del manifiesto (ADR-011): no se escriben a mano en
   ningún otro sitio.
 - Las publicaciones son manuales en GitHub, sin actualizador automático (ADR-007).
@@ -3340,7 +3350,9 @@ El desinstalador conserva SQLite, configuración, historial y logs en `ProgramDa
 
 Estado: aceptada.
 
-La interfaz utilizará el paquete `Design-system/`, versión v2 de material translúcido. `Design-system/AGENTS.md` constituye la norma vinculante y `tokens.css` la fuente única de verdad visual.
+La interfaz utilizará el paquete de diseño entregado, versión v2 de material translúcido, con su norma vinculante y `tokens.css` como fuente única de verdad visual.
+
+> **Rutas actualizadas por ADR-029.** Cuando se escribió esta decisión, la norma era `Design-system/AGENTS.md` y el paquete vivía sin integrar. Hoy la norma es `docs/ui-design.md` y el sistema de diseño vive en `src/`. El fondo de la decisión no cambia.
 
 Se adoptan el catálogo cerrado de componentes Svelte, los tipos y formateadores entregados, los diccionarios español/inglés, la herencia del acento de Windows y los bocetos v2 aprobados. No se introducirán valores visuales literales, niveles adicionales de material ni bibliotecas de componentes sin una decisión nueva.
 
@@ -3852,6 +3864,74 @@ que ningún usuario va a ejecutar.
 - El plano de aplicación real (`tauri-driver`) sigue pendiente y es otra cosa: exige el ejecutable
   empaquetado y terminal elevada. Entra con US-060.
 
+### ADR-029 — Una sola copia del sistema de diseño, y su norma en `docs/`
+
+Estado: aceptada. Reemplaza las rutas de ADR-013, cuyo fondo sigue vigente.
+
+#### El problema
+
+El paquete del diseñador llegó como `Design-system/` y se integró en el árbol de la aplicación
+(`src/design-system/` y `src/lib/`). La copia original se conservó "como referencia". El resultado
+fueron **dos sistemas de diseño vivos a la vez**, y divergieron:
+
+| Fichero | Divergencia |
+|---|---|
+| `tokens.css` | el arreglo de foco `:focus-visible:focus-visible` (WCAG 2.4.7) solo llegó a la copia de `src/` |
+| `design/accent.ts` | 23 líneas distintas |
+| `design/format.ts` | 14 líneas distintas |
+| `design/health.ts` | 6 líneas distintas |
+| `design/types.ts`, `i18n/es.json`, `i18n/en.json` | 3 líneas distintas cada uno |
+
+Lo grave no es la divergencia, sino **quién la leía**: `tools/build-historias.py` generaba el
+consolidado desde la copia del paquete. `historias.md` —el documento que se entrega entero a un
+agente de IA o a quien se incorpora al proyecto— estuvo publicando los tokens sin el arreglo de
+foco. Un agente que se fiara del consolidado habría reintroducido un fallo de accesibilidad ya
+resuelto, y todas las puertas de calidad habrían pasado en verde, porque ninguna miraba ahí.
+
+La prueba de que el coste era real y ya se estaba pagando: existía `tools/_nav.py`, un script cuyo
+único cometido era aplicar cada cambio **dos veces**, una en cada copia. Se ha eliminado con esta
+decisión.
+
+Había además un problema de nombres. La norma de interfaz se llamaba `Design-system/AGENTS.md` y
+convivía con el `AGENTS.md` de la raíz, que es la guía general para agentes de IA. Dos ficheros con
+el mismo nombre y significados distintos: `AGENTS.md` de la raíz tenía que dedicar un párrafo a
+avisar de la confusión.
+
+#### La decisión
+
+**Una sola copia, dentro de `src/`.** La carpeta `Design-system/` desaparece:
+
+| Qué era | Dónde está ahora |
+|---|---|
+| `Design-system/AGENTS.md` | `docs/ui-design.md` |
+| `Design-system/HANDOFF.md` | absorbido en los apéndices A–C de `docs/ui-design.md` |
+| `Design-system/design-system/**` | ya estaba en `src/design-system/`; la copia se borra |
+| `Design-system/src/**` | ya estaba en `src/lib/`; la copia se borra |
+| `Design-system/tailwind.config.cjs` | ya estaba en la raíz; la copia se borra |
+| Los tres `.dc.html`, `support.js` | `design/`, con su propio `README.md` |
+
+La norma pasa a llamarse **`docs/ui-design.md`**: elimina la colisión de nombres, la coloca junto al
+resto de documentos normativos y hace pareja con `docs/ui-contract.md` —aquel dice qué puede pedir
+la interfaz, este cómo se pinta lo que recibe—. Gana además un **§0 «Dónde vive cada cosa»**, que es
+lo que antes no existía en ningún sitio: un agente tenía que deducir las rutas.
+
+Los bocetos se conservan porque no viven en ningún otro sitio; el resto no, porque duplicar para
+"conservar la referencia" es precisamente lo que causó el problema. **El paquete original íntegro
+sigue en el historial de git**, que es donde va lo que se conserva por trazabilidad.
+
+**Y se hace determinista.** `pnpm verify:tokens` gana una comprobación que falla la integración si
+aparece un segundo `tokens.css`, un segundo `tokens.json` o un segundo barrel de componentes fuera
+de `src/`. Un principio que solo vive en un documento dura hasta el primer día de prisa.
+
+#### Consecuencias
+
+- `historias.md` se genera desde las rutas vivas y suma dos fuentes que faltaban: `tokens.json` y
+  `src/lib/components/index.ts`, que es el catálogo real y ejecutable. Pasa de 29 a 31 ficheros.
+- Los ficheros de agentes (`AGENTS.md`, `CLAUDE.md`, y los nuevos `GEMINI.md` y `CODEX.md`) llevan
+  el mapa de rutas y las órdenes duras de interfaz. Ninguno duplica la norma: apuntan a ella.
+- `AGENTS.md` recupera el párrafo que gastaba en avisar de la colisión de nombres.
+- Ningún valor de token, umbral ni regla visual cambia. Es reorganización, no rediseño.
+
 
 ---
 
@@ -3860,7 +3940,7 @@ que ningún usuario va a ejecutar.
 Fichero de origen: `docs/open-questions.md`
 
 Registro de todo lo que la especificación dejaba a interpretación, con el valor que se ha adoptado.
-Nació de la revisión cruzada de `docs/` contra `Design-system/` previa a la implementación.
+Nació de la revisión cruzada de `docs/` contra el paquete de diseño previa a la implementación.
 
 **Cómo leerlo.** Cada entrada tiene un estado:
 
@@ -4179,7 +4259,7 @@ asunción del programador.
 Cerradas desde la última revisión:
 
 - **K.1** (tipografía empotrada), 2026-09-04 — los dos `.woff2` de Instrument Sans v4 y su `OFL.txt`
-  están en `Design-system/design-system/fonts/`, declarados en `tokens.css` con `unicode-range` y
+  están en `src/design-system/fonts/`, declarados en `tokens.css` con `unicode-range` y
   registrados con sus hashes en `THIRD_PARTY_NOTICES.md`.
 - **K.4** (escala tipográfica y escalado de Windows), 2026-09-04 — medido; véase §L.
 - **I.1** (WebView2 en Windows Server), 2026-09-04 — resuelto con documentación oficial; véase §M.
@@ -4768,19 +4848,49 @@ siempre `*S-1-5-18`, `*S-1-5-32-544` y `*S-1-5-32-545`.
 
 ---
 
-# 13. Reglas de interfaz (VINCULANTES)
+# 13. Sistema de diseño: reglas de interfaz (VINCULANTES)
 
-Fichero de origen: `Design-system/AGENTS.md`
+Fichero de origen: `docs/ui-design.md`
 
 Este documento es **vinculante** para cualquier agente (humano o IA) que escriba interfaz en este
 repositorio. Describe cómo construir pantallas con el sistema de diseño aprobado: **v2, material
 translúcido** (evolución de la dirección 1b). Si algo no está aquí, no lo inventes: pregunta o propón
 una extensión del sistema.
 
-Referencias funcionales: `docs/product-specification.md`, `docs/user-stories.md`, `docs/data-model.md`.
-Boceto aprobado (v2, cuatro pantallas y ambos temas): `SmartDisk Monitor v2.dc.html`.
-Guía visual de tokens y componentes: `Sistema de diseno SmartDisk.dc.html` (pendiente de actualizar a v2).
-El boceto original de la dirección 1b queda como referencia histórica en `Bocetos SmartDisk Monitor.dc.html`.
+Es el par visual de `docs/ui-contract.md`: aquel dice **qué** puede pedirle la interfaz al backend,
+este dice **cómo** se pinta lo que recibe. Referencias funcionales: `docs/product-specification.md`,
+`docs/user-stories.md`, `docs/data-model.md`.
+
+---
+
+### 0. Dónde vive cada cosa
+
+Esta tabla es el punto de entrada. Un agente que empieza una pantalla no debería tener que buscar
+ninguna de estas rutas.
+
+| Qué | Dónde |
+|---|---|
+| **Reglas vinculantes de interfaz** | `docs/ui-design.md` (este fichero) |
+| **Tokens: fuente única de verdad visual** | `src/design-system/tokens.css` |
+| Los mismos tokens, legibles por herramientas | `src/design-system/tokens.json` |
+| Mapeo de tokens a utilidades Tailwind | `tailwind.config.cjs` (raíz del proyecto) |
+| **Catálogo de componentes** | `src/lib/components/` — se importa del barrel `$lib/components` |
+| Tipos, formato, salud, tema y acento | `src/lib/design/` |
+| Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
+| Tipografía empotrada | `src/design-system/fonts/` |
+| **Boceto aprobado** (4 pantallas, ambos temas) | `design/SmartDisk Monitor v2.dc.html` |
+| Guía visual de tokens (estilo v1, sin refrescar) | `design/Sistema de diseno SmartDisk.dc.html` |
+| Exploración inicial 1a/1b, referencia histórica | `design/Bocetos SmartDisk Monitor.dc.html` |
+| Comandos y eventos que la UI puede llamar | `docs/ui-contract.md` |
+| Verificadores que fallan la integración | `pnpm verify:tokens`, `pnpm verify:i18n` |
+
+**Una sola copia.** El sistema de diseño vive en `src/` y en ningún otro sitio. `design/` contiene
+únicamente los bocetos, que son referencia visual y no código reutilizable. Una segunda copia de
+`tokens.css` o del catálogo diverge en silencio, y el consolidado acaba publicando valores caducos:
+lo comprueba `pnpm verify:tokens` (ADR-029).
+
+Las notas de arranque de la aplicación y las advertencias para quien programa están en el
+**apéndice** al final de este documento.
 
 ---
 
@@ -4797,9 +4907,9 @@ El boceto original de la dirección 1b queda como referencia histórica en `Boce
 ### 2. Regla cero: los tokens
 
 ```
-design-system/tokens.css     ← fuente única de verdad (importar una sola vez en el arranque)
-design-system/tokens.json    ← misma información, legible por herramientas
-tailwind.config.cjs          ← mapeo de tokens a utilidades
+src/design-system/tokens.css     ← fuente única de verdad (importar una sola vez en el arranque)
+src/design-system/tokens.json    ← misma información, legible por herramientas
+tailwind.config.cjs              ← mapeo de tokens a utilidades
 ```
 
 - **Prohibido** escribir un color, radio, sombra o tamaño de fuente literal en un componente.
@@ -4820,7 +4930,7 @@ tailwind.config.cjs          ← mapeo de tokens a utilidades
   Un color no puede cumplir las dos cosas: el azul `#0078d4` que Windows trae de fábrica da 4,31:1
   como texto sobre el material claro, **por debajo de AA**. Barriendo el espacio sRGB completo, el
   65 % de los acentos posibles son ilegibles como texto en tema claro y el 50 % en oscuro
-  (`tools/accent-check.py`, `open-questions.md` §O).
+  (`tools/accent-check.py`, `docs/open-questions.md` §O).
 
   Por eso: **texto de acento ⇒ `text-accent-fg`. Fondo de acento ⇒ `bg-accent`.** Nunca al revés,
   y nunca `--sdm-accent` para pintar texto.
@@ -4844,7 +4954,7 @@ tailwind.config.cjs          ← mapeo de tokens a utilidades
 - La escala tipográfica **no se toca sin volver a medir**. Parece pequeña sobre el papel y no lo es:
   Instrument Sans tiene una altura de x de 0,5175 em frente a los 0,50 de Segoe UI, así que el cuerpo
   denso de 12,5 px equivale ópticamente a Segoe UI 12,9 px, por encima de los 12 px (9 pt) que
-  Windows usa para el texto de interfaz. Medido, no estimado (`open-questions.md` K.4).
+  Windows usa para el texto de interfaz. Medido, no estimado (`docs/open-questions.md` K.4).
 - Movimiento: `duration-base` (220 ms) con `ease-sdm` (`cubic-bezier(.32,.72,0,1)`) en selección,
   cambio de pantalla y aparición de diálogos; `active:scale-[0.98]` en los botones. Nada decorativo,
   y todo anulado por `prefers-reduced-motion`.
@@ -4925,7 +5035,7 @@ opcional, tener etiqueta accesible y exportarse en `src/lib/components/index.ts`
    El mínimo técnico no es un capricho: el escalado de Windows **no encoge el texto, encoge el
    espacio disponible en píxeles CSS**. Un portátil de 1920 × 1080 al 150 % deja una ventana máxima
    de 1280 × 672, y un 1366 × 768 al 125 % deja 1092 × 566. Con un mínimo de 720 de alto, en esas dos
-   configuraciones la ventana no cabría en la pantalla. Medido, no estimado (`open-questions.md` K.4).
+   configuraciones la ventana no cabría en la pantalla. Medido, no estimado (`docs/open-questions.md` K.4).
 
    Debe seguir siendo correcta al 125 %, 150 % y 200 % de escalado.
 
@@ -5065,135 +5175,41 @@ puede tener veinte o más. Reglas obligatorias, no opcionales:
 - [ ] Verificada con 20 discos y con 5.000 eventos, sin bloqueo perceptible al desplazarse.
 - [ ] Ni un solo literal de interfaz fuera de `es.json` / `en.json`, incluidos `aria-label` y títulos.
 
-
 ---
 
-# 14. Entrega del sistema de diseño
+### Apéndice A. Arranque de la aplicación
 
-Fichero de origen: `Design-system/HANDOFF.md`
+La base es **SvelteKit con `adapter-static` y SSR desactivado** (ADR-014). `$lib` ya apunta a
+`src/lib`: no toques el alias.
 
-Contiene el sistema de diseño aprobado (**v2, material translúcido**) y el catálogo de componentes
-Svelte listos para montar la aplicación Tauri. No es un proyecto ejecutable: son los archivos de UI
-para integrar en el esqueleto Tauri 2 + Svelte + TypeScript + Tailwind.
+`tokens.css` es la **única** importación de CSS global y va en `src/routes/+layout.svelte`, antes
+del primer render:
 
-### Qué hay dentro
+```ts
+import "../design-system/tokens.css";
+import { invoke } from "@tauri-apps/api/core";
+import { theme } from "$lib/design/theme.svelte";
+import { applySystemAccent } from "$lib/design/accent";
+import { i18n } from "$lib/i18n";
 
-```
-AGENTS.md                        Reglas VINCULANTES de UI. Leer antes de escribir una sola pantalla.
-HANDOFF.md                       Este archivo.
-tailwind.config.cjs              Tokens → utilidades Tailwind.
-
-design-system/
-  tokens.css                     Fuente única de verdad: variables --sdm-*, temas claro/oscuro,
-                                 utilidades de material y base. Importar UNA vez al arrancar.
-  fonts/                         Instrument Sans variable, empotrada. La app NO descarga tipografías
-                                 (spec §11). Falta el .woff2: véase fonts/README.md.
-  tokens.json                    Los mismos valores, legibles por herramientas.
-  README.md                      Principios, anatomía y arranque.
-
-src/lib/design/
-  types.ts                       Vocabulario de UI alineado con docs/data-model.md.
-  format.ts                      Formateo de presentación. Todo dato ausente → "No disponible".
-  health.ts                      Único mapa estado→color + umbrales de capacidad de la spec.
-  theme.svelte.ts                Preferencia claro/oscuro/sistema → data-theme en <html>.
-  accent.ts                      Hereda el color de acento de Windows sobre los tokens de acento.
-
-src/lib/i18n/
-  index.ts, es.json, en.json     i18n mínimo. Idioma inicial del sistema (es-* → es, resto → en).
-
-src/lib/components/              Catálogo cerrado (25 componentes). Importar del barrel index.ts.
-                                 Otros 4 quedan autorizados y por construir: véase AGENTS.md §3.
-
-*.dc.html                        Bocetos navegables (abrir en el navegador):
-  SmartDisk Monitor v2.dc.html      ← APROBADO: 4 pantallas, claro y oscuro, diálogo incluido.
-  Sistema de diseno SmartDisk.dc.html  Guía visual de tokens (estilo v1, pendiente de refresco).
-  Bocetos SmartDisk Monitor.dc.html    Exploración inicial 1a/1b, referencia histórica.
+const s = await invoke<AppearanceSettings>("get_appearance_settings");
+theme.init(s.theme);
+i18n.init(s.language, s.systemLocale); // el locale viene del backend, no de navigator
+await applySystemAccent();
 ```
 
-### Integración en 5 pasos
+`i18n.init()` fija además `<html lang>`, e `i18n.formatLocale` es el locale que usan **todas** las
+funciones de `format.ts`: los números siguen al idioma de la aplicación, no al de Windows.
 
-La base es **SvelteKit con `adapter-static` y SSR desactivado** (ADR-014). Rutas de destino exactas
-en `docs/engineering-conventions.md`; resumen:
+La aplicación se monta con `AppShell` + `Sidebar` + `Toolbar`; ninguna pantalla monta su propio
+chrome. El estado inicial de cada pantalla llega por `load` en `+page.ts`, no por `onMount`; las
+actualizaciones vienen después por eventos. **No hagas sondeo con `setInterval`**: el backend empuja
+(ADR-015). Los comandos y eventos disponibles son los de `docs/ui-contract.md`, que es el normativo:
+la UI solo llama comandos enumerados.
 
-| Origen | Destino en el proyecto |
-|---|---|
-| `design-system/` (con `fonts/`) | `src/design-system/` |
-| `src/lib/` | `src/lib/` |
-| `tailwind.config.cjs` | raíz del proyecto |
+### Apéndice B. Notas para quien programe
 
-1. Copia los tres bloques de la tabla. `$lib` ya apunta a `src/lib` en SvelteKit: no toques el alias.
-2. Deja `tokens.css` como **única** importación de CSS global, en `src/routes/+layout.svelte`.
-3. En el arranque (`+layout.svelte`, antes del primer render):
-
-   ```ts
-   import "../design-system/tokens.css";
-   import { invoke } from "@tauri-apps/api/core";
-   import { theme } from "$lib/design/theme.svelte";
-   import { applySystemAccent } from "$lib/design/accent";
-   import { i18n } from "$lib/i18n";
-
-   const s = await invoke<AppearanceSettings>("get_appearance_settings");
-   theme.init(s.theme);
-   i18n.init(s.language, s.systemLocale); // el locale viene del backend, no de navigator
-   await applySystemAccent();
-   ```
-
-   `i18n.init()` fija además `<html lang>`, e `i18n.formatLocale` es el locale que usan **todas** las
-   funciones de `format.ts`: los números siguen al idioma de la aplicación, no al de Windows.
-
-4. Monta la app con `AppShell` + `Sidebar` + `Toolbar`; ninguna pantalla monta su propio chrome.
-5. Suscríbete a los eventos de la tabla de abajo. **No hagas sondeo con `setInterval`**: el backend
-   empuja (ADR-015).
-6. Lee `AGENTS.md` y su checklist de "terminado" antes de cerrar cada pantalla.
-
-### Comandos Tauri que la UI espera
-
-**El contrato exacto y normativo vive en `docs/ui-contract.md`**: firmas, DTO, eventos de
-actualización en vivo y forma de los errores. Lo de abajo es solo el índice. La UI **solo** llama
-comandos enumerados.
-
-| Comando | Devuelve |
-|---|---|
-| `get_appearance_settings` | tema e idioma persistidos en `settings` |
-| `set_setting` | guarda una clave tipada de `settings` |
-| `get_system_accent_color` | `{ hex }` del acento de Windows (o error si está desactivado) |
-| `get_devices` / `get_device_detail` | inventario y detalle con procedencia por métrica |
-| `get_metric_series` | serie temporal con huecos explícitos (`v: null`), no interpolados |
-| `get_alert_groups` / `acknowledge_alert` / `mute_alert` / `archive_alert` | ciclo de vida de alertas |
-| `get_system_events` | eventos con `mappingConfidence` |
-| `start_benchmark` / `cancel_test` / `run_chkdsk_scan` / `run_smart_short_test` | pruebas manuales |
-| `get_test_runs` | historial de `test_runs` |
-| `export_report` / `create_diagnostic_zip` | informes y ZIP anonimizado |
-| `get_settings` / `set_setting` / `reset_settings` | pantalla de Ajustes (US-070) |
-| `pause_monitoring` / `resume_monitoring` | pausa desde la bandeja (US-032) |
-| `delete_all_data` | borrado explícito y confirmado del historial (US-073) |
-
-Además el backend **emite eventos**; la UI no hace sondeo (ADR-015):
-
-| Evento | Cuándo |
-|---|---|
-| `metrics:updated` | cada ciclo de recopilación, con el lote de métricas frescas |
-| `alerts:changed` | alta, cambio de severidad, resolución o cambio de estado de un grupo |
-| `inventory:changed` | alta o retirada de un disco o volumen |
-| `test:progress` | progreso de una prueba en curso |
-| `system:accent-changed` / `system:theme-changed` | el usuario cambia la apariencia de Windows |
-
-### Pendiente de diseño (no incluido)
-
-Todas estas pantallas tienen ya criterios de aceptación en `docs/user-stories.md` (épica H y US-070
-a US-074); lo que falta es la composición visual, no la definición funcional.
-
-- **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
-- **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
-- **Asistente inicial** (US-002): detección, exclusión de discos y alias.
-- **Acerca de** (US-061) y estados de systray.
-
-Casi todo se compone con el catálogo actual (`Switch`, `Select`, `TextField`, `RadioGroup`,
-`SegmentedControl`, `ConfirmDialog`, `EmptyState`, `CodeOutput`). Las excepciones ya están
-autorizadas y no requieren decisión nueva: `DateRangePicker`, `FilterBar`, `VirtualList` y `Tooltip`
-(AGENTS.md §3, "Autorizados y pendientes de construir").
-
-### Notas para quien programe
+Errores que se cometen aunque las reglas de arriba estén leídas:
 
 - Ningún literal de color, radio, sombra o tamaño en un componente: utilidad Tailwind o `var(--sdm-*)`.
 - Nunca escribas `backdrop-filter` a mano: usa `.sdm-material`, `.sdm-material-chrome`, `.sdm-material-overlay`.
@@ -5210,15 +5226,75 @@ autorizadas y no requieren decisión nueva: `DateRangePicker`, `FilterBar`, `Vir
 - **La navegación se hace con enlaces, no con callbacks.** `DiskCard` recibe `href` y `Sidebar`
   recibe secciones con su `href`: un `onclick` con `goto()` rompe el ctrl+clic, el menú contextual y
   el anuncio como enlace de un lector de pantalla.
-- El estado inicial de cada pantalla llega por `load` en `+page.ts`, no por `onMount`. Las
-  actualizaciones vienen después por eventos.
+
+### Apéndice C. Pantallas pendientes de diseño
+
+Todas tienen ya criterios de aceptación en `docs/user-stories.md` (épica H y US-070 a US-074); lo
+que falta es la composición visual, no la definición funcional.
+
+- **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
+- **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
+- **Asistente inicial** (US-002): detección, exclusión de discos y alias.
+- **Acerca de** (US-061) y estados de systray.
+
+Casi todo se compone con el catálogo actual (`Switch`, `Select`, `TextField`, `RadioGroup`,
+`SegmentedControl`, `ConfirmDialog`, `EmptyState`, `CodeOutput`). Las excepciones ya están
+autorizadas y no requieren decisión nueva: `DateRangePicker`, `FilterBar`, `VirtualList` y `Tooltip`
+(§3, "Autorizados y pendientes de construir").
+
+
+---
+
+# 14. Bocetos del sistema de diseño
+
+Fichero de origen: `design/README.md`
+
+Referencia **visual**, no código. Aquí solo hay lienzos navegables que enseñan cómo debe verse la
+aplicación; lo que se implementa vive en `src/`.
+
+| Fichero | Qué es |
+|---|---|
+| `SmartDisk Monitor v2.dc.html` | **APROBADO.** Cuatro pantallas (panel general, detalle de disco, alertas, pruebas), en tema claro y oscuro, con el diálogo de confirmación incluido. Es la referencia contra la que se revisa una pantalla |
+| `Sistema de diseno SmartDisk.dc.html` | Guía visual de tokens y componentes. Sigue en estilo v1: **pendiente de refresco a v2**. Ante una diferencia con el boceto aprobado, manda el aprobado |
+| `Bocetos SmartDisk Monitor.dc.html` | Exploración inicial de las direcciones 1a y 1b. Referencia histórica: no se implementa nada de aquí |
+
+`support.js` es el runtime que los tres necesitan para funcionar, y `.thumbnail` la miniatura de
+previsualización. Ninguno de los dos se edita a mano.
+
+### Cómo se abren
+
+Doble clic en el `.html`, o desde la terminal:
+
+```powershell
+Invoke-Item ".\design\SmartDisk Monitor v2.dc.html"
+```
+
+Los tres cargan `support.js` desde la misma carpeta, así que **no funcionan si se copian sueltos** a
+otro sitio.
+
+### Lo que estos ficheros NO son
+
+- **No son la fuente de verdad visual.** Esa es `src/design-system/tokens.css`. Si un boceto y un
+  token discrepan, gana el token, y la discrepancia se anota en `docs/open-questions.md`.
+- **No contienen código reutilizable.** Su marcado es de la herramienta de diseño; el catálogo real
+  es `src/lib/components/`.
+- **No son normativos por sí solos.** Las reglas están escritas en `docs/ui-design.md`, que es lo
+  vinculante. El boceto muestra el resultado; el documento dice por qué y con qué límites.
+
+### Procedencia
+
+El diseñador entregó estos bocetos dentro del paquete `Design-system/`, que además traía una copia
+del sistema de diseño (tokens, componentes, i18n). Esa copia se integró en `src/` y **se eliminó de
+aquí** porque las dos versiones habían empezado a divergir en silencio: el motivo completo y la
+divergencia medida están en ADR-029 (`docs/decisions.md`). El paquete original íntegro sigue
+disponible en el historial de git, anterior a ese cambio.
 
 
 ---
 
 # 15. Sistema de diseño: principios
 
-Fichero de origen: `Design-system/design-system/README.md`
+Fichero de origen: `src/design-system/README.md`
 
 Versión aprobada: **v2, material translúcido** (evolución de la dirección 1b). Una herramienta de
 administración que se lee de un vistazo: capas de cristal sutil que dejan intuir el contenido detrás,
@@ -5282,7 +5358,7 @@ await applySystemAccent(); // hereda el color de acento de Windows; si falla, se
 
 # 16. tokens.css — fuente única de verdad visual
 
-Fichero de origen: `Design-system/design-system/tokens.css`
+Fichero de origen: `src/design-system/tokens.css`
 
 ```css
 /* SmartDisk Monitor — tokens de diseño v2 "material translúcido"
@@ -5503,7 +5579,14 @@ a:hover {
   text-decoration: underline;
 }
 
-:focus-visible {
+/* La doble pseudoclase NO es un descuido: sube la especificidad a (0,2,0) a propósito.
+   Con `:focus-visible` a secas (0,1,0) empata con cualquier utilidad de Tailwind —`shadow-edge`,
+   `shadow-[...]`— y pierde por orden de aparición, porque las utilidades se generan después de
+   este fichero. Resultado medido antes del arreglo: el anillo de foco no aparecía en NINGUNA
+   variante de Button, ni siquiera en `ghost`. Como aquí se hace `outline: none`, eso dejaba a los
+   controles sin ningún indicador de foco: WCAG 2.4.7 incumplido en todo el catálogo.
+   Lo vigila `src/lib/components/Button.browser.test.ts`. */
+:focus-visible:focus-visible {
   outline: none;
   box-shadow: var(--sdm-focus-ring);
   border-radius: var(--sdm-radius-pill);
@@ -5565,9 +5648,146 @@ a:hover {
 
 ---
 
-# 17. tailwind.config.cjs — mapeo de tokens
+# 17. tokens.json — los mismos tokens, para herramientas
 
-Fichero de origen: `Design-system/tailwind.config.cjs`
+Fichero de origen: `src/design-system/tokens.json`
+
+```json
+{
+  "$meta": {
+    "name": "SmartDisk Monitor Design System",
+    "version": "2.0.0",
+    "direction": "v2 — material translúcido (evolución de 1b)",
+    "themes": [
+      "light",
+      "dark",
+      "system"
+    ],
+    "notes": [
+      "Los colores viven por tema; en código se consumen SIEMPRE como var(--sdm-*).",
+      "El acento se sobreescribe en runtime con el color de acento de Windows (src/lib/design/accent.ts).",
+      "Todos los tokens de texto y de salud cumplen 4.5:1 sobre el material de su tema; no los aclares.",
+      "Peso tipográfico máximo 600: la jerarquía la aporta el material, no la grasa."
+    ]
+  },
+  "typography": {
+    "fontSans": "\"Instrument Sans\", system-ui, \"Segoe UI Variable\", sans-serif",
+    "fontMono": "ui-monospace, \"Cascadia Mono\", Consolas, monospace",
+    "scale": {
+      "2xs": 11,
+      "xs": 12,
+      "sm": 12.5,
+      "base": 13.5,
+      "lg": 14.5,
+      "xl": 20,
+      "2xl": 21,
+      "metric": 27
+    },
+    "weights": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600
+    }
+  },
+  "space": {
+    "1": 4,
+    "2": 8,
+    "3": 12,
+    "4": 16,
+    "5": 18,
+    "6": 20,
+    "8": 32
+  },
+  "radius": {
+    "window": 18,
+    "card": 18,
+    "inner": 13,
+    "nav": 9,
+    "pill": 999,
+    "rule": "interior = exterior − padding"
+  },
+  "control": {
+    "sm": 30,
+    "md": 30,
+    "lg": 35,
+    "tapMin": 30
+  },
+  "material": {
+    "blurChrome": 28,
+    "blurCard": 24,
+    "blurOverlay": 44,
+    "saturate": "180%"
+  },
+  "motion": {
+    "fast": "140ms",
+    "base": "220ms",
+    "overlay": "320ms",
+    "ease": "cubic-bezier(0.32,0.72,0,1)"
+  },
+  "color": {
+    "light": {
+      "bg": "#e9ebf0",
+      "bg2": "#dfe2ea",
+      "glass": "rgba(255,255,255,0.72)",
+      "glass2": "rgba(255,255,255,0.5)",
+      "glass3": "rgba(120,124,140,0.1)",
+      "solid": "#fdfdfe",
+      "hairline": "rgba(22,24,32,0.09)",
+      "highlight": "rgba(255,255,255,0.9)",
+      "scrim": "rgba(10,10,14,0.34)",
+      "text": "#191b22",
+      "textDim": "#5f6371",
+      "textFaint": "#6a6f7b",
+      "onAccent": "#ffffff",
+      "accent": "#0067c0",
+      "accentHi": "#1a7cd4",
+      "accentSoft": "rgba(0,103,192,0.12)",
+      "accentFg": "#0067c0",
+      "ok": "#43906f",
+      "warn": "#b7813a",
+      "crit": "#c25a60",
+      "unknown": "#8a8d99"
+    },
+    "dark": {
+      "bg": "#101014",
+      "bg2": "#16161c",
+      "glass": "rgba(42,42,50,0.66)",
+      "glass2": "rgba(58,58,68,0.42)",
+      "glass3": "rgba(255,255,255,0.06)",
+      "solid": "#1b1b21",
+      "hairline": "rgba(255,255,255,0.09)",
+      "highlight": "rgba(255,255,255,0.13)",
+      "scrim": "rgba(0,0,0,0.5)",
+      "text": "#f2f2f6",
+      "textDim": "#a2a4b0",
+      "textFaint": "#9195a1",
+      "onAccent": "#ffffff",
+      "accent": "#3d95ea",
+      "accentHi": "#5aa8f2",
+      "accentSoft": "rgba(61,149,234,0.18)",
+      "accentFg": "#3d95ea",
+      "ok": "#6cc79c",
+      "warn": "#e0b473",
+      "crit": "#e88b90",
+      "unknown": "#9396a2"
+    }
+  },
+  "semantics": {
+    "ok": "Correcto — dentro de umbrales.",
+    "warn": "Advertencia — umbral cruzado o degradación no bloqueante.",
+    "crit": "Crítico — atención inmediata.",
+    "unknown": "Desconocido / no compatible / sin datos. NUNCA rojo.",
+    "accent": "Acción primaria, selección y serie principal. No transmite salud."
+  }
+}
+```
+
+
+---
+
+# 18. tailwind.config.cjs — mapeo de tokens
+
+Fichero de origen: `tailwind.config.cjs`
 
 ```js
 /** Tailwind mapeado 1:1 sobre design-system/tokens.css (v2 material translúcido).
@@ -5575,7 +5795,7 @@ Fichero de origen: `Design-system/tailwind.config.cjs`
  *  Las capas de material se aplican con las clases .sdm-material / -chrome / -overlay de tokens.css.
  *  @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./index.html", "./src/**/*.{svelte,ts,js}"],
+  content: ["./src/**/*.{html,svelte,ts,js}"],
   theme: {
     extend: {
       colors: {
@@ -5584,8 +5804,18 @@ module.exports = {
         solid: "var(--sdm-solid)",
         hairline: "var(--sdm-hairline)",
         scrim: "var(--sdm-scrim)",
-        fg: { DEFAULT: "var(--sdm-text)", dim: "var(--sdm-text-dim)", faint: "var(--sdm-text-faint)", onAccent: "var(--sdm-on-accent)" },
-        accent: { DEFAULT: "var(--sdm-accent)", hi: "var(--sdm-accent-hi)", soft: "var(--sdm-accent-soft)", fg: "var(--sdm-accent-fg)" },
+        fg: {
+          DEFAULT: "var(--sdm-text)",
+          dim: "var(--sdm-text-dim)",
+          faint: "var(--sdm-text-faint)",
+          onAccent: "var(--sdm-on-accent)"
+        },
+        accent: {
+          DEFAULT: "var(--sdm-accent)",
+          hi: "var(--sdm-accent-hi)",
+          soft: "var(--sdm-accent-soft)",
+          fg: "var(--sdm-accent-fg)"
+        },
         ok: { DEFAULT: "var(--sdm-ok)", soft: "var(--sdm-ok-soft)" },
         warn: { DEFAULT: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)" },
         crit: { DEFAULT: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)" },
@@ -5604,23 +5834,43 @@ module.exports = {
       },
       fontWeight: { regular: "400", medium: "500", semibold: "600" },
       spacing: {
-        1: "var(--sdm-space-1)", 2: "var(--sdm-space-2)", 3: "var(--sdm-space-3)",
-        4: "var(--sdm-space-4)", 5: "var(--sdm-space-5)", 6: "var(--sdm-space-6)", 8: "var(--sdm-space-8)"
+        1: "var(--sdm-space-1)",
+        2: "var(--sdm-space-2)",
+        3: "var(--sdm-space-3)",
+        4: "var(--sdm-space-4)",
+        5: "var(--sdm-space-5)",
+        6: "var(--sdm-space-6)",
+        8: "var(--sdm-space-8)"
       },
       borderRadius: {
-        window: "var(--sdm-radius-window)", card: "var(--sdm-radius-card)",
-        inner: "var(--sdm-radius-inner)", nav: "var(--sdm-radius-nav)", pill: "var(--sdm-radius-pill)"
+        window: "var(--sdm-radius-window)",
+        card: "var(--sdm-radius-card)",
+        inner: "var(--sdm-radius-inner)",
+        nav: "var(--sdm-radius-nav)",
+        pill: "var(--sdm-radius-pill)"
       },
-      height: { "control-sm": "var(--sdm-control-sm)", "control-md": "var(--sdm-control-md)", "control-lg": "var(--sdm-control-lg)" },
+      height: {
+        "control-sm": "var(--sdm-control-sm)",
+        "control-md": "var(--sdm-control-md)",
+        "control-lg": "var(--sdm-control-lg)"
+      },
       boxShadow: {
         card: "var(--sdm-shadow)",
         lift: "var(--sdm-shadow-lift)",
         edge: "inset 0 1px 0 var(--sdm-highlight)",
         focus: "var(--sdm-focus-ring)"
       },
-      backdropBlur: { chrome: "var(--sdm-blur-chrome)", card: "var(--sdm-blur-card)", overlay: "var(--sdm-blur-overlay)" },
+      backdropBlur: {
+        chrome: "var(--sdm-blur-chrome)",
+        card: "var(--sdm-blur-card)",
+        overlay: "var(--sdm-blur-overlay)"
+      },
       transitionTimingFunction: { sdm: "var(--sdm-ease)" },
-      transitionDuration: { fast: "var(--sdm-duration-fast)", base: "var(--sdm-duration-base)", overlay: "var(--sdm-duration-overlay)" }
+      transitionDuration: {
+        fast: "var(--sdm-duration-fast)",
+        base: "var(--sdm-duration-base)",
+        overlay: "var(--sdm-duration-overlay)"
+      }
     }
   },
   plugins: []
@@ -5630,9 +5880,48 @@ module.exports = {
 
 ---
 
-# 18. design/types.ts — vocabulario de la UI
+# 19. components/index.ts — el catálogo cerrado
 
-Fichero de origen: `Design-system/src/lib/design/types.ts`
+Fichero de origen: `src/lib/components/index.ts`
+
+```ts
+export { default as AppShell } from "./AppShell.svelte";
+export { default as Sidebar } from "./Sidebar.svelte";
+export { default as Toolbar } from "./Toolbar.svelte";
+
+export { default as Button } from "./Button.svelte";
+export { default as Card } from "./Card.svelte";
+export { default as SegmentedControl } from "./SegmentedControl.svelte";
+export { default as Switch } from "./Switch.svelte";
+export { default as Select } from "./Select.svelte";
+export { default as TextField } from "./TextField.svelte";
+export { default as RadioGroup } from "./RadioGroup.svelte";
+
+export { default as StatusPill } from "./StatusPill.svelte";
+export { default as StatusDot } from "./StatusDot.svelte";
+export { default as MetricCard } from "./MetricCard.svelte";
+export { default as DataRow } from "./DataRow.svelte";
+export { default as CapacityBar } from "./CapacityBar.svelte";
+export { default as ProgressBar } from "./ProgressBar.svelte";
+export { default as HealthDonut } from "./HealthDonut.svelte";
+export { default as TimeSeriesChart } from "./TimeSeriesChart.svelte";
+
+export { default as DiskCard } from "./DiskCard.svelte";
+export { default as AlertCard } from "./AlertCard.svelte";
+export { default as EventRow } from "./EventRow.svelte";
+
+export { default as ConfirmDialog } from "./ConfirmDialog.svelte";
+export { default as Toast } from "./Toast.svelte";
+export { default as EmptyState } from "./EmptyState.svelte";
+export { default as CodeOutput } from "./CodeOutput.svelte";
+```
+
+
+---
+
+# 20. design/types.ts — vocabulario de la UI
+
+Fichero de origen: `src/lib/design/types.ts`
 
 ```ts
 /** Vocabulario compartido de la UI. Refleja el modelo de datos (docs/data-model.md). */
@@ -5653,7 +5942,8 @@ export type AlertStatus = "active" | "acknowledged" | "resolved" | "archived";
 export type UnknownReason = "unsupported" | "unreadable" | "collector-error" | "not-yet-sampled" | "paused";
 
 /** Estado de una ejecución de prueba (test_runs.status). */
-export type TestStatus = "pending" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "interrupted";
+export type TestStatus =
+  "pending" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "interrupted";
 
 /** Procedencia y confianza de una métrica (metric_samples.source/quality). */
 export type MetricSource = "smartctl" | "windows-storage" | "perf-counter" | "filesystem";
@@ -5747,9 +6037,9 @@ export interface AlertGroup {
 
 ---
 
-# 19. design/health.ts — estado → color, umbrales
+# 21. design/health.ts — estado → color, umbrales
 
-Fichero de origen: `Design-system/src/lib/design/health.ts`
+Fichero de origen: `src/lib/design/health.ts`
 
 ```ts
 import type { HealthState, Severity, AlertStatus, UnknownReason } from "./types";
@@ -5762,7 +6052,11 @@ export const healthToken: Record<HealthState, { fg: string; soft: string; labelK
   unknown: { fg: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", labelKey: "health.unknown" }
 };
 
-export const severityToHealth: Record<Severity, HealthState> = { info: "unknown", warn: "warn", crit: "crit" };
+export const severityToHealth: Record<Severity, HealthState> = {
+  info: "unknown",
+  warn: "warn",
+  crit: "crit"
+};
 
 /** Estados de alerta que siguen pesando sobre el color de salud.
  *  Decisión de producto: **reconocer no cambia el color**. Reconocer saca la alerta de la lista de
@@ -5846,9 +6140,9 @@ export function capacityState(
 
 ---
 
-# 20. design/format.ts — formato de presentación
+# 22. design/format.ts — formato de presentación
 
-Fichero de origen: `Design-system/src/lib/design/format.ts`
+Fichero de origen: `src/lib/design/format.ts`
 
 ```ts
 /** Formateo de presentación. Regla de oro: un valor ausente se muestra como "No disponible",
@@ -5867,8 +6161,7 @@ import { i18n, t } from "$lib/i18n";
 
 export const NOT_AVAILABLE = () => t("common.notAvailable"); // es: "No disponible" / en: "Not available"
 
-const isMissing = (v: unknown): v is null | undefined =>
-  v === null || v === undefined || Number.isNaN(v);
+const isMissing = (v: unknown): v is null | undefined => v === null || v === undefined || Number.isNaN(v);
 
 /** Base binaria con etiquetas decimales, igual que el Explorador de Windows. */
 const KIB = 1024;
@@ -5906,7 +6199,10 @@ export function formatHours(hours: number | null | undefined, locale = i18n.form
  *  (`read_bytes_per_second` / `write_bytes_per_second`). La escala es la misma base 1024 que
  *  `formatBytes`, de modo que "180 MB/s" son 180 × 1024² B/s.
  *  Nunca pases MB/s ya convertidos: la conversión vive aquí y en un solo sitio. */
-export function formatThroughput(bytesPerSecond: number | null | undefined, locale = i18n.formatLocale): string {
+export function formatThroughput(
+  bytesPerSecond: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
   if (isMissing(bytesPerSecond)) return NOT_AVAILABLE();
   return `${formatBytes(bytesPerSecond, locale)}/s`;
 }
@@ -5932,7 +6228,11 @@ export function formatTime(isoUtc: string | null | undefined, locale = i18n.form
 
 /** Antigüedad de una lectura ("hace 2 min"). Alimenta la marca de dato obsoleto exigida por
  *  `AGENTS.md` §5. Devuelve null si no hay fecha: el llamante decide si omitir la marca. */
-export function formatAge(isoUtc: string | null | undefined, now = Date.now(), locale = i18n.formatLocale): string | null {
+export function formatAge(
+  isoUtc: string | null | undefined,
+  now = Date.now(),
+  locale = i18n.formatLocale
+): string | null {
   if (!isoUtc) return null;
   const seconds = Math.round((now - new Date(isoUtc).getTime()) / 1000);
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "narrow" });
@@ -5959,9 +6259,9 @@ export function usedPercent(capacityBytes: number | null, freeBytes: number | nu
 
 ---
 
-# 21. design/theme.svelte.ts — tema
+# 23. design/theme.svelte.ts — tema
 
-Fichero de origen: `Design-system/src/lib/design/theme.svelte.ts`
+Fichero de origen: `src/lib/design/theme.svelte.ts`
 
 ```ts
 /** Preferencia de tema: claro / oscuro / sistema (spec §8, US-003).
@@ -6016,9 +6316,9 @@ $effect.root(() => {
 
 ---
 
-# 22. design/accent.ts — acento de Windows
+# 24. design/accent.ts — acento de Windows
 
-Fichero de origen: `Design-system/src/lib/design/accent.ts`
+Fichero de origen: `src/lib/design/accent.ts`
 
 ```ts
 /** El acento de la app hereda el color de acento de Windows (decisión de diseño v2).
@@ -6060,7 +6360,16 @@ function toRgb(hex: string): RGB {
 }
 
 function toHex([r, g, b]: RGB): string {
-  return "#" + [r, g, b].map((c) => Math.round(Math.min(255, Math.max(0, c))).toString(16).padStart(2, "0")).join("");
+  return (
+    "#" +
+    [r, g, b]
+      .map((c) =>
+        Math.round(Math.min(255, Math.max(0, c)))
+          .toString(16)
+          .padStart(2, "0")
+      )
+      .join("")
+  );
 }
 
 /** Luminancia relativa WCAG 2.x. */
@@ -6146,7 +6455,9 @@ export function accentOnSurface(hex: string, surface: RGB, palette?: string[]): 
   const ordered = candidates
     .map((h) => ({ hex: h, rgb: toRgb(h) }))
     .filter((c) => (surfaceIsLight ? luminance(c.rgb) < luminance(base) : luminance(c.rgb) > luminance(base)))
-    .sort((a, b) => Math.abs(luminance(a.rgb) - luminance(base)) - Math.abs(luminance(b.rgb) - luminance(base)));
+    .sort(
+      (a, b) => Math.abs(luminance(a.rgb) - luminance(base)) - Math.abs(luminance(b.rgb) - luminance(base))
+    );
 
   for (const c of ordered) {
     if (contrast(c.rgb, surface) >= AA) return c.hex;
@@ -6225,7 +6536,13 @@ function paint(): void {
 /** Quita la sobreescritura y vuelve a los respaldos del sistema de diseño. */
 export function clearSystemAccent(): void {
   current = null;
-  for (const p of ["--sdm-accent", "--sdm-accent-hi", "--sdm-accent-soft", "--sdm-on-accent", "--sdm-accent-fg"]) {
+  for (const p of [
+    "--sdm-accent",
+    "--sdm-accent-hi",
+    "--sdm-accent-soft",
+    "--sdm-on-accent",
+    "--sdm-accent-fg"
+  ]) {
     document.documentElement.style.removeProperty(p);
   }
 }
@@ -6234,9 +6551,9 @@ export function clearSystemAccent(): void {
 
 ---
 
-# 23. i18n/index.ts — idioma, formato y plurales
+# 25. i18n/index.ts — idioma, formato y plurales
 
-Fichero de origen: `Design-system/src/lib/i18n/index.ts`
+Fichero de origen: `src/lib/i18n/index.ts`
 
 ```ts
 /** Barrel del módulo de i18n.
@@ -6251,9 +6568,9 @@ export { i18n, t, tp, type Locale } from "./i18n.svelte";
 
 ---
 
-# 24. i18n/es.json
+# 26. i18n/es.json
 
-Fichero de origen: `Design-system/src/lib/i18n/es.json`
+Fichero de origen: `src/lib/i18n/es.json`
 
 ```json
 {
@@ -6352,16 +6669,17 @@ Fichero de origen: `Design-system/src/lib/i18n/es.json`
   "error.schemaMismatch": "Los datos recibidos del servicio de supervisión no tienen la forma esperada. Puede que la aplicación y su servicio no coincidan de versión.",
   "nav.monitoring": "Supervisión",
   "disk.noVolumes": "Sin volúmenes montados",
-  "error.screenFailed": "No se pudo mostrar esta pantalla"
+  "error.screenFailed": "No se pudo mostrar esta pantalla",
+  "donut.label": "Reparto de estados de los discos monitorizados"
 }
 ```
 
 
 ---
 
-# 25. i18n/en.json
+# 27. i18n/en.json
 
-Fichero de origen: `Design-system/src/lib/i18n/en.json`
+Fichero de origen: `src/lib/i18n/en.json`
 
 ```json
 {
@@ -6460,16 +6778,17 @@ Fichero de origen: `Design-system/src/lib/i18n/en.json`
   "error.schemaMismatch": "The data received from the monitoring service does not have the expected shape. The application and its service may be on different versions.",
   "nav.monitoring": "Monitoring",
   "disk.noVolumes": "No mounted volumes",
-  "error.screenFailed": "This screen could not be shown"
+  "error.screenFailed": "This screen could not be shown",
+  "donut.label": "Breakdown of monitored disk states"
 }
 ```
 
 
 ---
 
-# 26. Tipografía empotrada
+# 28. Tipografía empotrada
 
-Fichero de origen: `Design-system/design-system/fonts/README.md`
+Fichero de origen: `src/design-system/fonts/README.md`
 
 `tokens.css` declara la familia Instrument Sans sobre los ficheros de esta carpeta. La aplicación no
 descarga tipografías: la especificación (§11) y el ADR-018 prohíben cualquier petición de red
@@ -6548,7 +6867,7 @@ La compilación debe fallar si falta cualquiera de los dos `.woff2`: sin ellos l
 
 ---
 
-# 27. smartctl redistribuido
+# 29. smartctl redistribuido
 
 Fichero de origen: `third-party/smartmontools/README.md`
 
@@ -6659,7 +6978,7 @@ Comprobado el 2026-09-04 sobre este mismo binario:
 
 ---
 
-# 28. Licencia del código propio
+# 30. Licencia del código propio
 
 Fichero de origen: `LICENSE`
 
@@ -6690,7 +7009,7 @@ SOFTWARE.
 
 ---
 
-# 29. Avisos de terceros
+# 31. Avisos de terceros
 
 Fichero de origen: `THIRD_PARTY_NOTICES.md`
 
@@ -6746,8 +7065,8 @@ requests, so the font is shipped as a local file rather than loaded from a font 
 
 | Bundled file | SHA-256 |
 |---|---|
-| `Design-system/design-system/fonts/InstrumentSans-latin.woff2` | `2ee17598a98d8a59e4df8152d015bec9ab8e4d5672cc0ab42bef806b568e3971` |
-| `Design-system/design-system/fonts/InstrumentSans-latin-ext.woff2` | `c4fcfea41f2c1cfeea9211fa43679845454a1d0e0d7e95e069c7e73c4ae302d2` |
+| `src/design-system/fonts/InstrumentSans-latin.woff2` | `2ee17598a98d8a59e4df8152d015bec9ab8e4d5672cc0ab42bef806b568e3971` |
+| `src/design-system/fonts/InstrumentSans-latin-ext.woff2` | `c4fcfea41f2c1cfeea9211fa43679845454a1d0e0d7e95e069c7e73c4ae302d2` |
 
 The unmodified `OFL.txt` ships alongside the font files in the same folder. The font is
 redistributed under its original family name and is not modified, so the licence requires no name

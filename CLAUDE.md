@@ -17,3 +17,7 @@
   míralo bajo **Memory files**.
 - Este proyecto es de **Windows**: la shell por defecto de las herramientas es PowerShell, y el
   Bash disponible es Git Bash. Las rutas con espacios necesitan comillas.
+- Al tocar interfaz, `.claude/rules/interfaz.md` se carga sola con el resumen de lo que más se
+  incumple, pero **la norma completa es `docs/ui-design.md`** y hay que leerla entera antes de
+  escribir una pantalla nueva. Los bocetos de `design/` son HTML: se abren en el navegador
+  (`Invoke-Item ".\design\SmartDisk Monitor v2.dc.html"`), no se leen como código.

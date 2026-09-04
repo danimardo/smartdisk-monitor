@@ -19,8 +19,7 @@ Todo cambio observable se documenta. **La excepción exige justificación, no al
 | Estructura interna o flujo entre capas | `docs/architecture.md` |
 | Versiones, estructura de carpetas o linters | `docs/engineering-conventions.md` |
 | Cobertura, niveles o suites | `docs/testing-strategy.md` |
-| Un criterio visual o del catálogo | `Design-system/AGENTS.md` |
-| Cómo se integra el sistema de diseño | `Design-system/HANDOFF.md` |
+| Un criterio visual, del catálogo o del arranque de la UI | `docs/ui-design.md` |
 | Una decisión con alternativas descartadas | `docs/decisions.md` — skill `adr` |
 | Un valor adoptado, una medición o una duda resuelta | `docs/open-questions.md` |
 | Un aviso que has tenido que silenciar | `docs/known-issues.md` |
@@ -52,7 +51,7 @@ cargo test
 
 ## 3. Si tocaste interfaz
 
-Definición de terminado de `Design-system/AGENTS.md` §8, que ninguna herramienta comprueba sola:
+Definición de terminado de `docs/ui-design.md` §8, que ninguna herramienta comprueba sola:
 
 - [ ] Tema claro y oscuro correctos
 - [ ] Acento del sistema y azul de respaldo

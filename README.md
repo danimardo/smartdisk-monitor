@@ -43,7 +43,10 @@ Las entradas marcadas `PROPUESTO` son valores por defecto pendientes de revisió
 entregárselo entero a una herramienta de generación o a quien se incorpore al proyecto. Se genera
 con `python tools/build-historias.py` y no se edita a mano.
 
-El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/) y es vinculante para la implementación de la interfaz.
+El sistema de diseño es vinculante para la implementación de la interfaz: las reglas están en
+[`docs/ui-design.md`](docs/ui-design.md), los tokens en `src/design-system/tokens.css`, el catálogo
+de componentes en `src/lib/components/` y los bocetos aprobados en [`design/`](design/). El §0 de
+`ui-design.md` es el mapa completo.
 
 ## Documentación
 
@@ -62,8 +65,8 @@ El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/
 - [Constitución del proyecto](.specify/memory/constitution.md)
 - [Instrucciones para agentes de IA](AGENTS.md)
 - [Todo lo anterior en un solo documento](historias.md)
-- [Entrega del sistema de diseño](Design-system/HANDOFF.md)
-- [Reglas vinculantes de interfaz](Design-system/AGENTS.md)
+- [Sistema de diseño: reglas vinculantes de interfaz](docs/ui-design.md)
+- [Bocetos aprobados](design/README.md)
 
 ## Identidad del proyecto
 

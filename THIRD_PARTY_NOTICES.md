@@ -52,8 +52,8 @@ requests, so the font is shipped as a local file rather than loaded from a font 
 
 | Bundled file | SHA-256 |
 |---|---|
-| `Design-system/design-system/fonts/InstrumentSans-latin.woff2` | `2ee17598a98d8a59e4df8152d015bec9ab8e4d5672cc0ab42bef806b568e3971` |
-| `Design-system/design-system/fonts/InstrumentSans-latin-ext.woff2` | `c4fcfea41f2c1cfeea9211fa43679845454a1d0e0d7e95e069c7e73c4ae302d2` |
+| `src/design-system/fonts/InstrumentSans-latin.woff2` | `2ee17598a98d8a59e4df8152d015bec9ab8e4d5672cc0ab42bef806b568e3971` |
+| `src/design-system/fonts/InstrumentSans-latin-ext.woff2` | `c4fcfea41f2c1cfeea9211fa43679845454a1d0e0d7e95e069c7e73c4ae302d2` |
 
 The unmodified `OFL.txt` ships alongside the font files in the same folder. The font is
 redistributed under its original family name and is not modified, so the licence requires no name

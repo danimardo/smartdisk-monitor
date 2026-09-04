@@ -43,21 +43,23 @@ ambos lados no puedan divergir en silencio.
 
 ## 2.1. Sistema de diseño e interfaz
 
-El paquete ubicado en `Design-system/` forma parte de la arquitectura del producto, no es una referencia opcional:
+El sistema de diseño forma parte de la arquitectura del producto, no es una referencia opcional. Vive dentro del árbol de la aplicación, en una sola copia:
 
-- `Design-system/AGENTS.md`: reglas vinculantes de implementación y definición de terminado.
-- `Design-system/HANDOFF.md`: contrato de integración y comandos Tauri esperados por la UI.
-- `Design-system/design-system/tokens.css`: fuente única de verdad visual, importada una sola vez al arrancar.
-- `Design-system/design-system/tokens.json`: representación de los mismos tokens para herramientas.
-- `Design-system/tailwind.config.cjs`: mapeo permitido de tokens a utilidades.
-- `Design-system/src/lib/components/`: catálogo cerrado de componentes Svelte.
-- `Design-system/src/lib/design/`: tipos de presentación, formato, salud, tema y acento de Windows.
-- `Design-system/src/lib/i18n/`: diccionarios y selección de idioma.
-- `Design-system/SmartDisk Monitor v2.dc.html`: referencia visual aprobada para las cuatro pantallas diseñadas.
+- [`ui-design.md`](ui-design.md): reglas vinculantes de implementación y definición de terminado. Su §0 es el mapa de rutas.
+- `src/design-system/tokens.css`: fuente única de verdad visual, importada una sola vez al arrancar.
+- `src/design-system/tokens.json`: representación de los mismos tokens para herramientas.
+- `src/design-system/fonts/`: tipografía empotrada; la aplicación no descarga tipografías.
+- `tailwind.config.cjs`: mapeo permitido de tokens a utilidades.
+- `src/lib/components/`: catálogo cerrado de componentes Svelte, importado del barrel `$lib/components`.
+- `src/lib/design/`: tipos de presentación, formato, salud, tema y acento de Windows.
+- `src/lib/i18n/`: diccionarios y selección de idioma.
+- `design/SmartDisk Monitor v2.dc.html`: referencia visual aprobada para las cuatro pantallas diseñadas.
 
-La integración copiará estos recursos al esqueleto Tauri conservando su estructura lógica. La UI se montará con `AppShell`, `Sidebar` y `Toolbar`; ninguna pantalla creará su propio chrome. Los componentes nuevos solo se admitirán cuando el patrón aparezca en al menos tres pantallas y no pueda componerse con el catálogo existente.
+**No puede existir una segunda copia de estos recursos.** El paquete original del diseñador traía la suya y las dos divergieron en silencio hasta que el consolidado publicó tokens caducos; la copia se eliminó y `pnpm verify:tokens` impide que reaparezca (ADR-029).
 
-La comunicación UI-backend se definirá con DTO tipados coherentes con `Design-system/src/lib/design/types.ts`. Los valores opcionales permanecerán como `null`, las series conservarán huecos explícitos y toda métrica llevará procedencia y antigüedad cuando estén disponibles.
+La UI se monta con `AppShell`, `Sidebar` y `Toolbar`; ninguna pantalla crea su propio chrome. Los componentes nuevos solo se admiten cuando el patrón aparece en al menos tres pantallas y no puede componerse con el catálogo existente.
+
+La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types.ts`. Los valores opcionales permanecen como `null`, las series conservan huecos explícitos y toda métrica lleva procedencia y antigüedad cuando estén disponibles.
 
 ## 3. Componentes
 

@@ -246,9 +246,9 @@ pedido y resolución servida está en [`open-questions.md`](open-questions.md) �
   de cada disco.
 - El formato de números y fechas sigue al **idioma elegido en la aplicación**, no al de Windows,
   conservando la variante regional del sistema cuando comparten idioma.
-- Sistema de diseño aprobado: **SmartDisk Monitor v2, material translúcido**, entregado en `Design-system/`.
-- `Design-system/AGENTS.md` es vinculante para cualquier implementación de interfaz.
-- `Design-system/design-system/tokens.css` es la fuente única de colores, tipografía, espaciado, radios, sombras, materiales y movimiento; no se permiten valores visuales literales en componentes.
+- Sistema de diseño aprobado: **SmartDisk Monitor v2, material translúcido**.
+- [`ui-design.md`](ui-design.md) es vinculante para cualquier implementación de interfaz; su §0 dice dónde vive cada pieza.
+- `src/design-system/tokens.css` es la fuente única de colores, tipografía, espaciado, radios, sombras, materiales y movimiento; no se permiten valores visuales literales en componentes.
 - El acento de acciones y selección se hereda de Windows, con el azul de respaldo definido en los tokens. El acento nunca comunica salud.
 - Verde, ámbar, rojo y gris se reservan respectivamente para correcto, advertencia, crítico y desconocido/no compatible/sin datos. El color siempre se acompaña de texto o iconografía accesible.
 - Se usan exclusivamente tres niveles de material: chrome, tarjetas y overlays; no se apilan tarjetas ni se inventan niveles de desenfoque.
@@ -256,7 +256,7 @@ pedido y resolución servida está en [`open-questions.md`](open-questions.md) �
 - Movimiento funcional y breve, respetando `prefers-reduced-motion`.
 - Contraste mínimo AA, foco visible y navegación completa por teclado.
 - Las preferencias de idioma y tema se guardan en SQLite mediante `settings`, nunca en `localStorage`.
-- Panel general, detalle de disco, alertas y pruebas/diagnóstico siguen los bocetos aprobados de `Design-system/SmartDisk Monitor v2.dc.html`.
+- Panel general, detalle de disco, alertas y pruebas/diagnóstico siguen los bocetos aprobados de `design/SmartDisk Monitor v2.dc.html`.
 - Informes, Ajustes, asistente inicial, Acerca de y estados de systray deben componerse con el catálogo existente y someterse a revisión antes de introducir patrones nuevos.
 
 ## 9. Informes y diagnóstico
@@ -316,7 +316,7 @@ pedido y resolución servida está en [`open-questions.md`](open-questions.md) �
 - Un disco no compatible debe aparecer como desconocido/no disponible, no como averiado.
 - Todas las operaciones que generen carga o escriban datos requieren confirmación explícita.
 - La aplicación debe seguir respondiendo durante recopilaciones, exportaciones y pruebas.
-- Toda pantalla debe cumplir la definición de terminado de `Design-system/AGENTS.md` en temas claro y oscuro y en el tamaño mínimo de ventana.
+- Toda pantalla debe cumplir la definición de terminado de [`ui-design.md`](ui-design.md) §8 en temas claro y oscuro y en el tamaño mínimo de ventana.
 - Todo texto visible debe proceder del sistema i18n; no se admiten literales de interfaz fuera de los
   diccionarios español e inglés, incluidos `aria-label`, títulos y textos alternativos.
 - La interfaz debe seguir siendo usable con veinte discos y con miles de eventos.

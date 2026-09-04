@@ -9,11 +9,17 @@ pnpm-lock.yaml
 # Consolidado: se genera, no se edita
 historias.md
 
-# Paquete de entrega original: se conserva tal cual llegó, es la referencia
-Design-system
+# Bocetos: marcado generado por la herramienta de diseño, no se reformatea
+design
 
 # Recursos de terceros
 third-party
+
+# Sistema de diseño: `tokens.css` alinea sus comentarios en columna a propósito, para poder leer
+# la escala tipográfica y los materiales de un vistazo. Prettier rompe esa alineación, y es la
+# fuente de verdad visual: reformatearla no aporta nada y arriesga a cambiar un valor sin querer.
+# Hasta ADR-029 quedaba ignorada sin querer, por coincidir con el patrón `Design-system`.
+src/design-system
 
 # Documentación: el formato de las tablas es deliberado y prettier las reflow
 docs

@@ -5,7 +5,7 @@ Especificación normativa del motor de alertas. Sustituye a la prosa de
 esta tabla.
 
 Referencias: `docs/data-model.md` (`alert_groups`, `alert_occurrences`), `docs/open-questions.md`
-§B, `Design-system/src/lib/design/health.ts`.
+§B, `src/lib/design/health.ts`.
 
 ---
 

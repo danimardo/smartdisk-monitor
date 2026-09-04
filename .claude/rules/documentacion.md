@@ -3,14 +3,14 @@ paths:
   - "docs/**/*.md"
   - "README.md"
   - "THIRD_PARTY_NOTICES.md"
-  - "Design-system/**/*.md"
+  - "design/**/*.md"
 ---
 
 # Documentación
 
 ## `historias.md` se genera, no se edita
 
-Es el consolidado de 29 ficheros. Si lo editas directamente, **tu cambio se pierde** en la
+Es el consolidado de 31 ficheros. Si lo editas directamente, **tu cambio se pierde** en la
 siguiente regeneración. El flujo correcto:
 
 1. Editar el fichero de `docs/` que corresponda.
@@ -36,4 +36,4 @@ Para añadir un documento nuevo al consolidado hay que registrarlo en `tools/bui
 
 Matriz completa en la skill `cierre-tarea`. En resumen: reglas de alerta a `docs/alert-rules.md`,
 comandos y eventos a `docs/ui-contract.md`, decisiones a `docs/decisions.md`, mediciones y valores
-adoptados a `docs/open-questions.md`, criterios visuales a `Design-system/AGENTS.md`.
+adoptados a `docs/open-questions.md`, criterios visuales a `docs/ui-design.md`.

@@ -20,7 +20,7 @@ const PROTEGIDAS = [
   {
     prueba: (r) => r === "historias.md",
     motivo:
-      "`historias.md` es un consolidado GENERADO a partir de 29 ficheros: editarlo directamente " +
+      "`historias.md` es un consolidado GENERADO a partir de 31 ficheros: editarlo directamente " +
       "pierde el cambio en la siguiente regeneración.\n" +
       "En su lugar: edita el fichero de `docs/` que corresponda y ejecuta `pnpm docs:build`."
   },

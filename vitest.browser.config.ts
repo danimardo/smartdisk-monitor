@@ -43,7 +43,7 @@ export default defineConfig({
       provider: playwright(),
       headless: true,
       instances: [{ browser: "chromium" }],
-      // El viewport es el mínimo técnico que exige `Design-system/AGENTS.md` §8: si un componente
+      // El viewport es el mínimo técnico que exige `docs/ui-design.md` §8: si un componente
       // se recorta aquí, se recorta en la ventana más pequeña que la aplicación permite abrir.
       viewport: { width: 1024, height: 560 },
       screenshotFailures: false

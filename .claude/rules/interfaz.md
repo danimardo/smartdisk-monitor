@@ -7,8 +7,9 @@ paths:
 
 # Interfaz
 
-Las reglas completas están en `Design-system/AGENTS.md` y son **vinculantes**. Léelo antes de
-escribir una pantalla. Aquí van solo las que más se incumplen.
+Las reglas completas están en `docs/ui-design.md` y son **vinculantes**. Léelo antes de escribir
+una pantalla: su §0 es el mapa de dónde vive cada pieza —tokens, catálogo, diccionarios y el
+boceto aprobado—. Aquí van solo las que más se incumplen.
 
 ## Nunca
 

@@ -127,7 +127,7 @@ export default ts.config(
       "src-tauri/gen/",
       "coverage/",
       "node_modules/",
-      "Design-system/",
+      "design/",
       "historias.md"
     ]
   }

@@ -7,7 +7,7 @@ no puede limitarse a unas cuantas muestras: se barre el espacio sRGB completo co
 Comprueba las dos formas en que el sistema de diseño usa el acento, que tienen requisitos opuestos:
 
   1. Como **fondo** (botón primario): necesita contraste contra su propio texto.
-     Lo resuelve `accessibleAccent()` en Design-system/src/lib/design/accent.ts.
+     Lo resuelve `accessibleAccent()` en src/lib/design/accent.ts.
   2. Como **texto** (enlaces, selección, serie principal de la gráfica): necesita contraste contra
      el material sobre el que se pinta, que es casi blanco en tema claro y casi negro en oscuro.
 

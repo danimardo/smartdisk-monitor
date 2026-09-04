@@ -93,7 +93,9 @@ El desinstalador conserva SQLite, configuración, historial y logs en `ProgramDa
 
 Estado: aceptada.
 
-La interfaz utilizará el paquete `Design-system/`, versión v2 de material translúcido. `Design-system/AGENTS.md` constituye la norma vinculante y `tokens.css` la fuente única de verdad visual.
+La interfaz utilizará el paquete de diseño entregado, versión v2 de material translúcido, con su norma vinculante y `tokens.css` como fuente única de verdad visual.
+
+> **Rutas actualizadas por ADR-029.** Cuando se escribió esta decisión, la norma era `Design-system/AGENTS.md` y el paquete vivía sin integrar. Hoy la norma es `docs/ui-design.md` y el sistema de diseño vive en `src/`. El fondo de la decisión no cambia.
 
 Se adoptan el catálogo cerrado de componentes Svelte, los tipos y formateadores entregados, los diccionarios español/inglés, la herencia del acento de Windows y los bocetos v2 aprobados. No se introducirán valores visuales literales, niveles adicionales de material ni bibliotecas de componentes sin una decisión nueva.
 
@@ -604,3 +606,71 @@ que ningún usuario va a ejecutar.
   combinaciones. Encontró un incumplimiento real en la primera ejecución.
 - El plano de aplicación real (`tauri-driver`) sigue pendiente y es otra cosa: exige el ejecutable
   empaquetado y terminal elevada. Entra con US-060.
+
+## ADR-029 — Una sola copia del sistema de diseño, y su norma en `docs/`
+
+Estado: aceptada. Reemplaza las rutas de ADR-013, cuyo fondo sigue vigente.
+
+### El problema
+
+El paquete del diseñador llegó como `Design-system/` y se integró en el árbol de la aplicación
+(`src/design-system/` y `src/lib/`). La copia original se conservó "como referencia". El resultado
+fueron **dos sistemas de diseño vivos a la vez**, y divergieron:
+
+| Fichero | Divergencia |
+|---|---|
+| `tokens.css` | el arreglo de foco `:focus-visible:focus-visible` (WCAG 2.4.7) solo llegó a la copia de `src/` |
+| `design/accent.ts` | 23 líneas distintas |
+| `design/format.ts` | 14 líneas distintas |
+| `design/health.ts` | 6 líneas distintas |
+| `design/types.ts`, `i18n/es.json`, `i18n/en.json` | 3 líneas distintas cada uno |
+
+Lo grave no es la divergencia, sino **quién la leía**: `tools/build-historias.py` generaba el
+consolidado desde la copia del paquete. `historias.md` —el documento que se entrega entero a un
+agente de IA o a quien se incorpora al proyecto— estuvo publicando los tokens sin el arreglo de
+foco. Un agente que se fiara del consolidado habría reintroducido un fallo de accesibilidad ya
+resuelto, y todas las puertas de calidad habrían pasado en verde, porque ninguna miraba ahí.
+
+La prueba de que el coste era real y ya se estaba pagando: existía `tools/_nav.py`, un script cuyo
+único cometido era aplicar cada cambio **dos veces**, una en cada copia. Se ha eliminado con esta
+decisión.
+
+Había además un problema de nombres. La norma de interfaz se llamaba `Design-system/AGENTS.md` y
+convivía con el `AGENTS.md` de la raíz, que es la guía general para agentes de IA. Dos ficheros con
+el mismo nombre y significados distintos: `AGENTS.md` de la raíz tenía que dedicar un párrafo a
+avisar de la confusión.
+
+### La decisión
+
+**Una sola copia, dentro de `src/`.** La carpeta `Design-system/` desaparece:
+
+| Qué era | Dónde está ahora |
+|---|---|
+| `Design-system/AGENTS.md` | `docs/ui-design.md` |
+| `Design-system/HANDOFF.md` | absorbido en los apéndices A–C de `docs/ui-design.md` |
+| `Design-system/design-system/**` | ya estaba en `src/design-system/`; la copia se borra |
+| `Design-system/src/**` | ya estaba en `src/lib/`; la copia se borra |
+| `Design-system/tailwind.config.cjs` | ya estaba en la raíz; la copia se borra |
+| Los tres `.dc.html`, `support.js` | `design/`, con su propio `README.md` |
+
+La norma pasa a llamarse **`docs/ui-design.md`**: elimina la colisión de nombres, la coloca junto al
+resto de documentos normativos y hace pareja con `docs/ui-contract.md` —aquel dice qué puede pedir
+la interfaz, este cómo se pinta lo que recibe—. Gana además un **§0 «Dónde vive cada cosa»**, que es
+lo que antes no existía en ningún sitio: un agente tenía que deducir las rutas.
+
+Los bocetos se conservan porque no viven en ningún otro sitio; el resto no, porque duplicar para
+"conservar la referencia" es precisamente lo que causó el problema. **El paquete original íntegro
+sigue en el historial de git**, que es donde va lo que se conserva por trazabilidad.
+
+**Y se hace determinista.** `pnpm verify:tokens` gana una comprobación que falla la integración si
+aparece un segundo `tokens.css`, un segundo `tokens.json` o un segundo barrel de componentes fuera
+de `src/`. Un principio que solo vive en un documento dura hasta el primer día de prisa.
+
+### Consecuencias
+
+- `historias.md` se genera desde las rutas vivas y suma dos fuentes que faltaban: `tokens.json` y
+  `src/lib/components/index.ts`, que es el catálogo real y ejecutable. Pasa de 29 a 31 ficheros.
+- Los ficheros de agentes (`AGENTS.md`, `CLAUDE.md`, y los nuevos `GEMINI.md` y `CODEX.md`) llevan
+  el mapa de rutas y las órdenes duras de interfaz. Ninguno duplica la norma: apuntan a ella.
+- `AGENTS.md` recupera el párrafo que gastaba en avisar de la colisión de nombres.
+- Ningún valor de token, umbral ni regla visual cambia. Es reorganización, no rediseño.

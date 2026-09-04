@@ -18,9 +18,6 @@
 Guía operativa para agentes de IA en este repositorio. **Fuente canónica**: este fichero.
 `CLAUDE.md` lo importa y añade solo lo específico de su herramienta.
 
-> No confundir con `Design-system/AGENTS.md`, que es otra cosa: las reglas vinculantes de
-> interfaz. Se carga sola al tocar componentes (véase `.claude/rules/interfaz.md`).
-
 ## Idioma
 
 **Toda comunicación con el usuario en español**: respuestas, planes, resúmenes, documentación
@@ -55,7 +52,7 @@ valores visuales literales, diccionarios sincronizados y validación de frontera
 
 1. **`.specify/memory/constitution.md`** — 15 principios innegociables. Prevalece sobre todo lo
    demás; si una fase la contradice, la fase está mal.
-2. **`Design-system/AGENTS.md`** — reglas de interfaz, vinculantes.
+2. **`docs/ui-design.md`** — sistema de diseño y reglas de interfaz, vinculantes.
 3. **`docs/alert-rules.md`** y **`docs/ui-contract.md`** — normativos frente a cualquier
    descripción informal de alertas o de comandos.
 4. **`docs/open-questions.md`** — decisiones adoptadas y mediciones. Recoge correcciones
@@ -70,6 +67,35 @@ un documento normativo. Ante contradicción: parar, explicar el conflicto y pedi
 
 `historias.md` es un **consolidado generado**: se edita el fichero de `docs/` correspondiente y se
 ejecuta `pnpm docs:build`. Editarlo directamente se pierde en la siguiente regeneración.
+
+## Sistema de diseño
+
+Vinculante: **`docs/ui-design.md`**. Su §0 es el mapa completo; esto es lo mínimo para no tener que
+buscar nada.
+
+| Qué | Dónde |
+|---|---|
+| Reglas de interfaz y definición de terminado | `docs/ui-design.md` |
+| Tokens, fuente única de verdad visual | `src/design-system/tokens.css` |
+| Mapeo de tokens a utilidades | `tailwind.config.cjs` |
+| Catálogo cerrado de componentes | `src/lib/components/` → importar de `$lib/components` |
+| Formato, salud, tema, acento | `src/lib/design/` |
+| Diccionarios `es` y `en` | `src/lib/i18n/` |
+| Boceto **aprobado** | `design/SmartDisk Monitor v2.dc.html` |
+
+Órdenes duras, cuyo incumplimiento es un bug y no un detalle estético:
+
+- **Cero valores visuales literales.** Ni un color, radio, sombra o tamaño escrito a mano: utilidad
+  Tailwind o `var(--sdm-*)`. Lo comprueba `pnpm verify:tokens`.
+- **Cero literales de interfaz**, incluidos `aria-label`, `title` y `alt`: todo por `t()`, con la
+  clave en los dos diccionarios. Lo comprueba `pnpm verify:i18n`.
+- **Nunca `backdrop-filter` a mano**: `.sdm-material`, `.sdm-material-chrome`, `.sdm-material-overlay`.
+- **Ningún componente fuera del catálogo** ni biblioteca de terceros. Uno nuevo exige el criterio de
+  `ui-design.md` §3.
+- **Toda pantalla correcta en tema claro y oscuro**, sin condicionales, y en la ventana mínima
+  (1024 × 560) sin recortes silenciosos.
+- **Una sola copia del sistema de diseño**, la de `src/`. `design/` son bocetos, no código.
+- Antes de dar una pantalla por terminada, pasa la **definición de terminado de `ui-design.md` §8**.
 
 ## Metodología
 

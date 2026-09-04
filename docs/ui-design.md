@@ -1,14 +1,44 @@
-# Instrucciones de UI para agentes — SmartDisk Monitor
+# Sistema de diseño — reglas de interfaz (VINCULANTES)
 
 Este documento es **vinculante** para cualquier agente (humano o IA) que escriba interfaz en este
 repositorio. Describe cómo construir pantallas con el sistema de diseño aprobado: **v2, material
 translúcido** (evolución de la dirección 1b). Si algo no está aquí, no lo inventes: pregunta o propón
 una extensión del sistema.
 
-Referencias funcionales: `docs/product-specification.md`, `docs/user-stories.md`, `docs/data-model.md`.
-Boceto aprobado (v2, cuatro pantallas y ambos temas): `SmartDisk Monitor v2.dc.html`.
-Guía visual de tokens y componentes: `Sistema de diseno SmartDisk.dc.html` (pendiente de actualizar a v2).
-El boceto original de la dirección 1b queda como referencia histórica en `Bocetos SmartDisk Monitor.dc.html`.
+Es el par visual de `docs/ui-contract.md`: aquel dice **qué** puede pedirle la interfaz al backend,
+este dice **cómo** se pinta lo que recibe. Referencias funcionales: `docs/product-specification.md`,
+`docs/user-stories.md`, `docs/data-model.md`.
+
+---
+
+## 0. Dónde vive cada cosa
+
+Esta tabla es el punto de entrada. Un agente que empieza una pantalla no debería tener que buscar
+ninguna de estas rutas.
+
+| Qué | Dónde |
+|---|---|
+| **Reglas vinculantes de interfaz** | `docs/ui-design.md` (este fichero) |
+| **Tokens: fuente única de verdad visual** | `src/design-system/tokens.css` |
+| Los mismos tokens, legibles por herramientas | `src/design-system/tokens.json` |
+| Mapeo de tokens a utilidades Tailwind | `tailwind.config.cjs` (raíz del proyecto) |
+| **Catálogo de componentes** | `src/lib/components/` — se importa del barrel `$lib/components` |
+| Tipos, formato, salud, tema y acento | `src/lib/design/` |
+| Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
+| Tipografía empotrada | `src/design-system/fonts/` |
+| **Boceto aprobado** (4 pantallas, ambos temas) | `design/SmartDisk Monitor v2.dc.html` |
+| Guía visual de tokens (estilo v1, sin refrescar) | `design/Sistema de diseno SmartDisk.dc.html` |
+| Exploración inicial 1a/1b, referencia histórica | `design/Bocetos SmartDisk Monitor.dc.html` |
+| Comandos y eventos que la UI puede llamar | `docs/ui-contract.md` |
+| Verificadores que fallan la integración | `pnpm verify:tokens`, `pnpm verify:i18n` |
+
+**Una sola copia.** El sistema de diseño vive en `src/` y en ningún otro sitio. `design/` contiene
+únicamente los bocetos, que son referencia visual y no código reutilizable. Una segunda copia de
+`tokens.css` o del catálogo diverge en silencio, y el consolidado acaba publicando valores caducos:
+lo comprueba `pnpm verify:tokens` (ADR-029).
+
+Las notas de arranque de la aplicación y las advertencias para quien programa están en el
+**apéndice** al final de este documento.
 
 ---
 
@@ -25,9 +55,9 @@ El boceto original de la dirección 1b queda como referencia histórica en `Boce
 ## 2. Regla cero: los tokens
 
 ```
-design-system/tokens.css     ← fuente única de verdad (importar una sola vez en el arranque)
-design-system/tokens.json    ← misma información, legible por herramientas
-tailwind.config.cjs          ← mapeo de tokens a utilidades
+src/design-system/tokens.css     ← fuente única de verdad (importar una sola vez en el arranque)
+src/design-system/tokens.json    ← misma información, legible por herramientas
+tailwind.config.cjs              ← mapeo de tokens a utilidades
 ```
 
 - **Prohibido** escribir un color, radio, sombra o tamaño de fuente literal en un componente.
@@ -48,7 +78,7 @@ tailwind.config.cjs          ← mapeo de tokens a utilidades
   Un color no puede cumplir las dos cosas: el azul `#0078d4` que Windows trae de fábrica da 4,31:1
   como texto sobre el material claro, **por debajo de AA**. Barriendo el espacio sRGB completo, el
   65 % de los acentos posibles son ilegibles como texto en tema claro y el 50 % en oscuro
-  (`tools/accent-check.py`, `open-questions.md` §O).
+  (`tools/accent-check.py`, `docs/open-questions.md` §O).
 
   Por eso: **texto de acento ⇒ `text-accent-fg`. Fondo de acento ⇒ `bg-accent`.** Nunca al revés,
   y nunca `--sdm-accent` para pintar texto.
@@ -72,7 +102,7 @@ tailwind.config.cjs          ← mapeo de tokens a utilidades
 - La escala tipográfica **no se toca sin volver a medir**. Parece pequeña sobre el papel y no lo es:
   Instrument Sans tiene una altura de x de 0,5175 em frente a los 0,50 de Segoe UI, así que el cuerpo
   denso de 12,5 px equivale ópticamente a Segoe UI 12,9 px, por encima de los 12 px (9 pt) que
-  Windows usa para el texto de interfaz. Medido, no estimado (`open-questions.md` K.4).
+  Windows usa para el texto de interfaz. Medido, no estimado (`docs/open-questions.md` K.4).
 - Movimiento: `duration-base` (220 ms) con `ease-sdm` (`cubic-bezier(.32,.72,0,1)`) en selección,
   cambio de pantalla y aparición de diálogos; `active:scale-[0.98]` en los botones. Nada decorativo,
   y todo anulado por `prefers-reduced-motion`.
@@ -153,7 +183,7 @@ opcional, tener etiqueta accesible y exportarse en `src/lib/components/index.ts`
    El mínimo técnico no es un capricho: el escalado de Windows **no encoge el texto, encoge el
    espacio disponible en píxeles CSS**. Un portátil de 1920 × 1080 al 150 % deja una ventana máxima
    de 1280 × 672, y un 1366 × 768 al 125 % deja 1092 × 566. Con un mínimo de 720 de alto, en esas dos
-   configuraciones la ventana no cabría en la pantalla. Medido, no estimado (`open-questions.md` K.4).
+   configuraciones la ventana no cabría en la pantalla. Medido, no estimado (`docs/open-questions.md` K.4).
 
    Debe seguir siendo correcta al 125 %, 150 % y 200 % de escalado.
 
@@ -292,3 +322,70 @@ puede tener veinte o más. Reglas obligatorias, no opcionales:
       cambio de tema recalcula `--sdm-accent-fg`.
 - [ ] Verificada con 20 discos y con 5.000 eventos, sin bloqueo perceptible al desplazarse.
 - [ ] Ni un solo literal de interfaz fuera de `es.json` / `en.json`, incluidos `aria-label` y títulos.
+
+---
+
+## Apéndice A. Arranque de la aplicación
+
+La base es **SvelteKit con `adapter-static` y SSR desactivado** (ADR-014). `$lib` ya apunta a
+`src/lib`: no toques el alias.
+
+`tokens.css` es la **única** importación de CSS global y va en `src/routes/+layout.svelte`, antes
+del primer render:
+
+```ts
+import "../design-system/tokens.css";
+import { invoke } from "@tauri-apps/api/core";
+import { theme } from "$lib/design/theme.svelte";
+import { applySystemAccent } from "$lib/design/accent";
+import { i18n } from "$lib/i18n";
+
+const s = await invoke<AppearanceSettings>("get_appearance_settings");
+theme.init(s.theme);
+i18n.init(s.language, s.systemLocale); // el locale viene del backend, no de navigator
+await applySystemAccent();
+```
+
+`i18n.init()` fija además `<html lang>`, e `i18n.formatLocale` es el locale que usan **todas** las
+funciones de `format.ts`: los números siguen al idioma de la aplicación, no al de Windows.
+
+La aplicación se monta con `AppShell` + `Sidebar` + `Toolbar`; ninguna pantalla monta su propio
+chrome. El estado inicial de cada pantalla llega por `load` en `+page.ts`, no por `onMount`; las
+actualizaciones vienen después por eventos. **No hagas sondeo con `setInterval`**: el backend empuja
+(ADR-015). Los comandos y eventos disponibles son los de `docs/ui-contract.md`, que es el normativo:
+la UI solo llama comandos enumerados.
+
+## Apéndice B. Notas para quien programe
+
+Errores que se cometen aunque las reglas de arriba estén leídas:
+
+- Ningún literal de color, radio, sombra o tamaño en un componente: utilidad Tailwind o `var(--sdm-*)`.
+- Nunca escribas `backdrop-filter` a mano: usa `.sdm-material`, `.sdm-material-chrome`, `.sdm-material-overlay`.
+- Los tokens de texto y de salud están verificados a 4.5:1 sobre el material de su tema. No los aclares.
+- Un dato ausente es "No disponible"; un dispositivo sin SMART es gris, nunca rojo ni alerta activa.
+- Toda acción que escriba datos o genere carga pasa por `ConfirmDialog` con impacto y comando literal.
+- Contenido procedente de eventos o dispositivos se renderiza como texto, jamás como HTML.
+- Reconocer una alerta **no** devuelve el disco a verde: el color lo decide `deviceState()`, que
+  cuenta las alertas `active` y `acknowledged`. El silencio nunca toca el color.
+- El acento del sistema pasa por `accessibleAccent()` antes de aplicarse; no supongas texto blanco
+  sobre el acento, usa `--sdm-on-accent`.
+- `TimeSeriesChart` necesita `from`/`to` además de los puntos: el eje es tiempo real, y el intervalo
+  pedido debe verse entero aunque falten datos.
+- **La navegación se hace con enlaces, no con callbacks.** `DiskCard` recibe `href` y `Sidebar`
+  recibe secciones con su `href`: un `onclick` con `goto()` rompe el ctrl+clic, el menú contextual y
+  el anuncio como enlace de un lector de pantalla.
+
+## Apéndice C. Pantallas pendientes de diseño
+
+Todas tienen ya criterios de aceptación en `docs/user-stories.md` (épica H y US-070 a US-074); lo
+que falta es la composición visual, no la definición funcional.
+
+- **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
+- **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
+- **Asistente inicial** (US-002): detección, exclusión de discos y alias.
+- **Acerca de** (US-061) y estados de systray.
+
+Casi todo se compone con el catálogo actual (`Switch`, `Select`, `TextField`, `RadioGroup`,
+`SegmentedControl`, `ConfirmDialog`, `EmptyState`, `CodeOutput`). Las excepciones ya están
+autorizadas y no requieren decisión nueva: `DateRangePicker`, `FilterBar`, `VirtualList` y `Tooltip`
+(§3, "Autorizados y pendientes de construir").

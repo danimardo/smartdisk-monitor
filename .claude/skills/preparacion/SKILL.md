@@ -24,7 +24,7 @@ seguridad, permisos, registro o arquitectura, **deja de ser pequeño**: para y r
 Solo lo que la tarea toque. Leerlo todo es tan malo como no leer nada.
 
 | Siempre | `.specify/memory/constitution.md` — los 15 principios |
-| Si toca interfaz | `Design-system/AGENTS.md` |
+| Si toca interfaz | `docs/ui-design.md` — su §0 dice dónde está cada pieza |
 | Si toca alertas | `docs/alert-rules.md` |
 | Si toca comandos o eventos | `docs/ui-contract.md` |
 | Si toca datos | `docs/data-model.md` |

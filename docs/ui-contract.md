@@ -60,7 +60,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 
 ## 2. Tipos compartidos
 
-Los que ya viven en `Design-system/src/lib/design/types.ts` no se repiten aquí: `HealthState`,
+Los que ya viven en `src/lib/design/types.ts` no se repiten aquí: `HealthState`,
 `Severity`, `AlertStatus`, `TestStatus`, `MetricSource`, `MetricQuality`, `UnknownReason`,
 `Provenance`, `DiskSummary`, `VolumeSummary`, `AlertGroup`.
 

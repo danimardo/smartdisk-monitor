@@ -35,22 +35,25 @@ SOURCES: list[tuple[str, str, str | None]] = [
     ("docs/decisions.md", "Registro de decisiones técnicas", None),
     ("docs/open-questions.md", "Cuestiones abiertas y mediciones", None),
     # --- Reglas de interfaz, vinculantes ------------------------------------
-    ("Design-system/AGENTS.md", "Reglas de interfaz (VINCULANTES)", None),
-    ("Design-system/HANDOFF.md", "Entrega del sistema de diseño", None),
-    ("Design-system/design-system/README.md", "Sistema de diseño: principios", None),
+    # Se leen de `src/`, que es donde vive la ÚNICA copia del sistema de diseño (ADR-029).
+    ("docs/ui-design.md", "Sistema de diseño: reglas de interfaz (VINCULANTES)", None),
+    ("design/README.md", "Bocetos del sistema de diseño", None),
+    ("src/design-system/README.md", "Sistema de diseño: principios", None),
     # --- Contratos literales que el código debe respetar --------------------
-    ("Design-system/design-system/tokens.css", "tokens.css — fuente única de verdad visual", "css"),
-    ("Design-system/tailwind.config.cjs", "tailwind.config.cjs — mapeo de tokens", "js"),
-    ("Design-system/src/lib/design/types.ts", "design/types.ts — vocabulario de la UI", "ts"),
-    ("Design-system/src/lib/design/health.ts", "design/health.ts — estado → color, umbrales", "ts"),
-    ("Design-system/src/lib/design/format.ts", "design/format.ts — formato de presentación", "ts"),
-    ("Design-system/src/lib/design/theme.svelte.ts", "design/theme.svelte.ts — tema", "ts"),
-    ("Design-system/src/lib/design/accent.ts", "design/accent.ts — acento de Windows", "ts"),
-    ("Design-system/src/lib/i18n/index.ts", "i18n/index.ts — idioma, formato y plurales", "ts"),
-    ("Design-system/src/lib/i18n/es.json", "i18n/es.json", "json"),
-    ("Design-system/src/lib/i18n/en.json", "i18n/en.json", "json"),
+    ("src/design-system/tokens.css", "tokens.css — fuente única de verdad visual", "css"),
+    ("src/design-system/tokens.json", "tokens.json — los mismos tokens, para herramientas", "json"),
+    ("tailwind.config.cjs", "tailwind.config.cjs — mapeo de tokens", "js"),
+    ("src/lib/components/index.ts", "components/index.ts — el catálogo cerrado", "ts"),
+    ("src/lib/design/types.ts", "design/types.ts — vocabulario de la UI", "ts"),
+    ("src/lib/design/health.ts", "design/health.ts — estado → color, umbrales", "ts"),
+    ("src/lib/design/format.ts", "design/format.ts — formato de presentación", "ts"),
+    ("src/lib/design/theme.svelte.ts", "design/theme.svelte.ts — tema", "ts"),
+    ("src/lib/design/accent.ts", "design/accent.ts — acento de Windows", "ts"),
+    ("src/lib/i18n/index.ts", "i18n/index.ts — idioma, formato y plurales", "ts"),
+    ("src/lib/i18n/es.json", "i18n/es.json", "json"),
+    ("src/lib/i18n/en.json", "i18n/en.json", "json"),
     # --- Recursos redistribuidos y licencias --------------------------------
-    ("Design-system/design-system/fonts/README.md", "Tipografía empotrada", None),
+    ("src/design-system/fonts/README.md", "Tipografía empotrada", None),
     ("third-party/smartmontools/README.md", "smartctl redistribuido", None),
     ("LICENSE", "Licencia del código propio", "text"),
     ("THIRD_PARTY_NOTICES.md", "Avisos de terceros", None),
@@ -78,7 +81,8 @@ regeneración.
 | Qué comandos y eventos existen entre UI y backend | Contrato UI ↔ backend |
 | Por qué se decidió algo | Registro de decisiones |
 | Qué se midió y qué sigue sin decidirse | Cuestiones abiertas y mediciones |
-| Cómo se escribe una pantalla | Reglas de interfaz (VINCULANTES) |
+| Cómo se escribe una pantalla | Sistema de diseño: reglas de interfaz (VINCULANTES) |
+| Dónde vive cada pieza del sistema de diseño | Sistema de diseño, §0 «Dónde vive cada cosa» |
 | Qué hay que probar, a qué nivel y cuándo | Estrategia integral de testing |
 
 ## Precedencia
@@ -87,7 +91,7 @@ Si dos documentos se contradicen, mandan en este orden:
 
 1. **Reglas de alerta** sobre el resumen de alertas de la especificación.
 2. **Contrato UI ↔ backend** sobre cualquier descripción informal de comandos.
-3. **Reglas de interfaz** (`AGENTS.md`) sobre cualquier criterio visual escrito en otro sitio.
+3. **Sistema de diseño** (`docs/ui-design.md`) sobre cualquier criterio visual escrito en otro sitio.
 4. **Cuestiones abiertas** sobre todo lo demás para lo que registre una decisión: recoge las
    correcciones posteriores, varias de ellas nacidas de medir sobre un Windows real.
 

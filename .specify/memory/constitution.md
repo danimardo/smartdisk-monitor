@@ -17,7 +17,7 @@ los documentos normativos, que desarrollan estos principios sin poder relajarlos
 | `docs/testing-strategy.md` | Niveles de prueba, lotes y checkpoints (§VIII) |
 | `docs/decisions.md` | Registro de decisiones técnicas (ADR) |
 | `docs/open-questions.md` | Decisiones adoptadas y mediciones |
-| `Design-system/AGENTS.md` | Reglas de interfaz, vinculantes |
+| `docs/ui-design.md` | Sistema de diseño y reglas de interfaz, vinculantes |
 | `docs/known-issues.md` | Registro de silencios y fallos conocidos (§XIII) |
 
 Toda la documentación del proyecto está en español, y esta constitución también.
@@ -123,7 +123,7 @@ Reglas verificables:
 
 ### VI. Interfaz: sistema de diseño vinculante (INNEGOCIABLE)
 
-`Design-system/AGENTS.md` es normativo. Sus reglas duras, elevadas aquí porque su incumplimiento no
+`docs/ui-design.md` es normativo. Sus reglas duras, elevadas aquí porque su incumplimiento no
 es un detalle estético:
 
 - **Cero valores visuales literales.** Ni un color, radio, sombra o tamaño de fuente escrito a mano
@@ -139,6 +139,10 @@ es un detalle estético:
   literal cuando exista.
 - **El contenido de eventos y dispositivos se renderiza como texto, jamás como HTML.**
 - **Reconocer una alerta no apaga su color.** El estado refleja la peor alerta no resuelta.
+- **Una sola copia del sistema de diseño.** La fuente de verdad visual es
+  `src/design-system/tokens.css` y el catálogo de `src/lib/components/`. No puede existir una
+  segunda copia en el repositorio: una copia paralela diverge en silencio y el consolidado acaba
+  publicando tokens caducos. Verificado en CI.
 
 ### VII. Accesibilidad: WCAG 2.2 nivel AA (INNEGOCIABLE)
 
@@ -705,6 +709,7 @@ sola razón, sin necesidad de más argumento.
 | 1.2.0 | 2026-09-04 | Principio XIV (arquitectura idiomática de SvelteKit adaptada a Tauri): carga con `load`, navegación por enlaces, `$derived` antes que `$effect`, y dónde vive la lógica. Ninguna norma anterior se relaja |
 | 1.3.0 | 2026-09-04 | Principio XV (registro de actividad): API única, niveles y su significado, precedencia del nivel, prohibición de datos personales, formato en hora local. Ninguna norma anterior se relaja |
 | 1.3.1 | 2026-09-04 | `tauri-plugin-single-instance` 2.4.4 entra en la pila fija (ADR-025). No se añade, relaja ni reinterpreta ningún principio: solo actualiza la tabla de dependencias de Rust que exige el principio III |
+| 1.5.0 | 2026-09-04 | Una sola copia del sistema de diseño (ADR-029): la norma de interfaz pasa a `docs/ui-design.md`, absorbe el antiguo `HANDOFF.md` y gana un §0 con el mapa de rutas; el principio VI añade la prohibición de una segunda copia, que `pnpm verify:tokens` comprueba. Es `minor` porque **añade** una regla y corrige rutas; ningún principio cambia de contenido ni se relaja |
 | 1.4.0 | 2026-09-04 | Infraestructura de pruebas de componente, interfaz y accesibilidad (ADR-027, ADR-028): Vitest sube a 5, entran Browser Mode, Playwright y axe, y sale `@testing-library/svelte`. La puerta de pruebas pasa a exigir las tres suites nuevas, y `playwright.config.ts` y `vitest.browser.config.ts` se suman a los ficheros donde `process.env` es legítimo. Es `minor` por lo que **añade** a la puerta de calidad; ningún principio cambia de contenido ni se relaja |
 
 ### Cumplimiento
@@ -722,4 +727,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.4.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04
+**Versión**: 1.5.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04

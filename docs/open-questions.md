@@ -1,7 +1,7 @@
 # Cuestiones abiertas
 
 Registro de todo lo que la especificación dejaba a interpretación, con el valor que se ha adoptado.
-Nació de la revisión cruzada de `docs/` contra `Design-system/` previa a la implementación.
+Nació de la revisión cruzada de `docs/` contra el paquete de diseño previa a la implementación.
 
 **Cómo leerlo.** Cada entrada tiene un estado:
 
@@ -320,7 +320,7 @@ asunción del programador.
 Cerradas desde la última revisión:
 
 - **K.1** (tipografía empotrada), 2026-09-04 — los dos `.woff2` de Instrument Sans v4 y su `OFL.txt`
-  están en `Design-system/design-system/fonts/`, declarados en `tokens.css` con `unicode-range` y
+  están en `src/design-system/fonts/`, declarados en `tokens.css` con `unicode-range` y
   registrados con sus hashes en `THIRD_PARTY_NOTICES.md`.
 - **K.4** (escala tipográfica y escalado de Windows), 2026-09-04 — medido; véase §L.
 - **I.1** (WebView2 en Windows Server), 2026-09-04 — resuelto con documentación oficial; véase §M.
