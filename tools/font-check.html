@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Comprobación visual de la tipografía empotrada.
+     Los .woff2 no cargan por file://, hace falta un servidor:
+       python -m http.server 8731 --bind 127.0.0.1
+       http://127.0.0.1:8731/tools/font-check.html      (desde la raíz del repositorio)
+     Qué mirar: las cuatro primeras líneas en Instrument Sans, los pesos 600 y 700 idénticos
+     (el clamp de tokens.css impide la negrita sintética) y la última línea, en Segoe UI,
+     visiblemente distinta. -->
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Comprobación de tipografía</title>
+    <link rel="stylesheet" href="../Design-system/design-system/tokens.css" />
+    <style>
+      body {
+        padding: 24px;
+        font-family: var(--sdm-font-sans);
+      }
+      .row {
+        margin: 10px 0;
+        font-size: 20px;
+      }
+      .w600 {
+        font-weight: 600;
+      }
+      .w700 {
+        font-weight: 700;
+      }
+      .fallback {
+        font-family: "Segoe UI", sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row" id="es">Salud del disco: 47 °C · ñ á é í ó ú ü ¿¡ «» × •</div>
+    <div class="row w600">Peso 600 — Temperatura crítica</div>
+    <div class="row w700" id="w700">Peso 700 (debe limitarse a 600)</div>
+    <div class="row" id="ext">latin-ext: Łódź Ćevapčići Ħaġar</div>
+    <div class="row fallback" id="fb">Salud del disco: 47 °C · ñ á é í ó ú ü</div>
+  </body>
+</html>

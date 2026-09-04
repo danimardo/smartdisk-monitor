@@ -1,0 +1,43 @@
+[package]
+name = "smartdisk-monitor"
+version = "0.1.0"
+description = "Supervisión local de discos para Windows"
+authors = ["Daniel Diez Mardomingo"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# Tauri 2 usa una biblioteca + un binario fino: así el dominio se puede testear sin arrancar la app.
+name = "smartdisk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Registro de actividad (constitución §XV, ADR-024). `tracing` en vez de `log` por los spans:
+# permiten seguir una recopilación o un benchmark completo con su contexto, sin repetir el
+# identificador en cada llamada.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
+tracing-appender = "0.2"
+time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"
+
+[features]
+default = []
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

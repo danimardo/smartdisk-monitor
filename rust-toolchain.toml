@@ -1,0 +1,6 @@
+# Fijado para que CI y desarrollo compilen con el mismo compilador.
+# MSRV declarado en docs/engineering-conventions.md.
+[toolchain]
+channel = "1.94.0"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-msvc"]

@@ -1,0 +1,25 @@
+# Normalización de fin de línea. El repositorio guarda LF; Windows recibe CRLF al extraer.
+* text=auto eol=lf
+
+# Scripts que Windows debe ver con CRLF
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+# Binarios: nunca se normalizan ni se muestran como diff de texto
+*.woff2 binary
+*.png   binary
+*.ico   binary
+*.exe   binary
+*.tar.gz binary
+
+# Recursos redistribuidos: se conservan byte a byte. Normalizar los finales de línea cambiaría su
+# hash y haría fallar `pnpm verify:assets`, que los comprueba contra THIRD_PARTY_NOTICES.md.
+third-party/** -text
+third-party/**/*.h -text
+
+# El consolidado se genera: no ensucia los diffs de las revisiones
+historias.md linguist-generated=true
+
+# Bocetos del sistema de diseño: son artefactos de diseño, no código
+*.dc.html linguist-vendored=true

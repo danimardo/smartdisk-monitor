@@ -1,0 +1,275 @@
+/* SmartDisk Monitor — tokens de diseño v2 "material translúcido"
+   Fuente única de verdad. Nunca escribas un valor literal en un componente: usa var(--sdm-*)
+   o la utilidad Tailwind equivalente. Todo token de color existe en tema claro y oscuro. */
+
+/* Tipografía empotrada: la aplicación NO hace peticiones de red (spec §11, ADR-007).
+   Los ficheros viven en ./fonts/; véase fonts/README.md para su procedencia y su licencia
+   (SIL Open Font License 1.1, recogida en THIRD_PARTY_NOTICES.md).
+
+   Dos subconjuntos, igual que los sirve el proyecto original: `latin` cubre español e inglés y es
+   el que se carga casi siempre; `latin-ext` solo se descarga si aparece un carácter de su rango,
+   cosa que puede pasar con el texto original de un evento de Windows. Al ser ficheros locales el
+   coste de tener los dos es nulo, pero el `unicode-range` evita decodificar el que no hace falta.
+
+   `font-weight: 400 600` declara menos rango del que el fichero admite (llega a 700) a propósito:
+   así, si alguien pide 700, el navegador lo limita a 600 en vez de sintetizar una negrita falsa.
+   El tope de 600 es norma de v2 (AGENTS.md §2.bis). */
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("./fonts/InstrumentSans-latin.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-stretch: 100%;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  src: url("./fonts/InstrumentSans-latin-ext.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-stretch: 100%;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  /* ---- Tipografía ---- */
+  --sdm-font-sans: "Instrument Sans", system-ui, "Segoe UI Variable", "Segoe UI", sans-serif;
+  --sdm-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --sdm-text-2xs: 0.6875rem;    /* 11px  etiquetas de píldora y unidades */
+  --sdm-text-xs: 0.75rem;       /* 12px  metadatos */
+  --sdm-text-sm: 0.78125rem;    /* 12.5px cuerpo denso */
+  --sdm-text-base: 0.84375rem;  /* 13.5px título de tarjeta */
+  --sdm-text-lg: 0.90625rem;    /* 14.5px título de barra de herramientas */
+  --sdm-text-xl: 1.25rem;       /* 20px  título de pantalla */
+  --sdm-text-2xl: 1.3125rem;    /* 21px  titular de alerta */
+  --sdm-text-metric: 1.6875rem; /* 27px  cifra grande */
+
+  /* En v2 el peso máximo es 600: el material aporta la jerarquía, no la grasa tipográfica. */
+  --sdm-weight-regular: 400;
+  --sdm-weight-medium: 500;
+  --sdm-weight-semibold: 600;
+
+  --sdm-tracking-tight: -0.02em;
+  --sdm-tracking-metric: -0.03em;
+
+  /* ---- Espaciado (escala de 4; v2 respira más) ---- */
+  --sdm-space-1: 4px;
+  --sdm-space-2: 8px;
+  --sdm-space-3: 12px;
+  --sdm-space-4: 16px;
+  --sdm-space-5: 18px;   /* gap canónico entre tarjetas */
+  --sdm-space-6: 20px;   /* padding de pantalla */
+  --sdm-space-8: 32px;
+
+  /* ---- Radios concéntricos ----
+     Regla: el radio interior = radio exterior − padding. 18 → 13 → 9 → cápsula. */
+  --sdm-radius-window: 18px;
+  --sdm-radius-card: 18px;
+  --sdm-radius-inner: 13px;
+  --sdm-radius-nav: 9px;
+  --sdm-radius-pill: 999px;   /* todos los controles son cápsulas */
+
+  /* ---- Alturas de control ---- */
+  --sdm-control-sm: 30px;   /* suelo absoluto: nunca por debajo de --sdm-tap-min */
+  --sdm-control-md: 30px;   /* barra de herramientas */
+  --sdm-control-lg: 35px;
+  --sdm-tap-min: 30px;
+
+  /* ---- Material ---- */
+  --sdm-blur-chrome: 28px;   /* barra lateral y barra de herramientas */
+  --sdm-blur-card: 24px;
+  --sdm-blur-overlay: 44px;  /* diálogos */
+  --sdm-saturate: 180%;
+
+  /* ---- Movimiento: elástico y breve ---- */
+  --sdm-duration-fast: 140ms;
+  --sdm-duration-base: 220ms;
+  --sdm-duration-overlay: 320ms;
+  --sdm-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* =======================  TEMA CLARO  ======================= */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --sdm-bg: #e9ebf0;
+  --sdm-bg-2: #dfe2ea;         /* extremo del degradado del lienzo */
+
+  /* Capas de material. `glass` lleva backdrop-filter; `solid` es el respaldo sin soporte. */
+  --sdm-glass: rgba(255, 255, 255, 0.72);
+  --sdm-glass-2: rgba(255, 255, 255, 0.5);
+  --sdm-glass-3: rgba(120, 124, 140, 0.1);   /* pistas de barra, bloques internos */
+  --sdm-solid: #fdfdfe;
+
+  --sdm-hairline: rgba(22, 24, 32, 0.09);
+  --sdm-highlight: rgba(255, 255, 255, 0.9); /* brillo superior de 1px */
+  --sdm-scrim: rgba(10, 10, 14, 0.34);       /* fondo de diálogo */
+
+  --sdm-text: #191b22;
+  --sdm-text-dim: #5f6371;
+  --sdm-text-faint: #6a6f7b;
+  --sdm-on-accent: #ffffff;
+
+  /* Acento: se sobreescribe en runtime con el color de acento de Windows (véase accent.ts).
+     Estos valores son el respaldo, el azul predeterminado de Windows 11.
+
+     Hay DOS tokens de acento porque hay dos usos con requisitos opuestos:
+       --sdm-accent     va de FONDO (botón primario). Su contraste se mide contra --sdm-on-accent.
+       --sdm-accent-fg  va de TEXTO sobre el material (enlaces, selección, serie de la gráfica).
+                        Su contraste se mide contra la superficie, que es casi blanca en claro y
+                        casi negra en oscuro, así que NO puede ser el mismo color en ambos temas.
+     Un solo color no sirve para las dos cosas: el azul #0078d4 de Windows da 4,31:1 como texto
+     sobre el material claro, por debajo de AA. Medido en tools/accent-check.py. */
+  --sdm-accent: #0067c0;
+  --sdm-accent-hi: #1a7cd4;    /* extremo claro del degradado vertical del botón */
+  --sdm-accent-soft: rgba(0, 103, 192, 0.12);
+  --sdm-accent-fg: #0067c0;    /* 5,40:1 sobre el material claro */
+
+  /* Salud suavizada: menos saturación para convivir con el material, manteniendo 4.5:1 como texto
+     de píldora sobre el material claro. Verificado con AA; no los aclares. */
+  --sdm-ok: #2f7256;
+  --sdm-ok-soft: rgba(67, 144, 111, 0.13);
+  --sdm-warn: #7d5619;
+  --sdm-warn-soft: rgba(183, 129, 58, 0.14);
+  --sdm-crit: #a83d45;
+  --sdm-crit-soft: rgba(194, 90, 96, 0.13);
+  --sdm-unknown: #5d616d;
+  --sdm-unknown-soft: rgba(138, 141, 153, 0.13);
+
+  --sdm-shadow: 0 1px 1px rgba(20, 22, 30, 0.05), 0 8px 22px -14px rgba(20, 22, 30, 0.28);
+  --sdm-shadow-lift: 0 2px 4px rgba(20, 22, 30, 0.06), 0 24px 60px -22px rgba(20, 22, 30, 0.42);
+  --sdm-focus-ring: 0 0 0 3px color-mix(in srgb, var(--sdm-accent) 40%, transparent);
+}
+
+/* =======================  TEMA OSCURO  ======================= */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --sdm-bg: #101014;
+  --sdm-bg-2: #16161c;
+
+  --sdm-glass: rgba(42, 42, 50, 0.66);
+  --sdm-glass-2: rgba(58, 58, 68, 0.42);
+  --sdm-glass-3: rgba(255, 255, 255, 0.06);
+  --sdm-solid: #1b1b21;
+
+  --sdm-hairline: rgba(255, 255, 255, 0.09);
+  --sdm-highlight: rgba(255, 255, 255, 0.13);
+  --sdm-scrim: rgba(0, 0, 0, 0.5);
+
+  --sdm-text: #f2f2f6;
+  --sdm-text-dim: #a2a4b0;
+  --sdm-text-faint: #9195a1;
+  --sdm-on-accent: #ffffff;
+
+  --sdm-accent: #3d95ea;
+  --sdm-accent-hi: #5aa8f2;
+  --sdm-accent-soft: rgba(61, 149, 234, 0.18);
+  --sdm-accent-fg: #3d95ea;    /* 5,09:1 sobre el material oscuro */
+
+  --sdm-ok: #6cc79c;
+  --sdm-ok-soft: rgba(108, 199, 156, 0.16);
+  --sdm-warn: #e0b473;
+  --sdm-warn-soft: rgba(224, 180, 115, 0.16);
+  --sdm-crit: #e88b90;
+  --sdm-crit-soft: rgba(232, 139, 144, 0.16);
+  --sdm-unknown: #9396a2;
+  --sdm-unknown-soft: rgba(147, 150, 162, 0.14);
+
+  --sdm-shadow: 0 1px 1px rgba(0, 0, 0, 0.3), 0 10px 26px -16px rgba(0, 0, 0, 0.7);
+  --sdm-shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 28px 70px -24px rgba(0, 0, 0, 0.85);
+  --sdm-focus-ring: 0 0 0 3px color-mix(in srgb, var(--sdm-accent) 50%, transparent);
+}
+
+/* =======================  BASE  ======================= */
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  /* El lienzo lleva un degradado muy tenue: es lo que da vida al desenfoque de las capas. */
+  background: linear-gradient(160deg, var(--sdm-bg) 0%, var(--sdm-bg-2) 100%);
+  color: var(--sdm-text);
+  font-family: var(--sdm-font-sans);
+  font-size: var(--sdm-text-sm);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Texto de acento: SIEMPRE --sdm-accent-fg, nunca --sdm-accent. */
+a {
+  color: var(--sdm-accent-fg);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--sdm-accent-fg);
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--sdm-focus-ring);
+  border-radius: var(--sdm-radius-pill);
+}
+
+::selection {
+  background: var(--sdm-accent-soft);
+  color: var(--sdm-text);
+}
+
+/* ---- Utilidades de material ----
+   Úsalas en vez de repetir backdrop-filter a mano. */
+.sdm-material {
+  background: var(--sdm-glass);
+  backdrop-filter: blur(var(--sdm-blur-card)) saturate(var(--sdm-saturate));
+  -webkit-backdrop-filter: blur(var(--sdm-blur-card)) saturate(var(--sdm-saturate));
+  border: 1px solid var(--sdm-hairline);
+  box-shadow: var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight);
+}
+
+.sdm-material-chrome {
+  background: var(--sdm-glass);
+  backdrop-filter: blur(var(--sdm-blur-chrome)) saturate(var(--sdm-saturate));
+  -webkit-backdrop-filter: blur(var(--sdm-blur-chrome)) saturate(var(--sdm-saturate));
+  box-shadow: inset 0 1px 0 var(--sdm-highlight);
+}
+
+.sdm-material-overlay {
+  background: var(--sdm-glass);
+  backdrop-filter: blur(var(--sdm-blur-overlay)) saturate(190%);
+  -webkit-backdrop-filter: blur(var(--sdm-blur-overlay)) saturate(190%);
+  border: 1px solid var(--sdm-hairline);
+  box-shadow: var(--sdm-shadow-lift), inset 0 1px 0 var(--sdm-highlight);
+}
+
+/* Respaldo cuando el motor no soporta backdrop-filter: material opaco, mismo layout. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sdm-material,
+  .sdm-material-chrome,
+  .sdm-material-overlay {
+    background: var(--sdm-solid);
+  }
+}
+
+/* Cifras alineadas: obligatorio en toda métrica y toda columna numérica. */
+.sdm-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--sdm-tracking-tight);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

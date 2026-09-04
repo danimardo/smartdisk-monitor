@@ -1,0 +1,20 @@
+node_modules
+build
+.svelte-kit
+src-tauri/target
+src-tauri/gen
+coverage
+pnpm-lock.yaml
+
+# Consolidado: se genera, no se edita
+historias.md
+
+# Paquete de entrega original: se conserva tal cual llegó, es la referencia
+Design-system
+
+# Recursos de terceros
+third-party
+
+# Documentación: el formato de las tablas es deliberado y prettier las reflow
+docs
+*.md

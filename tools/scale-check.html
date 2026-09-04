@@ -1,0 +1,363 @@
+<!doctype html>
+<!-- Banco de pruebas de escala y densidad (open-questions.md K.4).
+
+     Reproduce la composición normativa de AGENTS.md §4 —Sidebar de 250 px, Toolbar, región de
+     contenido con scroll, rejilla de tarjetas— con los tokens reales, para poder medir dónde se
+     rompe al reducir el viewport. No es una pantalla del producto: es un instrumento.
+
+     Necesita servidor (los .woff2 no cargan por file://):
+       python -m http.server 8731 --bind 127.0.0.1
+       http://127.0.0.1:8731/tools/scale-check.html
+-->
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Escala y densidad</title>
+    <link rel="stylesheet" href="../Design-system/design-system/tokens.css" />
+    <style>
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+      #app {
+        display: flex;
+        height: 100%;
+      }
+
+      .sidebar {
+        width: 250px;
+        flex: none;
+        container-type: inline-size;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--sdm-hairline);
+        padding: var(--sdm-space-3);
+        gap: var(--sdm-space-2);
+        background: var(--sdm-glass);
+        overflow: hidden;
+      }
+      .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: none;
+      }
+      .nav a {
+        display: flex;
+        align-items: center;
+        height: var(--sdm-control-md);
+        padding: 0 var(--sdm-space-3);
+        border-radius: var(--sdm-radius-nav);
+        font-size: var(--sdm-text-sm);
+        color: var(--sdm-text-dim);
+      }
+      .nav a.sel {
+        background: var(--sdm-glass-2);
+        color: var(--sdm-text);
+      }
+      .disklist {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .disklist div {
+        display: flex;
+        align-items: center;
+        gap: var(--sdm-space-2);
+        height: var(--sdm-control-md);
+        padding: 0 var(--sdm-space-3);
+        border-radius: var(--sdm-radius-nav);
+        font-size: var(--sdm-text-sm);
+      }
+      body.narrow .nav a,
+      body.narrow .disklist div {
+        justify-content: center;
+        padding: 0;
+        font-size: 0;
+      }
+      body.narrow .nav a::before,
+      body.narrow .disklist div::before {
+        content: "";
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        background: var(--sdm-glass-3);
+      }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--sdm-ok);
+        flex: none;
+      }
+
+      .main {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .toolbar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: var(--sdm-space-3);
+        padding: var(--sdm-space-3) var(--sdm-space-6);
+        border-bottom: 1px solid var(--sdm-hairline);
+        background: var(--sdm-glass);
+      }
+      .toolbar h1 {
+        margin: 0;
+        font-size: var(--sdm-text-lg);
+        font-weight: var(--sdm-weight-semibold);
+      }
+      .toolbar .spacer {
+        flex: 1 1 auto;
+      }
+      .seg {
+        display: flex;
+        gap: 2px;
+        background: var(--sdm-glass-3);
+        border-radius: 999px;
+        padding: 2px;
+      }
+      .seg span {
+        display: flex;
+        align-items: center;
+        height: var(--sdm-control-sm);
+        padding: 0 var(--sdm-space-3);
+        border-radius: 999px;
+        font-size: var(--sdm-text-2xs);
+        color: var(--sdm-text-dim);
+      }
+      .seg span.sel {
+        background: var(--sdm-glass);
+        color: var(--sdm-text);
+      }
+      .btn {
+        display: flex;
+        align-items: center;
+        height: var(--sdm-control-md);
+        padding: 0 var(--sdm-space-4);
+        border-radius: 999px;
+        background: var(--sdm-accent);
+        color: var(--sdm-on-accent);
+        font-size: var(--sdm-text-sm);
+        font-weight: var(--sdm-weight-medium);
+        white-space: nowrap;
+      }
+
+      .content {
+        flex: 1 1 auto;
+        overflow: auto;
+        padding: var(--sdm-space-6);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+        gap: var(--sdm-space-5);
+      }
+
+      .card {
+        background: var(--sdm-glass);
+        border: 1px solid var(--sdm-hairline);
+        border-radius: var(--sdm-radius-card);
+        padding: var(--sdm-space-4);
+        box-shadow: var(--sdm-shadow);
+        min-width: 0;
+      }
+      .card h2 {
+        margin: 0 0 var(--sdm-space-1);
+        font-size: var(--sdm-text-base);
+        font-weight: var(--sdm-weight-semibold);
+      }
+      .card .sub {
+        font-size: var(--sdm-text-xs);
+        color: var(--sdm-text-faint);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+        gap: var(--sdm-space-4);
+        margin-top: var(--sdm-space-4);
+      }
+      .metric {
+        min-width: 0;
+        background: var(--sdm-glass-3);
+        border-radius: var(--sdm-radius-inner);
+        padding: var(--sdm-space-3);
+      }
+      .metric .label {
+        font-size: var(--sdm-text-2xs);
+        color: var(--sdm-text-faint);
+        white-space: nowrap;
+      }
+      .metric .value {
+        font-size: var(--sdm-text-metric);
+        font-weight: var(--sdm-weight-semibold);
+        letter-spacing: var(--sdm-tracking-metric);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      /* "No disponible" no es una cifra: componerlo como tal no cabe en ningún ancho razonable
+     (174 px a 27 px de cuerpo) y además miente sobre lo que es. */
+      .metric .value.na {
+        font-size: var(--sdm-text-base);
+        font-weight: var(--sdm-weight-medium);
+        letter-spacing: normal;
+        color: var(--sdm-text-faint);
+        white-space: normal;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 var(--sdm-space-2);
+        border-radius: 999px;
+        font-size: var(--sdm-text-2xs);
+        background: var(--sdm-ok-soft);
+        color: var(--sdm-ok);
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--sdm-space-3);
+        padding: var(--sdm-space-2) 0;
+        font-size: var(--sdm-text-sm);
+        border-bottom: 1px solid var(--sdm-hairline);
+      }
+      .row span:last-child {
+        font-variant-numeric: tabular-nums;
+        color: var(--sdm-text-dim);
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar" id="sidebar">
+        <nav class="nav">
+          <a class="sel">Panel general</a><a>Alertas</a><a>Eventos</a> <a>Pruebas y diagnóstico</a
+          ><a>Informes</a><a>Ajustes</a>
+        </nav>
+        <div class="disklist" id="disklist"></div>
+      </aside>
+
+      <div class="main">
+        <header class="toolbar">
+          <h1>Panel general</h1>
+          <div class="spacer"></div>
+          <div class="seg">
+            <span class="sel">24 h</span><span>7 d</span><span>30 d</span><span>Personalizado</span>
+          </div>
+          <div class="btn">Actualizar ahora</div>
+        </header>
+
+        <div class="content">
+          <div class="grid" id="grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const DISKS = [
+        {
+          n: "Samsung 990 PRO 2 TB",
+          t: "NVMe · C:",
+          temp: "47 °C",
+          wear: "3 %",
+          act: "12 %",
+          free: "684 GB"
+        },
+        {
+          n: "WD Black SN850X 1 TB",
+          t: "NVMe · D:",
+          temp: "52 °C",
+          wear: "11 %",
+          act: "0 %",
+          free: "128 GB"
+        },
+        {
+          n: "Crucial MX500 500 GB",
+          t: "SATA SSD · E:",
+          temp: "38 °C",
+          wear: "24 %",
+          act: "3 %",
+          free: "42 GB"
+        },
+        {
+          n: "Seagate IronWolf 8 TB",
+          t: "HDD · F:",
+          temp: "41 °C",
+          wear: "No disponible",
+          act: "67 %",
+          free: "1,9 TB"
+        }
+      ];
+
+      document.getElementById("disklist").innerHTML = DISKS.concat(DISKS)
+        .map((d, i) => `<div><i class="dot"></i>${d.n}</div>`)
+        .join("");
+
+      document.getElementById("grid").innerHTML = DISKS.map(
+        (d) => `
+    <article class="card">
+      <h2>${d.n}</h2>
+      <div class="sub">${d.t} · <span class="pill">Correcto</span></div>
+      <div class="metrics">
+        <div class="metric"><div class="label">Temperatura</div><div class="value">${d.temp}</div></div>
+        <div class="metric"><div class="label">Desgaste</div><div class="value${/^[\d]/.test(d.wear) ? "" : " na"}">${d.wear}</div></div>
+        <div class="metric"><div class="label">Actividad</div><div class="value">${d.act}</div></div>
+        <div class="metric"><div class="label">Libre</div><div class="value">${d.free}</div></div>
+      </div>
+      <div class="row"><span>Horas de funcionamiento</span><span>12.482 h</span></div>
+      <div class="row"><span>Errores de medios</span><span>0</span></div>
+    </article>`
+      ).join("");
+
+      /** Instrumentación: informa de desbordes reales y de cuánto contenido queda fuera de vista. */
+      /* Por debajo de 1180 px la barra lateral se reduce a iconos: 250 px fijos se comen la cuarta
+     parte de una ventana de 1024. */
+      const applySidebar = () => {
+        const narrow = innerWidth < 1180;
+        document.getElementById("sidebar").style.width = narrow ? "56px" : "250px";
+        document.body.classList.toggle("narrow", narrow);
+      };
+      addEventListener("resize", applySidebar);
+      applySidebar();
+
+      window.audit = () => {
+        const clipped = [];
+        document.querySelectorAll("*").forEach((el) => {
+          const over = el.scrollWidth - el.clientWidth;
+          if (
+            over > 1 &&
+            getComputedStyle(el).overflowX !== "auto" &&
+            getComputedStyle(el).overflowX !== "scroll"
+          ) {
+            clipped.push({ el: el.className || el.tagName, overflowPx: over });
+          }
+        });
+        const content = document.querySelector(".content");
+        const toolbar = document.querySelector(".toolbar");
+        return {
+          viewport: `${innerWidth}×${innerHeight}`,
+          horizontalPageScroll: document.documentElement.scrollWidth > innerWidth,
+          contentHiddenBelowFoldPx: Math.max(0, content.scrollHeight - content.clientHeight),
+          toolbarOverflowPx: Math.max(0, toolbar.scrollWidth - toolbar.clientWidth),
+          cardsPerRow: (() => {
+            const cards = [...document.querySelectorAll(".card")];
+            if (!cards.length) return 0;
+            const top = cards[0].getBoundingClientRect().top;
+            return cards.filter((c) => Math.abs(c.getBoundingClientRect().top - top) < 2).length;
+          })(),
+          cardWidth: Math.round(document.querySelector(".card").getBoundingClientRect().width),
+          clipped: clipped.slice(0, 8)
+        };
+      };
+    </script>
+  </body>
+</html>

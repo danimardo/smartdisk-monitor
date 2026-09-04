@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #e9eaee; font-family: "IBM Plex Sans", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #4f46e5; text-decoration: none; }
+  a:hover { color: #3730a3; text-decoration: underline; }
+  [data-th="a-dark"] { --bg:#0c1117; --panel:#131b24; --panel2:#18222e; --raise:#1e2937; --line:#26323f; --text:#e6edf3; --dim:#8b98a5; --faint:#5d6b7a; --accent:#2dd4bf; --accent-ink:#04322c; --ok:#34d399; --warn:#f5b73d; --crit:#f4737a; --unk:#6b7a8a; --ok-soft:#123024; --warn-soft:#33280f; --crit-soft:#33191c; --unk-soft:#1e2733; --accent-soft:#0e2f2b; --shadow:0 1px 0 rgba(255,255,255,.03); }
+  [data-th="a-light"] { --bg:#e8ecf1; --panel:#ffffff; --panel2:#f4f7fa; --raise:#eef2f6; --line:#d3dbe4; --text:#0e1720; --dim:#5c6a78; --faint:#8695a3; --accent:#0f766e; --accent-ink:#e6fffb; --ok:#12855f; --warn:#a86a06; --crit:#c1373f; --unk:#7a8794; --ok-soft:#dcf3e9; --warn-soft:#fbeed4; --crit-soft:#fbe3e4; --unk-soft:#e7ecf2; --accent-soft:#d8f1ee; --shadow:0 1px 2px rgba(16,24,40,.06); }
+  [data-th="b-light"] { --bg:#f3f3f7; --panel:#ffffff; --panel2:#f7f7fb; --raise:#efeff6; --line:#e4e4ee; --text:#191922; --dim:#6b6b7d; --faint:#9a9aae; --accent:#5b4ef0; --accent-soft:#eeecff; --ok:#1f9d68; --ok-soft:#e6f7ef; --warn:#c07a09; --warn-soft:#fdf3e0; --crit:#d4444f; --crit-soft:#fdecee; --unk:#8b8b9c; --unk-soft:#f0f0f5; --shadow:0 1px 3px rgba(25,25,34,.07), 0 8px 24px -12px rgba(25,25,34,.12); }
+  [data-th="b-dark"] { --bg:#12121a; --panel:#1c1c26; --panel2:#22222e; --raise:#282836; --line:#2f2f3f; --text:#f1f0f6; --dim:#a0a0b4; --faint:#75758a; --accent:#9186ff; --accent-soft:#2a2745; --ok:#4bd39a; --ok-soft:#17322a; --warn:#f0b95a; --warn-soft:#33291a; --crit:#f47a84; --crit-soft:#3a1f24; --unk:#8b8b9c; --unk-soft:#282834; --shadow:0 1px 3px rgba(0,0,0,.4), 0 10px 30px -12px rgba(0,0,0,.6); }
+</style>
+</helmet>
+
+<section style="padding:56px 64px 96px; display:flex; flex-direction:column; gap:40px">
+  <div style="display:flex; flex-direction:column; gap:10px; max-width:900px">
+    <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#6b7280">Turno 1 · Bocetos de pantallas · Tauri escritorio</div>
+    <h1 style="margin:0; font-size:40px; line-height:1.1; font-weight:700; color:#14161c; letter-spacing:-.02em">SmartDisk Monitor — dos direcciones de interfaz</h1>
+    <p style="margin:0; font-size:16px; line-height:1.55; color:#4b5563; text-wrap:pretty">Cada boceto incluye cuatro pantallas navegables (Panel general, Detalle de disco, Alertas y eventos, Pruebas y diagnóstico) y conmutador de tema claro/oscuro. <a href="#1a">1a</a> es una consola técnica densa; <a href="#1b">1b</a> es un panel tranquilo por tarjetas. Elige uno y genero los componentes Svelte con tokens.</p>
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:48px; align-items:flex-start">
+
+    <!-- ============ OPCIÓN 1A ============ -->
+    <div id="1a" style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; align-items:center; gap:12px">
+        <span style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:26px; padding:0 9px; border-radius:4px; background:#0c1117; color:#2dd4bf; font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600">1a</span>
+        <span style="font-size:17px; font-weight:600; color:#14161c">Consola de operación</span>
+        <span style="font-size:14px; color:#6b7280">Densidad alta, tipografía monoespaciada en cifras, barra lateral fija</span>
+        <div style="display:flex; gap:0; margin-left:12px; border:1px solid #cbd2da; border-radius:5px; overflow:hidden">
+          <button onClick="{{ aDark }}" style="{{ aDarkBtn }}">Oscuro</button>
+          <button onClick="{{ aLight }}" style="{{ aLightBtn }}">Claro</button>
+        </div>
+      </div>
+
+      <div data-th="{{ thA }}" style="width:1300px; height:840px; background:var(--bg); border:1px solid rgba(0,0,0,.18); border-radius:8px; overflow:hidden; display:flex; flex-direction:column; color:var(--text); box-shadow:0 30px 60px -30px rgba(10,15,25,.45)">
+
+        <!-- title bar -->
+        <div style="height:38px; flex:none; display:flex; align-items:center; gap:12px; padding:0 12px; background:var(--panel); border-bottom:1px solid var(--line)">
+          <div style="display:flex; align-items:center; gap:8px">
+            <div style="width:16px; height:16px; border-radius:3px; background:var(--accent)"></div>
+            <span style="font-size:12.5px; font-weight:600; letter-spacing:.01em">SmartDisk Monitor</span>
+            <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint)">1.0.0 · administrador</span>
+          </div>
+          <div style="flex:1"></div>
+          <div style="display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim)">
+            <span style="width:7px; height:7px; border-radius:50%; background:var(--ok)"></span>RECOPILANDO · próx. SMART 02:41
+          </div>
+          <div style="display:flex; gap:8px; margin-left:14px">
+            <span style="width:11px; height:11px; border-radius:2px; background:var(--line)"></span>
+            <span style="width:11px; height:11px; border-radius:2px; background:var(--line)"></span>
+            <span style="width:11px; height:11px; border-radius:2px; background:var(--line)"></span>
+          </div>
+        </div>
+
+        <div style="flex:1; display:flex; min-height:0">
+          <!-- sidebar -->
+          <div style="width:196px; flex:none; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:12px 0">
+            <div style="padding:0 14px 10px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.14em; color:var(--faint)">SUPERVISIÓN</div>
+            <sc-for list="{{ navA }}" as="n" hint-placeholder-count="6">
+              <button onClick="{{ n.go }}" style="{{ n.style }}">
+                <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; width:14px; color:var(--faint)">{{ n.key }}</span>
+                <span style="flex:1; text-align:left">{{ n.label }}</span>
+                <span style="{{ n.badgeStyle }}">{{ n.badge }}</span>
+              </button>
+            </sc-for>
+            <div style="flex:1"></div>
+            <div style="margin:0 12px; padding:10px; border:1px solid var(--line); border-radius:4px; background:var(--panel2); display:flex; flex-direction:column; gap:6px">
+              <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">BANDEJA</div>
+              <div style="display:flex; align-items:center; gap:8px; font-size:12px"><span style="width:9px;height:9px;border-radius:50%;background:var(--warn)"></span>1 advertencia activa</div>
+              <button style="margin-top:2px; height:26px; border:1px solid var(--line); background:var(--raise); color:var(--text); border-radius:4px; font-size:11.5px; font-family:inherit; cursor:pointer">Pausar recopilación</button>
+            </div>
+          </div>
+
+          <!-- content -->
+          <div style="flex:1; min-width:0; display:flex; flex-direction:column">
+
+            <!-- PANEL GENERAL -->
+            <sc-if value="{{ aPanel }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:1; display:flex; flex-direction:column; min-height:0">
+                <div style="flex:none; padding:16px 20px 12px; border-bottom:1px solid var(--line); display:flex; align-items:flex-end; gap:20px">
+                  <div style="display:flex; flex-direction:column; gap:3px">
+                    <div style="font-size:19px; font-weight:600; letter-spacing:-.01em">Panel general</div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim)">5 discos detectados · 4 monitorizados · última lectura 12:41:07</div>
+                  </div>
+                  <div style="flex:1"></div>
+                  <button style="height:30px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Detalles avanzados</button>
+                  <button style="height:30px; padding:0 14px; border:1px solid transparent; background:var(--accent); color:var(--accent-ink); border-radius:4px; font-size:12px; font-weight:600; font-family:inherit; cursor:pointer">Actualizar ahora</button>
+                </div>
+
+                <div style="flex:1; overflow:hidden; padding:16px 20px; display:flex; flex-direction:column; gap:14px">
+                  <!-- status strip -->
+                  <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px">
+                    <sc-for list="{{ statusA }}" as="s" hint-placeholder-count="5">
+                      <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:11px 12px; display:flex; flex-direction:column; gap:6px">
+                        <div style="display:flex; align-items:center; gap:7px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim)"><span style="width:8px; height:8px; border-radius:2px; background:{{ s.color }}"></span>{{ s.label }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; line-height:1">{{ s.value }}</div>
+                        <div style="font-size:11px; color:var(--faint)">{{ s.note }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <!-- table -->
+                  <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); overflow:hidden">
+                    <div style="display:grid; grid-template-columns:26px 2.1fr 88px 76px 80px 78px 1.25fr 96px; gap:0; padding:8px 12px; background:var(--panel2); border-bottom:1px solid var(--line); font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">
+                      <div></div><div>DISPOSITIVO</div><div>ESTADO</div><div>TEMP</div><div>DESGASTE</div><div>ACTIVIDAD</div><div>VOLUMEN</div><div style="text-align:right">HORAS</div>
+                    </div>
+                    <sc-for list="{{ disks }}" as="d" hint-placeholder-count="5">
+                      <div style="{{ d.rowA }}">
+                        <div><span style="display:block; width:9px; height:9px; border-radius:50%; background:{{ d.color }}"></span></div>
+                        <div style="display:flex; flex-direction:column; gap:2px; min-width:0">
+                          <div style="font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ d.model }}</div>
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint)">{{ d.meta }}</div>
+                        </div>
+                        <div style="font-size:11.5px; color:{{ d.color }}; font-weight:600">{{ d.state }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:13px">{{ d.temp }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:13px">{{ d.wear }}</div>
+                        <div style="display:flex; align-items:center; gap:6px">
+                          <div style="width:34px; height:4px; background:var(--raise); border-radius:2px; overflow:hidden"><div style="height:100%; background:var(--accent); width:{{ d.actPct }}"></div></div>
+                          <span style="font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--dim)">{{ d.act }}</span>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:3px; padding-right:14px">
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim)">{{ d.vol }}</div>
+                          <div style="height:3px; background:var(--raise); border-radius:2px; overflow:hidden"><div style="height:100%; background:{{ d.freeColor }}; width:{{ d.usedPct }}"></div></div>
+                        </div>
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:12px; text-align:right; color:var(--dim)">{{ d.hours }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <!-- alerts + events -->
+                  <div style="display:grid; grid-template-columns:1.15fr 1fr; gap:14px; min-height:0">
+                    <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); display:flex; flex-direction:column">
+                      <div style="padding:9px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">ALERTAS ACTIVAS<span style="flex:1"></span><span style="color:var(--dim)">3 grupos</span></div>
+                      <sc-for list="{{ alertsShort }}" as="a" hint-placeholder-count="3">
+                        <div style="padding:9px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px">
+                          <span style="width:3px; align-self:stretch; background:{{ a.color }}; border-radius:2px"></span>
+                          <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                            <div style="font-size:12.5px; font-weight:500">{{ a.title }}</div>
+                            <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint)">{{ a.meta }}</div>
+                          </div>
+                          <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; padding:2px 6px; border:1px solid var(--line); border-radius:3px; color:var(--dim)">×{{ a.count }}</span>
+                          <button style="height:24px; padding:0 9px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:3px; font-size:11px; font-family:inherit; cursor:pointer">Reconocer</button>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); display:flex; flex-direction:column">
+                      <div style="padding:9px 12px; border-bottom:1px solid var(--line); font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">SUCESOS RECIENTES DE WINDOWS</div>
+                      <sc-for list="{{ eventsShort }}" as="e" hint-placeholder-count="4">
+                        <div style="padding:7px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; font-family:'IBM Plex Mono',monospace; font-size:11px">
+                          <span style="color:var(--faint)">{{ e.time }}</span>
+                          <span style="color:{{ e.color }}; width:52px">{{ e.level }}</span>
+                          <span style="color:var(--dim)">{{ e.provider }}·{{ e.id }}</span>
+                          <span style="flex:1; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:'IBM Plex Sans',sans-serif; font-size:11.5px">{{ e.msg }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- DETALLE DE DISCO -->
+            <sc-if value="{{ aDisk }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1; display:flex; flex-direction:column; min-height:0">
+                <div style="flex:none; padding:14px 20px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px">
+                  <div style="display:flex; flex-direction:column; gap:3px">
+                    <div style="display:flex; align-items:center; gap:9px"><span style="width:10px; height:10px; border-radius:50%; background:var(--warn)"></span><span style="font-size:19px; font-weight:600">Crucial MX500 1TB</span><span style="font-family:'IBM Plex Mono',monospace; font-size:11px; padding:2px 6px; border:1px solid var(--line); border-radius:3px; color:var(--dim)">SATA SSD</span><span style="font-family:'IBM Plex Mono',monospace; font-size:11px; padding:2px 6px; border-radius:3px; background:var(--warn); color:#1a1305; font-weight:600">ADVERTENCIA</span></div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint)">alias «Datos» · S/N 2149E6••••42 · FW M3CR046 · smartctl 7.4 · lectura 12:41:07</div>
+                  </div>
+                  <div style="flex:1"></div>
+                  <div style="display:flex; border:1px solid var(--line); border-radius:4px; overflow:hidden">
+                    <span style="padding:6px 11px; font-size:11.5px; background:var(--accent); color:var(--accent-ink); font-weight:600">24 h</span>
+                    <span style="padding:6px 11px; font-size:11.5px; border-left:1px solid var(--line); color:var(--dim)">7 d</span>
+                    <span style="padding:6px 11px; font-size:11.5px; border-left:1px solid var(--line); color:var(--dim)">30 d</span>
+                    <span style="padding:6px 11px; font-size:11.5px; border-left:1px solid var(--line); color:var(--dim)">Personalizado</span>
+                  </div>
+                </div>
+
+                <div style="flex:1; overflow:hidden; padding:14px 20px; display:flex; flex-direction:column; gap:12px">
+                  <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:9px">
+                    <sc-for list="{{ metricsA }}" as="m" hint-placeholder-count="6">
+                      <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:9px 11px; display:flex; flex-direction:column; gap:4px">
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.1em; color:var(--faint)">{{ m.key }}</div>
+                        <div style="font-family:'IBM Plex Mono',monospace; font-size:19px; font-weight:600; color:{{ m.color }}">{{ m.value }}</div>
+                        <div style="font-size:10.5px; color:var(--faint)">{{ m.src }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:12px 14px; display:flex; flex-direction:column; gap:8px">
+                    <div style="display:flex; align-items:center; gap:10px">
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">TEMPERATURE_CELSIUS · 24 H</span>
+                      <span style="flex:1"></span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--dim)">mín 38 · med 52 · máx 71</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--warn)">límite fabricante 70 °C</span>
+                    </div>
+                    <svg viewBox="0 0 900 190" preserveAspectRatio="none" style="width:100%; height:190px; display:block">
+                      <line x1="0" y1="47" x2="900" y2="47" stroke="var(--line)" stroke-width="1"></line>
+                      <line x1="0" y1="95" x2="900" y2="95" stroke="var(--line)" stroke-width="1"></line>
+                      <line x1="0" y1="143" x2="900" y2="143" stroke="var(--line)" stroke-width="1"></line>
+                      <line x1="0" y1="52" x2="900" y2="52" stroke="var(--warn)" stroke-width="1" stroke-dasharray="4 4" opacity=".8"></line>
+                      <polygon points="{{ tempArea }}" fill="var(--accent)" opacity=".13"></polygon>
+                      <polyline points="{{ tempLine }}" fill="none" stroke="var(--accent)" stroke-width="2"></polyline>
+                      <rect x="392" y="0" width="66" height="190" fill="var(--unk)" opacity=".16"></rect>
+                    </svg>
+                    <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--faint)">
+                      <span>12:41 ayer</span><span style="color:var(--unk)">sin datos 03:10 – 04:05</span><span>12:41 hoy</span>
+                    </div>
+                  </div>
+
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; min-height:0">
+                    <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:12px 14px; display:flex; flex-direction:column; gap:9px">
+                      <div style="font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">ACTIVIDAD Y LATENCIA · 24 H</div>
+                      <svg viewBox="0 0 440 108" preserveAspectRatio="none" style="width:100%; height:108px; display:block">
+                        <sc-for list="{{ actBars }}" as="b" hint-placeholder-count="40">
+                          <rect x="{{ b.x }}" y="{{ b.y }}" width="6" height="{{ b.h }}" fill="var(--accent)" opacity=".55"></rect>
+                        </sc-for>
+                        <polyline points="{{ latLine }}" fill="none" stroke="var(--warn)" stroke-width="1.6"></polyline>
+                      </svg>
+                      <div style="display:flex; gap:16px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--dim)"><span><span style="color:var(--accent)">■</span> activity_percent</span><span><span style="color:var(--warn)">■</span> write_latency_ms</span></div>
+                    </div>
+                    <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); display:flex; flex-direction:column; overflow:hidden">
+                      <div style="padding:9px 14px; border-bottom:1px solid var(--line); font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">CONTADORES SMART</div>
+                      <sc-for list="{{ smartRows }}" as="r" hint-placeholder-count="5">
+                        <div style="padding:7px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; font-family:'IBM Plex Mono',monospace; font-size:11.5px">
+                          <span style="flex:1; color:var(--dim)">{{ r.key }}</span>
+                          <span style="color:var(--text); font-weight:500">{{ r.val }}</span>
+                          <span style="width:64px; text-align:right; color:{{ r.color }}">{{ r.delta }}</span>
+                        </div>
+                      </sc-for>
+                      <div style="padding:8px 14px; display:flex; gap:8px">
+                        <button style="height:26px; padding:0 10px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:3px; font-size:11.5px; font-family:inherit; cursor:pointer">Ver JSON de smartctl</button>
+                        <button style="height:26px; padding:0 10px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:3px; font-size:11.5px; font-family:inherit; cursor:pointer">Copiar</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- ALERTAS -->
+            <sc-if value="{{ aAlerts }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1; display:flex; flex-direction:column; min-height:0">
+                <div style="flex:none; padding:16px 20px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px">
+                  <div style="font-size:19px; font-weight:600">Alertas y eventos</div>
+                  <div style="display:flex; gap:6px; margin-left:8px">
+                    <sc-for list="{{ alertFilters }}" as="f" hint-placeholder-count="5">
+                      <span style="{{ f.style }}">{{ f.label }}</span>
+                    </sc-for>
+                  </div>
+                  <div style="flex:1"></div>
+                  <button style="height:30px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Silenciar 1 h</button>
+                  <button style="height:30px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Archivar resueltas</button>
+                </div>
+                <div style="flex:1; display:flex; min-height:0">
+                  <div style="width:520px; flex:none; border-right:1px solid var(--line); overflow:hidden; display:flex; flex-direction:column">
+                    <sc-for list="{{ alertsFull }}" as="a" hint-placeholder-count="5">
+                      <div style="{{ a.rowStyle }}">
+                        <span style="width:3px; align-self:stretch; background:{{ a.color }}; border-radius:2px"></span>
+                        <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+                          <div style="display:flex; align-items:center; gap:8px">
+                            <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.08em; padding:2px 5px; border-radius:2px; background:{{ a.chipBg }}; color:{{ a.color }}">{{ a.sev }}</span>
+                            <span style="font-size:13px; font-weight:600">{{ a.title }}</span>
+                          </div>
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint)">{{ a.rule }}</div>
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--dim)">{{ a.meta }}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px">
+                          <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim)">×{{ a.count }}</span>
+                          <span style="font-family:'IBM Plex Mono',monospace; font-size:10px; padding:2px 6px; border:1px solid var(--line); border-radius:2px; color:var(--faint)">{{ a.status }}</span>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden">
+                    <div style="padding:14px 18px 12px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:8px">
+                      <div style="display:flex; align-items:center; gap:9px"><span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 6px; border-radius:2px; background:var(--warn); color:#1a1305; font-weight:600">ADVERTENCIA</span><span style="font-size:15px; font-weight:600">Temperatura por encima del límite del fabricante</span></div>
+                      <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim); line-height:1.7">rule_key: temp_above_vendor_limit<br>deduplication_key: dev:2149E6••••42|temp_vendor|warn<br>objeto: Crucial MX500 1TB («Datos») · umbral 70 °C · último valor 71 °C<br>primera 09:12:30 · última 12:38:00 · 14 ocurrencias · estado ACTIVA</div>
+                      <div style="display:flex; gap:8px; margin-top:2px">
+                        <button style="height:28px; padding:0 12px; border:1px solid transparent; background:var(--accent); color:var(--accent-ink); border-radius:4px; font-size:12px; font-weight:600; font-family:inherit; cursor:pointer">Reconocer</button>
+                        <button style="height:28px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Silenciar 15 min</button>
+                        <button style="height:28px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Archivar</button>
+                        <button style="height:28px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Ver disco</button>
+                      </div>
+                    </div>
+                    <div style="padding:10px 18px 6px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">OCURRENCIAS</div>
+                    <sc-for list="{{ occurrences }}" as="o" hint-placeholder-count="8">
+                      <div style="padding:6px 18px; display:flex; align-items:center; gap:14px; font-family:'IBM Plex Mono',monospace; font-size:11px; border-bottom:1px solid var(--line)">
+                        <span style="color:var(--dim); width:120px">{{ o.time }}</span>
+                        <span style="color:var(--text); width:70px">{{ o.value }}</span>
+                        <span style="flex:1; color:var(--faint)">{{ o.ctx }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- PRUEBAS -->
+            <sc-if value="{{ aTests }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:1; display:flex; flex-direction:column; min-height:0">
+                <div style="flex:none; padding:16px 20px 12px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px">
+                  <div style="display:flex; flex-direction:column; gap:3px">
+                    <div style="font-size:19px; font-weight:600">Pruebas y diagnóstico</div>
+                    <div style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim)">exclusión mutua por disco · recopilación incompatible suspendida durante la prueba</div>
+                  </div>
+                  <div style="flex:1"></div>
+                  <button style="height:30px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Exportar informe</button>
+                  <button style="height:30px; padding:0 12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">ZIP de diagnóstico</button>
+                </div>
+                <div style="flex:1; overflow:hidden; padding:16px 20px; display:flex; flex-direction:column; gap:14px">
+                  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px">
+                    <sc-for list="{{ testCards }}" as="t" hint-placeholder-count="3">
+                      <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:13px 14px; display:flex; flex-direction:column; gap:8px">
+                        <div style="display:flex; align-items:center; gap:8px"><span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.08em; color:var(--faint)">{{ t.key }}</span><span style="flex:1"></span><span style="font-family:'IBM Plex Mono',monospace; font-size:10px; padding:2px 6px; border-radius:2px; background:{{ t.chipBg }}; color:{{ t.chipFg }}">{{ t.chip }}</span></div>
+                        <div style="font-size:14px; font-weight:600">{{ t.title }}</div>
+                        <div style="font-size:12px; line-height:1.5; color:var(--dim); min-height:52px; text-wrap:pretty">{{ t.desc }}</div>
+                        <button style="{{ t.btnStyle }}">{{ t.cta }}</button>
+                      </div>
+                    </sc-for>
+                  </div>
+
+                  <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:14px 16px; display:flex; flex-direction:column; gap:12px">
+                    <div style="display:flex; align-items:center; gap:10px">
+                      <span style="width:8px; height:8px; border-radius:50%; background:var(--accent)"></span>
+                      <span style="font-size:14px; font-weight:600">Benchmark en curso · Samsung 990 PRO 2TB → C:</span>
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint)">C:\ProgramData\SmartDisk Monitor\bench\sdm-bench-8f21.tmp · 2 GiB</span>
+                      <span style="flex:1"></span>
+                      <button style="height:28px; padding:0 12px; border:1px solid var(--crit); background:transparent; color:var(--crit); border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer">Cancelar prueba</button>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:5px">
+                      <div style="height:6px; background:var(--raise); border-radius:3px; overflow:hidden"><div style="height:100%; width:62%; background:var(--accent)"></div></div>
+                      <div style="display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--dim)"><span>Escritura secuencial · bloque 1 MiB · patrón verificable</span><span>62 % · 00:48 restante</span></div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px">
+                      <sc-for list="{{ benchMetrics }}" as="b" hint-placeholder-count="5">
+                        <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel2); padding:9px 11px; display:flex; flex-direction:column; gap:3px">
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.1em; color:var(--faint)">{{ b.key }}</div>
+                          <div style="font-family:'IBM Plex Mono',monospace; font-size:18px; font-weight:600; color:{{ b.color }}">{{ b.value }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="padding:9px 11px; border:1px solid var(--warn); border-radius:4px; background:var(--panel2); display:flex; align-items:center; gap:9px; font-size:12px; color:var(--text)">
+                      <span style="font-family:'IBM Plex Mono',monospace; font-size:9.5px; padding:2px 6px; border-radius:2px; background:var(--warn); color:#1a1305; font-weight:600">AVISO</span>
+                      La prueba se detendrá automáticamente al alcanzar 80 °C o la reserva de 10 GB. El archivo temporal se elimina al finalizar o cancelar.
+                    </div>
+                  </div>
+
+                  <div style="border:1px solid var(--line); border-radius:4px; background:var(--panel); overflow:hidden">
+                    <div style="padding:9px 14px; background:var(--panel2); border-bottom:1px solid var(--line); font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.1em; color:var(--faint)">HISTORIAL DE EJECUCIONES · test_runs</div>
+                    <sc-for list="{{ testRuns }}" as="r" hint-placeholder-count="4">
+                      <div style="padding:8px 14px; border-bottom:1px solid var(--line); display:grid; grid-template-columns:118px 92px 1.4fr 1fr 92px; gap:12px; align-items:center; font-family:'IBM Plex Mono',monospace; font-size:11.5px">
+                        <span style="color:var(--dim)">{{ r.date }}</span>
+                        <span style="color:var(--text)">{{ r.type }}</span>
+                        <span style="color:var(--dim); font-family:'IBM Plex Sans',sans-serif; font-size:12px">{{ r.target }}</span>
+                        <span style="color:var(--dim)">{{ r.result }}</span>
+                        <span style="color:{{ r.color }}; text-align:right; font-weight:500">{{ r.status }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ OPCIÓN 1B ============ -->
+    <div id="1b" style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; align-items:center; gap:12px">
+        <span style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:26px; padding:0 9px; border-radius:8px; background:#5b4ef0; color:#fff; font-family:'Manrope',sans-serif; font-size:13px; font-weight:700">1b</span>
+        <span style="font-size:17px; font-weight:600; color:#14161c; font-family:'Manrope',sans-serif">Panel tranquilo</span>
+        <span style="font-size:14px; color:#6b7280; font-family:'Manrope',sans-serif">Tarjetas espaciadas, jerarquía por color suave, navegación superior</span>
+        <div style="display:flex; margin-left:12px; border:1px solid #cbd2da; border-radius:999px; overflow:hidden">
+          <button onClick="{{ bLight }}" style="{{ bLightBtn }}">Claro</button>
+          <button onClick="{{ bDark }}" style="{{ bDarkBtn }}">Oscuro</button>
+        </div>
+      </div>
+
+      <div data-th="{{ thB }}" style="width:1300px; height:840px; background:var(--bg); border:1px solid rgba(0,0,0,.14); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; color:var(--text); font-family:'Manrope',system-ui,sans-serif; box-shadow:0 30px 60px -30px rgba(10,15,25,.4)">
+
+        <!-- top bar -->
+        <div style="flex:none; padding:14px 22px 0; background:var(--panel); border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; align-items:center; gap:14px">
+            <div style="display:flex; align-items:center; gap:10px">
+              <div style="width:26px; height:26px; border-radius:8px; background:var(--accent); display:flex; align-items:center; justify-content:center"><div style="width:9px; height:9px; border-radius:50%; border:2px solid #fff"></div></div>
+              <span style="font-size:15px; font-weight:700; letter-spacing:-.01em">SmartDisk Monitor</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; padding:5px 11px; border-radius:999px; background:var(--ok-soft); color:var(--ok); font-size:12.5px; font-weight:600">
+              <span style="width:7px; height:7px; border-radius:50%; background:var(--ok)"></span>Todo en orden
+            </div>
+            <div style="flex:1"></div>
+            <div style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dim)">Actualizado hace 12 s</div>
+            <button style="height:34px; padding:0 15px; border:none; background:var(--accent); color:#fff; border-radius:9px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer">Actualizar ahora</button>
+            <div style="width:32px; height:32px; border-radius:9px; background:var(--raise); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--dim); font-weight:700">?</div>
+          </div>
+          <div style="display:flex; gap:4px">
+            <sc-for list="{{ navB }}" as="n" hint-placeholder-count="5">
+              <button onClick="{{ n.go }}" style="{{ n.style }}">{{ n.label }}<span style="{{ n.badgeStyle }}">{{ n.badge }}</span></button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:1; min-height:0; overflow:auto">
+
+          <!-- PANEL -->
+          <sc-if value="{{ bPanel }}" hint-placeholder-val="{{ true }}">
+            <div style="min-height:100%; box-sizing:border-box; padding:22px; display:flex; flex-direction:column; gap:16px">
+              <div style="display:grid; grid-template-columns:340px 1fr; gap:16px">
+                <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:20px; display:flex; flex-direction:column; gap:14px">
+                  <div style="font-size:13px; font-weight:700; color:var(--dim); letter-spacing:.02em">Estado del equipo</div>
+                  <div style="display:flex; align-items:center; gap:18px">
+                    <svg viewBox="0 0 120 120" style="width:104px; height:104px; flex:none">
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--raise)" stroke-width="12"></circle>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--ok)" stroke-width="12" stroke-linecap="round" stroke-dasharray="235 314" transform="rotate(-90 60 60)"></circle>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--warn)" stroke-width="12" stroke-linecap="round" stroke-dasharray="55 314" transform="rotate(180 60 60)"></circle>
+                    </svg>
+                    <div style="display:flex; flex-direction:column; gap:7px">
+                      <sc-for list="{{ statusB }}" as="s" hint-placeholder-count="4">
+                        <div style="display:flex; align-items:center; gap:8px; font-size:13px">
+                          <span style="width:9px; height:9px; border-radius:50%; background:{{ s.color }}"></span>
+                          <span style="font-weight:700; width:16px">{{ s.value }}</span>
+                          <span style="color:var(--dim)">{{ s.label }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="padding:12px 14px; border-radius:11px; background:var(--warn-soft); display:flex; flex-direction:column; gap:5px">
+                    <div style="font-size:13px; font-weight:700; color:var(--warn)">1 disco necesita atención</div>
+                    <div style="font-size:12.5px; line-height:1.5; color:var(--dim); text-wrap:pretty">«Datos» superó el límite térmico del fabricante 14 veces hoy.</div>
+                    <button style="align-self:flex-start; margin-top:3px; height:29px; padding:0 12px; border:none; border-radius:8px; background:var(--panel); color:var(--text); font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer; box-shadow:var(--shadow)">Ver alerta</button>
+                  </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+                  <sc-for list="{{ disksB }}" as="d" hint-placeholder-count="4">
+                    <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:16px 18px; display:flex; flex-direction:column; gap:11px">
+                      <div style="display:flex; align-items:flex-start; gap:10px">
+                        <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                          <div style="font-size:14.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ d.alias }}</div>
+                          <div style="font-size:12px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ d.model }} · {{ d.type }}</div>
+                        </div>
+                        <span style="{{ d.pill }}">{{ d.state }}</span>
+                      </div>
+                      <div style="display:flex; gap:20px">
+                        <div style="display:flex; flex-direction:column; gap:1px"><span style="font-size:11.5px; color:var(--faint); font-weight:600">Temperatura</span><span style="font-size:20px; font-weight:800; color:{{ d.tempColor }}; letter-spacing:-.02em">{{ d.temp }}</span></div>
+                        <div style="display:flex; flex-direction:column; gap:1px"><span style="font-size:11.5px; color:var(--faint); font-weight:600">Desgaste</span><span style="font-size:20px; font-weight:800; letter-spacing:-.02em">{{ d.wear }}</span></div>
+                        <div style="display:flex; flex-direction:column; gap:1px"><span style="font-size:11.5px; color:var(--faint); font-weight:600">Actividad</span><span style="font-size:20px; font-weight:800; letter-spacing:-.02em">{{ d.act }}</span></div>
+                      </div>
+                      <div style="display:flex; flex-direction:column; gap:5px">
+                        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--dim)"><span>{{ d.vol }}</span><span>{{ d.free }}</span></div>
+                        <div style="height:7px; border-radius:4px; background:var(--raise); overflow:hidden"><div style="height:100%; border-radius:4px; background:{{ d.freeColor }}; width:{{ d.usedPct }}"></div></div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:16px 18px; display:flex; flex-direction:column; gap:10px">
+                <div style="display:flex; align-items:center; gap:10px"><span style="font-size:14px; font-weight:700">Sucesos recientes</span><span style="flex:1"></span><span style="font-size:12.5px; color:var(--accent); font-weight:700">Ver todos los eventos</span></div>
+                <sc-for list="{{ eventsShort }}" as="e" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; gap:12px; padding:8px 0; border-top:1px solid var(--line)">
+                    <span style="{{ e.pill }}">{{ e.level }}</span>
+                    <span style="font-size:13px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ e.msg }}</span>
+                    <span style="font-size:12px; color:var(--dim)">{{ e.provider }} · {{ e.id }}</span>
+                    <span style="font-size:12px; color:var(--faint); width:52px; text-align:right">{{ e.time }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- DETALLE -->
+          <sc-if value="{{ bDisk }}" hint-placeholder-val="{{ false }}">
+            <div style="min-height:100%; box-sizing:border-box; padding:22px; display:flex; flex-direction:column; gap:16px">
+              <div style="display:flex; align-items:center; gap:14px">
+                <div style="width:46px; height:46px; border-radius:13px; background:var(--warn-soft); display:flex; align-items:center; justify-content:center"><div style="width:14px; height:14px; border-radius:50%; border:3px solid var(--warn)"></div></div>
+                <div style="display:flex; flex-direction:column; gap:2px">
+                  <div style="display:flex; align-items:center; gap:9px"><span style="font-size:20px; font-weight:800; letter-spacing:-.02em">Datos</span><span style="padding:3px 9px; border-radius:999px; background:var(--warn-soft); color:var(--warn); font-size:12px; font-weight:700">Advertencia térmica</span></div>
+                  <div style="font-size:12.5px; color:var(--dim)">Crucial MX500 1TB · SATA SSD · S/N 2149E6••••42 · firmware M3CR046</div>
+                </div>
+                <div style="flex:1"></div>
+                <div style="display:flex; padding:3px; border-radius:10px; background:var(--raise); gap:2px">
+                  <span style="padding:6px 13px; border-radius:8px; background:var(--panel); font-size:12.5px; font-weight:700; box-shadow:var(--shadow)">24 h</span>
+                  <span style="padding:6px 13px; font-size:12.5px; color:var(--dim); font-weight:600">7 d</span>
+                  <span style="padding:6px 13px; font-size:12.5px; color:var(--dim); font-weight:600">30 d</span>
+                  <span style="padding:6px 13px; font-size:12.5px; color:var(--dim); font-weight:600">Personalizado</span>
+                </div>
+              </div>
+
+              <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px">
+                <sc-for list="{{ metricsB }}" as="m" hint-placeholder-count="4">
+                  <div style="border-radius:13px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:15px 17px; display:flex; flex-direction:column; gap:5px">
+                    <div style="font-size:12.5px; color:var(--dim); font-weight:600">{{ m.label }}</div>
+                    <div style="font-size:27px; font-weight:800; letter-spacing:-.03em; color:{{ m.color }}">{{ m.value }}</div>
+                    <div style="font-size:11.5px; color:var(--faint)">{{ m.src }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="flex:1; min-height:0; display:grid; grid-template-columns:1.55fr 1fr; gap:16px">
+                <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:18px 20px; display:flex; flex-direction:column; gap:12px">
+                  <div style="display:flex; align-items:center; gap:10px">
+                    <span style="font-size:14px; font-weight:700">Temperatura</span>
+                    <span style="flex:1"></span>
+                    <span style="font-size:12px; color:var(--dim)">mín 38 · media 52 · máx 71 °C</span>
+                  </div>
+                  <svg viewBox="0 0 780 220" preserveAspectRatio="none" style="width:100%; flex:1; min-height:0; display:block">
+                    <line x1="0" y1="55" x2="780" y2="55" stroke="var(--line)" stroke-width="1.5"></line>
+                    <line x1="0" y1="110" x2="780" y2="110" stroke="var(--line)" stroke-width="1.5"></line>
+                    <line x1="0" y1="165" x2="780" y2="165" stroke="var(--line)" stroke-width="1.5"></line>
+                    <line x1="0" y1="60" x2="780" y2="60" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="6 6"></line>
+                    <polygon points="{{ tempAreaB }}" fill="var(--accent)" opacity=".12"></polygon>
+                    <polyline points="{{ tempLineB }}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                    <rect x="340" y="0" width="58" height="220" fill="var(--unk)" opacity=".14"></rect>
+                  </svg>
+                  <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--faint)"><span>Ayer 12:41</span><span>Sin datos 03:10 – 04:05</span><span>Hoy 12:41</span></div>
+                </div>
+                <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:18px 20px; display:flex; flex-direction:column; gap:12px; overflow:hidden">
+                  <div style="font-size:14px; font-weight:700">Contadores del firmware</div>
+                  <sc-for list="{{ smartRows }}" as="r" hint-placeholder-count="5">
+                    <div style="display:flex; align-items:center; gap:10px; padding-bottom:9px; border-bottom:1px solid var(--line)">
+                      <span style="flex:1; font-size:12.5px; color:var(--dim)">{{ r.label }}</span>
+                      <span style="font-size:13.5px; font-weight:700">{{ r.val }}</span>
+                      <span style="font-size:11.5px; font-weight:700; color:{{ r.color }}; width:60px; text-align:right">{{ r.delta }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex; gap:8px; margin-top:auto">
+                    <button style="flex:1; height:33px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:9px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer">Detalles avanzados</button>
+                    <button style="flex:1; height:33px; border:none; background:var(--accent); color:#fff; border-radius:9px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer">Probar este disco</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ALERTAS -->
+          <sc-if value="{{ bAlerts }}" hint-placeholder-val="{{ false }}">
+            <div style="min-height:100%; box-sizing:border-box; padding:22px; display:flex; gap:16px">
+              <div style="width:470px; flex:none; display:flex; flex-direction:column; gap:12px">
+                <div style="display:flex; align-items:center; gap:8px">
+                  <span style="font-size:18px; font-weight:800; letter-spacing:-.02em">Alertas</span>
+                  <span style="flex:1"></span>
+                  <sc-for list="{{ alertFiltersB }}" as="f" hint-placeholder-count="4">
+                    <span style="{{ f.style }}">{{ f.label }}</span>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ alertsFull }}" as="a" hint-placeholder-count="5">
+                  <div style="{{ a.cardB }}">
+                    <div style="display:flex; align-items:center; gap:9px">
+                      <span style="padding:3px 9px; border-radius:999px; background:{{ a.chipBg }}; color:{{ a.color }}; font-size:11.5px; font-weight:700">{{ a.sevB }}</span>
+                      <span style="font-size:13.5px; font-weight:700; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ a.title }}</span>
+                      <span style="font-size:12px; color:var(--dim); font-weight:700">×{{ a.count }}</span>
+                    </div>
+                    <div style="font-size:12.5px; color:var(--dim)">{{ a.metaB }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="flex:1; min-width:0; border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:22px 24px; display:flex; flex-direction:column; gap:16px; overflow:hidden">
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <span style="align-self:flex-start; padding:4px 10px; border-radius:999px; background:var(--warn-soft); color:var(--warn); font-size:12px; font-weight:700">Advertencia · activa</span>
+                  <div style="font-size:21px; font-weight:800; letter-spacing:-.02em; text-wrap:pretty">La temperatura supera el límite recomendado por el fabricante</div>
+                  <div style="font-size:13.5px; line-height:1.6; color:var(--dim); max-width:640px; text-wrap:pretty">El disco «Datos» alcanzó 71 °C, por encima del límite de 70 °C declarado por el fabricante. Ocurrió 14 veces desde las 09:12. Comprueba la ventilación del equipo; si se alcanzan 80 °C la alerta pasará a crítica.</div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px">
+                  <sc-for list="{{ alertFacts }}" as="f" hint-placeholder-count="4">
+                    <div style="border-radius:11px; background:var(--panel2); padding:12px 14px; display:flex; flex-direction:column; gap:3px">
+                      <span style="font-size:11.5px; color:var(--faint); font-weight:600">{{ f.label }}</span>
+                      <span style="font-size:15px; font-weight:700">{{ f.value }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex; gap:9px">
+                  <button style="height:36px; padding:0 16px; border:none; background:var(--accent); color:#fff; border-radius:10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer">Reconocer</button>
+                  <button style="height:36px; padding:0 14px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer">Silenciar 1 h</button>
+                  <button style="height:36px; padding:0 14px; border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:10px; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer">Archivar</button>
+                </div>
+                <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:8px">
+                  <div style="font-size:13px; font-weight:700; color:var(--dim)">Cronología de las 14 ocurrencias</div>
+                  <sc-for list="{{ occurrences }}" as="o" hint-placeholder-count="6">
+                    <div style="display:flex; align-items:center; gap:14px; padding:7px 0; border-top:1px solid var(--line)">
+                      <span style="width:9px; height:9px; border-radius:50%; background:var(--warn); flex:none"></span>
+                      <span style="font-size:12.5px; color:var(--dim); width:118px">{{ o.time }}</span>
+                      <span style="font-size:13px; font-weight:700; width:70px">{{ o.value }}</span>
+                      <span style="font-size:12.5px; color:var(--faint); flex:1">{{ o.ctx }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- PRUEBAS -->
+          <sc-if value="{{ bTests }}" hint-placeholder-val="{{ false }}">
+            <div style="min-height:100%; box-sizing:border-box; padding:22px; display:flex; flex-direction:column; gap:16px">
+              <div style="display:flex; align-items:flex-end; gap:14px">
+                <div style="display:flex; flex-direction:column; gap:3px">
+                  <div style="font-size:20px; font-weight:800; letter-spacing:-.02em">Pruebas y diagnóstico</div>
+                  <div style="font-size:12.5px; color:var(--dim)">Todas las pruebas piden confirmación y avisan del impacto antes de empezar.</div>
+                </div>
+                <div style="flex:1"></div>
+                <button style="height:34px; padding:0 14px; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:10px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer; box-shadow:var(--shadow)">Exportar informe</button>
+                <button style="height:34px; padding:0 14px; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:10px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer; box-shadow:var(--shadow)">ZIP de diagnóstico</button>
+              </div>
+
+              <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px">
+                <sc-for list="{{ testCards }}" as="t" hint-placeholder-count="3">
+                  <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:18px; display:flex; flex-direction:column; gap:9px">
+                    <div style="display:flex; align-items:center; gap:9px"><span style="font-size:15px; font-weight:700">{{ t.title }}</span><span style="flex:1"></span><span style="{{ t.pillB }}">{{ t.chip }}</span></div>
+                    <div style="font-size:12.5px; line-height:1.55; color:var(--dim); min-height:60px; text-wrap:pretty">{{ t.desc }}</div>
+                    <button style="{{ t.btnB }}">{{ t.cta }}</button>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:20px; display:flex; flex-direction:column; gap:14px">
+                <div style="display:flex; align-items:center; gap:12px">
+                  <div style="display:flex; flex-direction:column; gap:2px">
+                    <div style="font-size:15px; font-weight:700">Prueba de lectura y escritura en curso</div>
+                    <div style="font-size:12.5px; color:var(--dim)">Samsung 990 PRO 2TB → volumen C: · archivo temporal de 2 GiB, se elimina al terminar</div>
+                  </div>
+                  <div style="flex:1"></div>
+                  <button style="height:34px; padding:0 15px; border:1px solid var(--crit); background:var(--crit-soft); color:var(--crit); border-radius:10px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer">Cancelar</button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:7px">
+                  <div style="height:10px; border-radius:6px; background:var(--raise); overflow:hidden"><div style="height:100%; width:62%; border-radius:6px; background:var(--accent)"></div></div>
+                  <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--dim)"><span>Escritura secuencial · verificando patrón por bloques</span><span style="font-weight:700; color:var(--text)">62 % · quedan 48 s</span></div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:14px">
+                  <sc-for list="{{ benchMetrics }}" as="b" hint-placeholder-count="5">
+                    <div style="border-radius:11px; background:var(--panel2); padding:13px 15px; display:flex; flex-direction:column; gap:3px">
+                      <span style="font-size:11.5px; color:var(--faint); font-weight:600">{{ b.label }}</span>
+                      <span style="font-size:21px; font-weight:800; letter-spacing:-.02em; color:{{ b.color }}">{{ b.value }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="padding:13px 15px; border-radius:11px; background:var(--warn-soft); display:flex; gap:10px; align-items:flex-start">
+                  <span style="width:18px; height:18px; border-radius:50%; background:var(--warn); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; flex:none">!</span>
+                  <span style="font-size:12.5px; line-height:1.55; color:var(--text); text-wrap:pretty">La prueba se detiene sola si el disco llega a 80 °C o si el espacio libre baja de la reserva de 10 GB. Mientras dure, el rendimiento del equipo puede bajar.</span>
+                </div>
+              </div>
+
+              <div style="border-radius:14px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:18px 20px; display:flex; flex-direction:column; gap:8px">
+                <div style="font-size:14px; font-weight:700">Historial de pruebas</div>
+                <sc-for list="{{ testRuns }}" as="r" hint-placeholder-count="4">
+                  <div style="display:grid; grid-template-columns:120px 150px 1.3fr 1fr 110px; gap:14px; align-items:center; padding:9px 0; border-top:1px solid var(--line)">
+                    <span style="font-size:12.5px; color:var(--dim)">{{ r.date }}</span>
+                    <span style="font-size:13px; font-weight:700">{{ r.typeB }}</span>
+                    <span style="font-size:12.5px; color:var(--dim)">{{ r.target }}</span>
+                    <span style="font-size:12.5px; color:var(--dim)">{{ r.result }}</span>
+                    <span style="{{ r.pillB }}">{{ r.status }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = { thA: "a-dark", thB: "b-light", sA: "panel", sB: "panel" };
+
+  navItem(active, key) {
+    return "display:flex; align-items:center; gap:9px; width:100%; padding:7px 14px; border:none; background:" +
+      (active ? "var(--panel2)" : "transparent") + "; color:" + (active ? "var(--text)" : "var(--dim)") +
+      "; font-size:12.5px; font-weight:" + (active ? "600" : "400") + "; font-family:inherit; cursor:pointer; text-align:left; border-left:2px solid " +
+      (active ? "var(--accent)" : "transparent");
+  }
+
+  tabB(active) {
+    return "display:flex; align-items:center; gap:7px; height:36px; padding:0 14px; border:none; background:transparent; color:" +
+      (active ? "var(--text)" : "var(--dim)") + "; font-size:13.5px; font-weight:700; font-family:inherit; cursor:pointer; border-bottom:2.5px solid " +
+      (active ? "var(--accent)" : "transparent");
+  }
+
+  themeBtn(active, radius) {
+    return "height:26px; padding:0 12px; border:none; background:" + (active ? "#14161c" : "#fff") + "; color:" +
+      (active ? "#fff" : "#4b5563") + "; font-size:12px; font-weight:600; font-family:inherit; cursor:pointer;" +
+      (radius ? " border-radius:0;" : "");
+  }
+
+  series(n, w, h, seed, base, amp) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const v = base + amp * (Math.sin(i * seed) * 0.5 + Math.sin(i * seed * 0.37 + 1.2) * 0.3 + Math.sin(i * 0.11) * 0.35);
+      pts.push([+(t * w).toFixed(1), +(h - v * h).toFixed(1)]);
+    }
+    return pts;
+  }
+
+  renderVals() {
+    const S = this.state;
+    const set = (k, v) => () => this.setState({ [k]: v });
+
+    const navA = [
+      { key: "01", label: "Panel general", k: "panel" },
+      { key: "02", label: "Discos", k: "disk", badge: "5" },
+      { key: "03", label: "Alertas", k: "alerts", badge: "3" },
+      { key: "04", label: "Pruebas", k: "tests" },
+      { key: "05", label: "Informes", k: "reports" },
+      { key: "06", label: "Configuración", k: "settings" }
+    ].map(n => ({
+      key: n.key, label: n.label, badge: n.badge || "",
+      go: set("sA", n.k === "reports" || n.k === "settings" ? S.sA : n.k),
+      style: this.navItem(S.sA === n.k || (n.k === "alerts" && S.sA === "alerts")),
+      badgeStyle: n.badge ? "font-family:'IBM Plex Mono',monospace; font-size:10px; padding:1px 5px; border-radius:2px; background:var(--raise); color:var(--dim)" : "display:none"
+    }));
+
+    const navB = [
+      { label: "Panel", k: "panel" },
+      { label: "Discos", k: "disk" },
+      { label: "Alertas", k: "alerts", badge: "3" },
+      { label: "Pruebas", k: "tests" },
+      { label: "Informes", k: "reports" },
+      { label: "Ajustes", k: "settings" }
+    ].map(n => ({
+      label: n.label, badge: n.badge || "",
+      go: set("sB", n.k === "reports" || n.k === "settings" ? S.sB : n.k),
+      style: this.tabB(S.sB === n.k),
+      badgeStyle: n.badge ? "padding:1px 7px; border-radius:999px; background:var(--warn-soft); color:var(--warn); font-size:11px; font-weight:800" : "display:none"
+    }));
+
+    const statusA = [
+      { label: "Correctos", value: "3", color: "var(--ok)", note: "NVMe + SATA + HDD" },
+      { label: "Advertencias", value: "1", color: "var(--warn)", note: "temperatura sostenida" },
+      { label: "Críticos", value: "0", color: "var(--crit)", note: "sin alertas críticas" },
+      { label: "No compatibles", value: "1", color: "var(--unk)", note: "USB sin SMART" },
+      { label: "Sucesos 24 h", value: "12", color: "var(--accent)", note: "1 grave · 11 informativos" }
+    ];
+    const statusB = [
+      { label: "correctos", value: "3", color: "var(--ok)" },
+      { label: "con advertencia", value: "1", color: "var(--warn)" },
+      { label: "críticos", value: "0", color: "var(--crit)" },
+      { label: "sin datos SMART", value: "1", color: "var(--unk)" }
+    ];
+
+    const raw = [
+      { model: "Samsung 990 PRO 2TB", alias: "Sistema", type: "NVMe PCIe 4.0", meta: "NVMe · S/N S6Z1••••8K · FW 4B2QJXD7", state: "Correcto", color: "var(--ok)", temp: "46 °C", wear: "3 %", act: "12 %", actPct: "12%", vol: "C: · 1,21 TB libres de 1,86 TB", free: "1,21 TB libres", usedPct: "35%", freeColor: "var(--ok)", hours: "4 128 h", tempColor: "var(--text)" },
+      { model: "Crucial MX500 1TB", alias: "Datos", type: "SATA SSD", meta: "SATA · S/N 2149E6••••42 · FW M3CR046", state: "Advertencia", color: "var(--warn)", temp: "71 °C", wear: "18 %", act: "64 %", actPct: "64%", vol: "D: · 96 GB libres de 931 GB", free: "96 GB libres", usedPct: "90%", freeColor: "var(--warn)", hours: "21 470 h", tempColor: "var(--warn)" },
+      { model: "Seagate IronWolf 4TB", alias: "Copias", type: "HDD 5900 rpm", meta: "SATA · S/N ZGY••••7Q · FW SC61", state: "Correcto", color: "var(--ok)", temp: "38 °C", wear: "No disp.", act: "3 %", actPct: "3%", vol: "E: · 2,4 TB libres de 3,64 TB", free: "2,4 TB libres", usedPct: "34%", freeColor: "var(--ok)", hours: "33 902 h", tempColor: "var(--text)" },
+      { model: "WD Elements 5TB (USB)", alias: "Externo", type: "USB · sin SMART", meta: "USB bridge · SMART no compatible", state: "No compatible", color: "var(--unk)", temp: "No disp.", wear: "No disp.", act: "0 %", actPct: "0%", vol: "F: · 402 GB libres de 4,55 TB", free: "402 GB libres", usedPct: "91%", freeColor: "var(--crit)", hours: "No disp.", tempColor: "var(--dim)" }
+    ];
+
+    const disks = raw.map((d, i) => Object.assign({}, d, {
+      rowA: "display:grid; grid-template-columns:26px 2.1fr 88px 76px 80px 78px 1.25fr 96px; gap:0; align-items:center; padding:9px 12px; border-bottom:1px solid var(--line); background:" + (i === 1 ? "var(--panel2)" : "transparent")
+    }));
+
+    const pillB = (color, soft) => "padding:3px 10px; border-radius:999px; background:" + soft + "; color:" + color + "; font-size:11.5px; font-weight:700; white-space:nowrap";
+    const disksB = raw.map(d => Object.assign({}, d, {
+      pill: d.state === "Correcto" ? pillB("var(--ok)", "var(--ok-soft)") : d.state === "Advertencia" ? pillB("var(--warn)", "var(--warn-soft)") : pillB("var(--unk)", "var(--unk-soft)"),
+      state: d.state === "No compatible" ? "Sin datos SMART" : d.state
+    }));
+
+    const alertsRaw = [
+      { sev: "ADVERTENCIA", sevB: "Advertencia", color: "var(--warn)", chipBg: "var(--warn-soft)", title: "Temperatura sobre el límite del fabricante", rule: "temp_above_vendor_limit · dev:2149E6••••42", meta: "Datos (MX500) · 71 °C / 70 °C · última 12:38", metaB: "Datos · 71 °C sobre el límite de 70 °C · última vez a las 12:38", count: "14", status: "ACTIVA", active: true },
+      { sev: "ADVERTENCIA", sevB: "Advertencia", color: "var(--warn)", chipBg: "var(--warn-soft)", title: "Poco espacio libre en F:", rule: "volume_low_space · vol:F:", meta: "Externo · 402 GB (8,6 %) < 10 % · última 11:02", metaB: "Externo · quedan 402 GB (8,6 %), umbral 10 %", count: "2", status: "RECONOCIDA" },
+      { sev: "ADVERTENCIA", sevB: "Advertencia", color: "var(--warn)", chipBg: "var(--warn-soft)", title: "Reintentos del controlador de disco", rule: "storage_driver_retry · provider:storahci", meta: "Datos (MX500) · 6 sucesos en 24 h", metaB: "Datos · 6 reintentos del controlador en las últimas 24 h", count: "6", status: "ACTIVA" },
+      { sev: "CRÍTICA", sevB: "Crítica", color: "var(--crit)", chipBg: "var(--crit-soft)", title: "Errores de medios incrementados", rule: "media_errors_increase · dev:S6Z1••••8K", meta: "Sistema (990 PRO) · resuelta 04:55 del 02/09", metaB: "Sistema · resuelta automáticamente el 02/09 a las 04:55", count: "1", status: "RESUELTA" },
+      { sev: "INFO", sevB: "Informativa", color: "var(--unk)", chipBg: "var(--unk-soft)", title: "SMART ilegible en disco USB", rule: "smart_unreadable · dev:usb-bridge", meta: "Externo · no compatible, sin alerta activa", metaB: "Externo · el puente USB no expone SMART; no cuenta como avería", count: "3", status: "ARCHIVADA" }
+    ];
+    const alertsFull = alertsRaw.map((a, i) => Object.assign({}, a, {
+      rowStyle: "padding:11px 14px; border-bottom:1px solid var(--line); display:flex; gap:11px; align-items:flex-start; background:" + (i === 0 ? "var(--panel2)" : "transparent"),
+      cardB: "border-radius:13px; padding:14px 16px; display:flex; flex-direction:column; gap:6px; cursor:pointer; border:1px solid " + (i === 0 ? "var(--accent)" : "var(--line)") + "; background:var(--panel); box-shadow:var(--shadow)"
+    }));
+    const alertsShort = alertsRaw.slice(0, 3);
+
+    const alertFilters = ["Activas 3", "Reconocidas 1", "Resueltas 1", "Archivadas 3", "Todas"].map((l, i) => ({
+      label: l,
+      style: "font-family:'IBM Plex Mono',monospace; font-size:10.5px; padding:4px 8px; border-radius:3px; border:1px solid var(--line); cursor:pointer; background:" + (i === 0 ? "var(--accent)" : "transparent") + "; color:" + (i === 0 ? "var(--accent-ink)" : "var(--dim)")
+    }));
+    const alertFiltersB = ["Activas", "Reconocidas", "Resueltas", "Archivadas"].map((l, i) => ({
+      label: l,
+      style: "padding:5px 11px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; background:" + (i === 0 ? "var(--accent-soft)" : "transparent") + "; color:" + (i === 0 ? "var(--accent)" : "var(--dim)")
+    }));
+
+    const alertFacts = [
+      { label: "Valor actual", value: "71 °C" },
+      { label: "Umbral", value: "70 °C" },
+      { label: "Ocurrencias", value: "14" },
+      { label: "Desde", value: "Hoy 09:12" }
+    ];
+
+    const occurrences = [
+      { time: "04/09 12:38:00", value: "71 °C", ctx: "activity 64 % · benchmark inactivo" },
+      { time: "04/09 12:07:30", value: "70 °C", ctx: "activity 58 % · copia programada" },
+      { time: "04/09 11:41:00", value: "71 °C", ctx: "activity 71 % · copia programada" },
+      { time: "04/09 10:52:30", value: "70 °C", ctx: "activity 44 %" },
+      { time: "04/09 10:18:00", value: "72 °C", ctx: "activity 80 % · pico de escritura" },
+      { time: "04/09 09:44:30", value: "70 °C", ctx: "activity 39 %" },
+      { time: "04/09 09:12:30", value: "70 °C", ctx: "primera ocurrencia del ciclo" }
+    ];
+
+    const eventsShort = [
+      { time: "12:31", level: "ERROR", color: "var(--crit)", provider: "disk", id: "153", msg: "Se reintentó la operación de E/S en el dispositivo \\Device\\Harddisk1\\DR1", pill: pillB("var(--crit)", "var(--crit-soft)") },
+      { time: "11:58", level: "AVISO", color: "var(--warn)", provider: "storahci", id: "129", msg: "Se restableció el dispositivo de puerto de almacenamiento", pill: pillB("var(--warn)", "var(--warn-soft)") },
+      { time: "10:22", level: "INFO", color: "var(--unk)", provider: "Ntfs", id: "98", msg: "El volumen D: se comprobó correctamente al montarse", pill: pillB("var(--unk)", "var(--unk-soft)") },
+      { time: "09:14", level: "INFO", color: "var(--unk)", provider: "PartMgr", id: "1006", msg: "Se detectó un nuevo disco: WD Elements 5TB (asociación inferida)", pill: pillB("var(--unk)", "var(--unk-soft)") }
+    ];
+
+    const metricsA = [
+      { key: "HEALTH_PASSED", value: "PASSED", src: "smartctl · exact", color: "var(--ok)" },
+      { key: "TEMPERATURE", value: "71 °C", src: "smartctl · exact", color: "var(--warn)" },
+      { key: "PERCENTAGE_USED", value: "18 %", src: "smartctl · exact", color: "var(--text)" },
+      { key: "POWER_ON_HOURS", value: "21 470", src: "smartctl · exact", color: "var(--text)" },
+      { key: "MEDIA_ERRORS", value: "0", src: "smartctl · exact", color: "var(--text)" },
+      { key: "VOLUME_FREE", value: "96 GB", src: "filesystem · exact", color: "var(--warn)" }
+    ];
+    const metricsB = [
+      { label: "Salud del firmware", value: "Correcta", src: "smartctl · lectura exacta", color: "var(--ok)" },
+      { label: "Temperatura actual", value: "71 °C", src: "límite del fabricante 70 °C", color: "var(--warn)" },
+      { label: "Desgaste", value: "18 %", src: "quedan ~82 % de vida estimada", color: "var(--text)" },
+      { label: "Horas encendido", value: "21 470 h", src: "2 448 ciclos de encendido", color: "var(--text)" }
+    ];
+
+    const smartRows = [
+      { key: "power_cycles", label: "Ciclos de encendido", val: "2 448", delta: "+1", color: "var(--dim)" },
+      { key: "unsafe_shutdowns", label: "Apagados inseguros", val: "37", delta: "+0", color: "var(--dim)" },
+      { key: "media_errors_total", label: "Errores de medios", val: "0", delta: "+0", color: "var(--ok)" },
+      { key: "error_log_entries_total", label: "Entradas del registro de errores", val: "12", delta: "+3", color: "var(--warn)" },
+      { key: "data_written_bytes_total", label: "Datos escritos", val: "142 TB", delta: "+0,4 TB", color: "var(--dim)" }
+    ];
+
+    const testCards = [
+      { key: "BENCHMARK", title: "Lectura y escritura", chip: "En curso", chipBg: "var(--accent)", chipFg: "var(--accent-ink)", desc: "Crea un archivo temporal nuevo, escribe, sincroniza, lee y verifica el patrón. Nunca sobrescribe archivos existentes.", cta: "Ver progreso", primary: true, pillB: pillB("var(--accent)", "var(--accent-soft)") },
+      { key: "CHKDSK_SCAN", title: "Escaneo del sistema de archivos", chip: "Disponible", chipBg: "var(--raise)", chipFg: "var(--dim)", desc: "Ejecuta chkdsk /scan en línea sobre un volumen NTFS compatible y conserva la salida completa. Sin opciones de reparación.", cta: "Configurar y ejecutar", pillB: pillB("var(--dim)", "var(--unk-soft)") },
+      { key: "SMART_SHORT", title: "Autotest SMART corto", chip: "No soportado en 1 disco", chipBg: "var(--raise)", chipFg: "var(--unk)", desc: "Solicita al firmware su autotest corto. Solo se habilita si el dispositivo declara compatibilidad; no puede coincidir con el benchmark.", cta: "Elegir disco", pillB: pillB("var(--unk)", "var(--unk-soft)") }
+    ].map(t => ({
+      key: t.key, title: t.title, chip: t.chip, chipBg: t.chipBg, chipFg: t.chipFg, desc: t.desc, cta: t.cta, pillB: t.pillB,
+      btnStyle: "height:28px; border-radius:4px; font-size:12px; font-family:inherit; cursor:pointer; font-weight:600; border:1px solid " +
+        (t.primary ? "transparent" : "var(--line)") + "; background:" + (t.primary ? "var(--accent)" : "var(--panel2)") + "; color:" + (t.primary ? "var(--accent-ink)" : "var(--text)"),
+      btnB: "height:36px; border-radius:10px; font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer; border:" +
+        (t.primary ? "none" : "1px solid var(--line)") + "; background:" + (t.primary ? "var(--accent)" : "var(--panel2)") + "; color:" + (t.primary ? "#fff" : "var(--text)")
+    }));
+
+    const benchMetrics = [
+      { key: "WRITE_MB_S", label: "Escritura", value: "3 148", color: "var(--text)" },
+      { key: "READ_MB_S", label: "Lectura", value: "5 022", color: "var(--text)" },
+      { key: "LATENCY_MS", label: "Latencia media", value: "0,21", color: "var(--text)" },
+      { key: "TEMP_C", label: "Temperatura", value: "58 °C", color: "var(--warn)" },
+      { key: "VERIFIED", label: "Bloques verificados", value: "100 %", color: "var(--ok)" }
+    ];
+
+    const testRuns = [
+      { date: "04/09 12:40", type: "benchmark", typeB: "Lectura/escritura", target: "Samsung 990 PRO → C:", result: "62 % · 2 GiB", status: "EN CURSO", color: "var(--accent)", pillB: pillB("var(--accent)", "var(--accent-soft)") },
+      { date: "03/09 21:12", type: "chkdsk_scan", typeB: "chkdsk /scan", target: "Volumen D: (NTFS)", result: "Sin errores encontrados", status: "COMPLETADA", color: "var(--ok)", pillB: pillB("var(--ok)", "var(--ok-soft)") },
+      { date: "02/09 18:03", type: "smart_short", typeB: "Autotest corto", target: "Crucial MX500 1TB", result: "Completed without error", status: "COMPLETADA", color: "var(--ok)", pillB: pillB("var(--ok)", "var(--ok-soft)") },
+      { date: "01/09 09:47", type: "benchmark", typeB: "Lectura/escritura", target: "Seagate IronWolf → E:", result: "Detenida en umbral térmico", status: "CANCELADA", color: "var(--warn)", pillB: pillB("var(--warn)", "var(--warn-soft)") }
+    ].map(r => ({ date: r.date, type: r.type, typeB: r.typeB, target: r.target, result: r.result, status: r.status, color: r.color, pillB: r.pillB + "; text-align:center" }));
+
+    const tempPts = this.series(70, 900, 190, 0.42, 0.42, 0.2);
+    const tempLine = tempPts.map(p => p[0] + "," + p[1]).join(" ");
+    const tempArea = "0,190 " + tempLine + " 900,190";
+    const tempPtsB = this.series(70, 780, 220, 0.42, 0.42, 0.2);
+    const tempLineB = tempPtsB.map(p => p[0] + "," + p[1]).join(" ");
+    const tempAreaB = "0,220 " + tempLineB + " 780,220";
+
+    const actBars = [];
+    for (let i = 0; i < 44; i++) {
+      const h = 18 + Math.abs(Math.sin(i * 0.7) * 62 + Math.sin(i * 0.23) * 22);
+      actBars.push({ x: (i * 10).toFixed(0), y: (108 - h).toFixed(1), h: h.toFixed(1) });
+    }
+    const latLine = this.series(44, 440, 108, 0.55, 0.3, 0.12).map(p => p[0] + "," + p[1]).join(" ");
+
+    return {
+      thA: S.thA, thB: S.thB,
+      aDark: set("thA", "a-dark"), aLight: set("thA", "a-light"),
+      bDark: set("thB", "b-dark"), bLight: set("thB", "b-light"),
+      aDarkBtn: this.themeBtn(S.thA === "a-dark"), aLightBtn: this.themeBtn(S.thA === "a-light"),
+      bDarkBtn: this.themeBtn(S.thB === "b-dark"), bLightBtn: this.themeBtn(S.thB === "b-light"),
+      aPanel: S.sA === "panel", aDisk: S.sA === "disk", aAlerts: S.sA === "alerts", aTests: S.sA === "tests",
+      bPanel: S.sB === "panel", bDisk: S.sB === "disk", bAlerts: S.sB === "alerts", bTests: S.sB === "tests",
+      navA, navB, statusA, statusB, disks, disksB,
+      alertsFull, alertsShort, alertFilters, alertFiltersB, alertFacts, occurrences, eventsShort,
+      metricsA, metricsB, smartRows, testCards, benchMetrics, testRuns,
+      tempLine, tempArea, tempLineB, tempAreaB, actBars, latLine
+    };
+  }
+}
+</script>
+</body>
+</html>

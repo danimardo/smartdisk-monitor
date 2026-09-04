@@ -1,0 +1,141 @@
+# Puertas de calidad de la constitución (§ Puertas de calidad).
+#
+# Cada trabajo implementa una puerta que bloquea la integración. Ninguna es opcional ni se puede
+# saltar con una etiqueta en el commit: si algo aquí no puede cumplirse, se enmienda la
+# constitución, no el workflow.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Una compilación jamás resuelve versiones por su cuenta (constitución, Política de versiones).
+  CI: true
+
+jobs:
+  frontend:
+    name: Interfaz
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Instalar sin resolver versiones
+        run: pnpm install --frozen-lockfile
+
+      - name: Recursos redistribuidos (hashes de tipografía y smartctl)
+        run: pnpm verify:assets
+
+      - name: Sistema de diseño (cero valores visuales literales)
+        run: pnpm verify:tokens
+
+      - name: Diccionarios sincronizados
+        run: pnpm verify:i18n
+
+      - name: Fronteras, entorno y silencios
+        # Principios XI, XII y XIII: ninguna aserción de tipo sobre datos de IPC, ningún
+        # process.env ni $env/* en la aplicación, ningún silencio sin entrada en known-issues.md.
+        run: pnpm verify:boundaries
+
+      - name: Formato
+        run: pnpm exec prettier --check .
+
+      - name: ESLint
+        # No solapa con svelte-check (§XIII): aporta lo que aquel no ve, sobre todo promesas sin
+        # gestionar, que en una aplicación de larga ejecución no fallan al momento sino que se
+        # acumulan hasta que alguien reporta que "va lenta".
+        run: pnpm exec eslint .
+
+      - name: Tipos y accesibilidad
+        # Principio XIII: va ANTES que las pruebas y la compilación. Un error de tipos hace inútil
+        # todo lo que venga después. Cero errores Y cero avisos: un aviso de accesibilidad ignorado
+        # es un incumplimiento del principio VII, no una molestia.
+        run: pnpm check
+
+      - name: Pruebas y cobertura
+        # Los umbrales del principio VIII están en vitest.config.ts y hacen fallar este paso.
+        run: pnpm test:coverage
+
+      - name: Compilación del frontend
+        run: pnpm build
+
+  backend:
+    name: Backend
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain fijado en rust-toolchain.toml
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Formato
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy sin avisos
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Pruebas
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: Cobertura del dominio
+        working-directory: src-tauri
+        # Constitución §VIII: 90 % en domain/ y alerts/, 80 % en el resto.
+        # `--fail-under-lines` bloquea; los umbrales por módulo se revisan en el informe.
+        run: |
+          cargo install cargo-llvm-cov --locked
+          cargo llvm-cov --locked --lcov --output-path lcov.info --fail-under-lines 80
+
+  documentacion:
+    name: Documentación
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: El consolidado está al día
+        # Si alguien cambia un documento normativo y no regenera historias.md, el consolidado
+        # miente. Es la fuente que se entrega entera, así que no puede ir por detrás.
+        run: python tools/build-historias.py --check
+
+  permisos:
+    name: Permisos de Tauri
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ningún permiso nuevo sin su ADR
+        # Constitución §IX: cada permiso de Tauri nuevo exige una entrada en docs/decisions.md.
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^src-tauri/capabilities/'; then
+            if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^docs/decisions.md$'; then
+              echo "Se han tocado las capacidades de Tauri sin añadir la decisión correspondiente."
+              echo "Constitución §IX: todo permiso nuevo necesita su ADR en docs/decisions.md."
+              exit 1
+            fi
+          fi

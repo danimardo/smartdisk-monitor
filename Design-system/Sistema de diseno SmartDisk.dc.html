@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; font-family: "Manrope", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  [data-theme="light"] { --sdm-bg:#f3f3f7; --sdm-surface:#fff; --sdm-surface-2:#f7f7fb; --sdm-surface-3:#efeff6; --sdm-border:#e4e4ee; --sdm-text:#191922; --sdm-text-dim:#6b6b7d; --sdm-text-faint:#9a9aae; --sdm-text-on-accent:#fff; --sdm-accent:#5b4ef0; --sdm-accent-hover:#4a3ce0; --sdm-accent-soft:#eeecff; --sdm-ok:#1f9d68; --sdm-ok-soft:#e6f7ef; --sdm-warn:#c07a09; --sdm-warn-soft:#fdf3e0; --sdm-crit:#d4444f; --sdm-crit-soft:#fdecee; --sdm-unknown:#8b8b9c; --sdm-unknown-soft:#f0f0f5; --sdm-shadow-card:0 1px 3px rgba(25,25,34,.07), 0 8px 24px -12px rgba(25,25,34,.12); --sdm-shadow-overlay:0 20px 60px -20px rgba(25,25,34,.35); }
+  [data-theme="dark"] { --sdm-bg:#12121a; --sdm-surface:#1c1c26; --sdm-surface-2:#22222e; --sdm-surface-3:#282836; --sdm-border:#2f2f3f; --sdm-text:#f1f0f6; --sdm-text-dim:#a0a0b4; --sdm-text-faint:#75758a; --sdm-text-on-accent:#12121a; --sdm-accent:#9186ff; --sdm-accent-hover:#a49bff; --sdm-accent-soft:#2a2745; --sdm-ok:#4bd39a; --sdm-ok-soft:#17322a; --sdm-warn:#f0b95a; --sdm-warn-soft:#33291a; --sdm-crit:#f47a84; --sdm-crit-soft:#3a1f24; --sdm-unknown:#8b8b9c; --sdm-unknown-soft:#282834; --sdm-shadow-card:0 1px 3px rgba(0,0,0,.4), 0 10px 30px -12px rgba(0,0,0,.6); --sdm-shadow-overlay:0 24px 70px -20px rgba(0,0,0,.75); }
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="min-height:100vh; background:var(--sdm-bg); color:var(--sdm-text); padding:40px 48px 96px">
+  <div style="max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:36px">
+
+    <header style="display:flex; align-items:flex-start; gap:20px">
+      <div style="display:flex; flex-direction:column; gap:8px; flex:1">
+        <span style="font-size:12px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--sdm-text-faint)">Sistema de diseño · dirección 1b</span>
+        <h1 style="margin:0; font-size:34px; font-weight:800; letter-spacing:-.03em; line-height:1.1">SmartDisk Monitor</h1>
+        <p style="margin:0; max-width:640px; font-size:14px; line-height:1.6; color:var(--sdm-text-dim); text-wrap:pretty">Tokens, componentes y reglas que consumirá el agente al generar la aplicación. Cada bloque de abajo se corresponde con un archivo real del repositorio.</p>
+      </div>
+      <div style="display:flex; padding:3px; border-radius:10px; background:var(--sdm-surface-3); gap:2px">
+        <button onClick="{{ setLight }}" style="{{ lightBtn }}">Claro</button>
+        <button onClick="{{ setDark }}" style="{{ darkBtn }}">Oscuro</button>
+      </div>
+    </header>
+
+    <!-- COLOR -->
+    <section style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; align-items:baseline; gap:12px">
+        <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Color</h2>
+        <code style="font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--sdm-text-faint)">design-system/tokens.css</code>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:14px">
+        <sc-for list="{{ semantic }}" as="s" hint-placeholder-count="5">
+          <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:16px; display:flex; flex-direction:column; gap:9px">
+            <div style="display:flex; align-items:center; gap:9px">
+              <span style="width:26px; height:26px; border-radius:8px; background:{{ s.fg }}"></span>
+              <span style="height:26px; flex:1; border-radius:8px; background:{{ s.soft }}; border:1px solid var(--sdm-border)"></span>
+            </div>
+            <div style="font-size:13.5px; font-weight:700">{{ s.name }}</div>
+            <div style="font-size:12px; line-height:1.5; color:var(--sdm-text-dim); text-wrap:pretty">{{ s.use }}</div>
+            <code style="font-family:ui-monospace,Consolas,monospace; font-size:11px; color:var(--sdm-text-faint)">{{ s.token }}</code>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(8,1fr); gap:10px">
+        <sc-for list="{{ neutrals }}" as="n" hint-placeholder-count="8">
+          <div style="display:flex; flex-direction:column; gap:7px">
+            <div style="height:52px; border-radius:10px; background:{{ n.value }}; border:1px solid var(--sdm-border)"></div>
+            <code style="font-family:ui-monospace,Consolas,monospace; font-size:10.5px; color:var(--sdm-text-dim)">{{ n.token }}</code>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- TIPOGRAFÍA + FORMA -->
+    <section style="display:grid; grid-template-columns:1.5fr 1fr; gap:16px">
+      <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:14px">
+        <div style="display:flex; align-items:baseline; gap:10px"><h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Tipografía</h2><span style="font-size:12px; color:var(--sdm-text-faint)">Manrope · 400 / 600 / 700 / 800</span></div>
+        <sc-for list="{{ typeScale }}" as="t" hint-placeholder-count="6">
+          <div style="display:flex; align-items:baseline; gap:16px; border-top:1px solid var(--sdm-border); padding-top:11px">
+            <span style="{{ t.style }}">{{ t.sample }}</span>
+            <span style="flex:1"></span>
+            <code style="font-family:ui-monospace,Consolas,monospace; font-size:11px; color:var(--sdm-text-faint)">{{ t.token }}</code>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px">
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Radios</h2>
+          <div style="display:flex; gap:10px; align-items:flex-end">
+            <sc-for list="{{ radii }}" as="r" hint-placeholder-count="5">
+              <div style="display:flex; flex-direction:column; gap:6px; align-items:center">
+                <div style="width:54px; height:44px; background:var(--sdm-surface-3); border:1px solid var(--sdm-border); border-radius:{{ r.value }}"></div>
+                <code style="font-family:ui-monospace,Consolas,monospace; font-size:10px; color:var(--sdm-text-faint)">{{ r.name }}</code>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Espaciado</h2>
+          <sc-for list="{{ spacing }}" as="s" hint-placeholder-count="6">
+            <div style="display:flex; align-items:center; gap:12px">
+              <div style="height:10px; border-radius:3px; background:var(--sdm-accent); width:{{ s.value }}"></div>
+              <code style="font-family:ui-monospace,Consolas,monospace; font-size:11px; color:var(--sdm-text-faint)">{{ s.name }}</code>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMPONENTES -->
+    <section style="display:flex; flex-direction:column; gap:16px">
+      <div style="display:flex; align-items:baseline; gap:12px">
+        <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Componentes</h2>
+        <code style="font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--sdm-text-faint)">src/lib/components/</code>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+        <!-- Button -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">Button</span><span style="font-size:12px; color:var(--sdm-text-dim)">Una sola variante primary por pantalla. Deshabilitado siempre con motivo.</span></div>
+          <div style="display:flex; flex-wrap:wrap; gap:9px; align-items:center">
+            <button style="height:34px; padding:0 16px; border:1px solid transparent; border-radius:10px; background:var(--sdm-accent); color:var(--sdm-text-on-accent); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer">Actualizar ahora</button>
+            <button style="height:34px; padding:0 16px; border:1px solid var(--sdm-border); border-radius:10px; background:var(--sdm-surface-2); color:var(--sdm-text); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer">Exportar informe</button>
+            <button style="height:34px; padding:0 14px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--sdm-text-dim); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer">Cancelar</button>
+            <button style="height:34px; padding:0 16px; border:1px solid var(--sdm-crit); border-radius:10px; background:var(--sdm-crit-soft); color:var(--sdm-crit); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer">Borrar historial</button>
+            <button title="El dispositivo no declara compatibilidad" style="height:34px; padding:0 16px; border:1px solid var(--sdm-border); border-radius:10px; background:var(--sdm-surface-2); color:var(--sdm-text); font-family:inherit; font-size:13px; font-weight:700; opacity:.5; cursor:not-allowed">Autotest corto</button>
+          </div>
+        </div>
+
+        <!-- Pills + dots -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">StatusPill · StatusDot</span><span style="font-size:12px; color:var(--sdm-text-dim)">El color nunca es el único portador de significado: siempre etiqueta.</span></div>
+          <div style="display:flex; flex-wrap:wrap; gap:9px">
+            <sc-for list="{{ pills }}" as="p" hint-placeholder-count="4">
+              <span style="display:inline-flex; align-items:center; padding:4px 12px; border-radius:999px; background:{{ p.soft }}; color:{{ p.fg }}; font-size:11px; font-weight:700">{{ p.label }}</span>
+            </sc-for>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:16px">
+            <sc-for list="{{ pills }}" as="p" hint-placeholder-count="4">
+              <span style="display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--sdm-text-dim)"><span style="width:9px; height:9px; border-radius:50%; background:{{ p.fg }}"></span>{{ p.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- MetricCard -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">MetricCard</span><span style="font-size:12px; color:var(--sdm-text-dim)">Cifra, estado y procedencia. Un dato ausente dice «No disponible», nunca 0.</span></div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px">
+            <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="3">
+              <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); padding:15px 16px; display:flex; flex-direction:column; gap:4px">
+                <span style="font-size:12px; font-weight:600; color:var(--sdm-text-dim)">{{ m.label }}</span>
+                <span style="font-size:27px; font-weight:800; letter-spacing:-.03em; font-variant-numeric:tabular-nums; color:{{ m.color }}">{{ m.value }}</span>
+                <span style="font-size:11px; color:var(--sdm-text-faint)">{{ m.src }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- Nav + segmented -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:14px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">TabNav · SegmentedControl</span><span style="font-size:12px; color:var(--sdm-text-dim)">Navegación superior con contador. Sin barra lateral en paralelo.</span></div>
+          <div style="display:flex; gap:4px; border-bottom:1px solid var(--sdm-border)">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+              <span style="{{ t.style }}">{{ t.label }}<span style="{{ t.badgeStyle }}">{{ t.badge }}</span></span>
+            </sc-for>
+          </div>
+          <div style="display:inline-flex; align-self:flex-start; padding:3px; border-radius:10px; background:var(--sdm-surface-3); gap:2px">
+            <span style="padding:6px 13px; border-radius:8px; background:var(--sdm-surface); font-size:12.5px; font-weight:700; box-shadow:var(--sdm-shadow-card)">24 h</span>
+            <span style="padding:6px 13px; font-size:12.5px; font-weight:600; color:var(--sdm-text-dim)">7 d</span>
+            <span style="padding:6px 13px; font-size:12.5px; font-weight:600; color:var(--sdm-text-dim)">30 d</span>
+            <span style="padding:6px 13px; font-size:12.5px; font-weight:600; color:var(--sdm-text-dim)">Personalizado</span>
+          </div>
+        </div>
+
+        <!-- DiskCard -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">DiskCard · CapacityBar</span><span style="font-size:12px; color:var(--sdm-text-dim)">Alias sobre modelo. Un disco sin SMART va en gris, jamás en rojo.</span></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+            <sc-for list="{{ diskDemo }}" as="d" hint-placeholder-count="2">
+              <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:15px 16px; display:flex; flex-direction:column; gap:10px">
+                <div style="display:flex; align-items:flex-start; gap:10px">
+                  <div style="flex:1; min-width:0; display:flex; flex-direction:column"><span style="font-size:14px; font-weight:700">{{ d.alias }}</span><span style="font-size:11.5px; color:var(--sdm-text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ d.model }}</span></div>
+                  <span style="padding:3px 10px; border-radius:999px; background:{{ d.soft }}; color:{{ d.fg }}; font-size:11px; font-weight:700; white-space:nowrap">{{ d.state }}</span>
+                </div>
+                <div style="display:flex; gap:16px">
+                  <div style="display:flex; flex-direction:column"><span style="font-size:11px; font-weight:600; color:var(--sdm-text-faint)">Temperatura</span><span style="font-size:20px; font-weight:800; letter-spacing:-.02em; color:{{ d.tempColor }}">{{ d.temp }}</span></div>
+                  <div style="display:flex; flex-direction:column"><span style="font-size:11px; font-weight:600; color:var(--sdm-text-faint)">Desgaste</span><span style="font-size:20px; font-weight:800; letter-spacing:-.02em">{{ d.wear }}</span></div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:5px">
+                  <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--sdm-text-dim)"><span>{{ d.vol }}</span><span>{{ d.free }}</span></div>
+                  <div style="height:8px; border-radius:4px; background:var(--sdm-surface-3); overflow:hidden"><div style="height:100%; border-radius:4px; background:{{ d.barColor }}; width:{{ d.usedPct }}"></div></div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- Alert + event -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">AlertCard · EventRow</span><span style="font-size:12px; color:var(--sdm-text-dim)">Grupo con contador ×N. La asociación inferida se etiqueta como tal.</span></div>
+          <div style="border:1px solid var(--sdm-accent); border-radius:11px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+            <div style="display:flex; align-items:center; gap:9px">
+              <span style="padding:3px 10px; border-radius:999px; background:var(--sdm-warn-soft); color:var(--sdm-warn); font-size:11px; font-weight:700">Advertencia</span>
+              <span style="flex:1; font-size:13.5px; font-weight:700">Temperatura sobre el límite del fabricante</span>
+              <span style="font-size:12px; font-weight:700; color:var(--sdm-text-dim)">×14</span>
+            </div>
+            <p style="margin:0; font-size:12px; color:var(--sdm-text-dim)">Datos · 71 °C sobre el límite de 70 °C · última vez a las 12:38</p>
+            <span style="font-size:11px; color:var(--sdm-text-faint)">Crucial MX500 1TB · activa</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; border-top:1px solid var(--sdm-border); padding-top:9px">
+            <span style="padding:3px 10px; border-radius:999px; background:var(--sdm-crit-soft); color:var(--sdm-crit); font-size:11px; font-weight:700">Error</span>
+            <span style="flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Se reintentó la operación de E/S en \Device\Harddisk1\DR1</span>
+            <span style="padding:2px 9px; border-radius:999px; background:var(--sdm-unknown-soft); color:var(--sdm-unknown); font-size:11px; font-weight:700">asociación inferida</span>
+            <span style="font-size:12px; color:var(--sdm-text-dim)">disk · 153</span>
+          </div>
+        </div>
+
+        <!-- Chart -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">TimeSeriesChart</span><span style="font-size:12px; color:var(--sdm-text-dim)">El hueco de datos se dibuja como hueco. Umbral del fabricante discontinuo.</span></div>
+          <svg viewBox="0 0 780 180" preserveAspectRatio="none" style="width:100%; height:180px; display:block">
+            <line x1="0" y1="45" x2="780" y2="45" stroke="var(--sdm-border)" stroke-width="1.5"></line>
+            <line x1="0" y1="90" x2="780" y2="90" stroke="var(--sdm-border)" stroke-width="1.5"></line>
+            <line x1="0" y1="135" x2="780" y2="135" stroke="var(--sdm-border)" stroke-width="1.5"></line>
+            <rect x="330" y="0" width="60" height="180" fill="var(--sdm-unknown)" opacity=".14"></rect>
+            <line x1="0" y1="48" x2="780" y2="48" stroke="var(--sdm-warn)" stroke-width="1.5" stroke-dasharray="6 6"></line>
+            <polygon points="{{ areaL }}" fill="var(--sdm-accent)" opacity=".12"></polygon>
+            <polyline points="{{ lineL }}" fill="none" stroke="var(--sdm-accent)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            <polygon points="{{ areaR }}" fill="var(--sdm-accent)" opacity=".12"></polygon>
+            <polyline points="{{ lineR }}" fill="none" stroke="var(--sdm-accent)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline>
+          </svg>
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--sdm-text-faint)"><span>Ayer 12:41</span><span>Sin datos en 1 tramo</span><span>límite fabricante 70 °C</span><span>Hoy 12:41</span></div>
+        </div>
+
+        <!-- Progress + empty -->
+        <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:20px; display:flex; flex-direction:column; gap:14px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">ProgressBar · EmptyState</span><span style="font-size:12px; color:var(--sdm-text-dim)">No compatible no es un fallo: gris, con explicación y detalle técnico plegado.</span></div>
+          <div style="display:flex; flex-direction:column; gap:7px">
+            <div style="height:10px; border-radius:6px; background:var(--sdm-surface-3); overflow:hidden"><div style="height:100%; width:62%; border-radius:6px; background:var(--sdm-accent)"></div></div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--sdm-text-dim)"><span>Escritura secuencial · verificando patrón</span><span style="font-weight:700; color:var(--sdm-text)">62 % · quedan 48 s</span></div>
+          </div>
+          <div style="border:1px dashed var(--sdm-border); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:8px; align-items:flex-start">
+            <span style="padding:4px 11px; border-radius:999px; background:var(--sdm-unknown-soft); color:var(--sdm-unknown); font-size:11px; font-weight:700">No compatible</span>
+            <span style="font-size:14px; font-weight:700">Este disco no expone datos SMART</span>
+            <p style="margin:0; font-size:12.5px; line-height:1.55; color:var(--sdm-text-dim); text-wrap:pretty">El puente USB no reenvía comandos SMART. Se seguirá vigilando la capacidad del volumen y los eventos de Windows asociados.</p>
+            <span style="font-size:12px; font-weight:700; color:var(--sdm-text-dim); cursor:pointer">▸ Detalle técnico</span>
+          </div>
+        </div>
+
+        <!-- ConfirmDialog -->
+        <div style="grid-column:span 2; border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface-2); box-shadow:var(--sdm-shadow-card); padding:24px; display:flex; flex-direction:column; gap:14px">
+          <div style="display:flex; flex-direction:column; gap:3px"><span style="font-size:14px; font-weight:700">ConfirmDialog</span><span style="font-size:12px; color:var(--sdm-text-dim)">Obligatorio antes de cualquier operación que escriba datos o genere carga. Declara acción, destino, comando literal e impacto.</span></div>
+          <div style="align-self:center; width:520px; border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-overlay); padding:24px; display:flex; flex-direction:column; gap:14px">
+            <h3 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Ejecutar chkdsk /scan en D:</h3>
+            <p style="margin:0; font-size:13px; line-height:1.6; color:var(--sdm-text-dim); text-wrap:pretty">Se comprobará el sistema de archivos en línea. No se programa ninguna reparación fuera de línea y no se modifica ningún archivo.</p>
+            <code style="font-family:ui-monospace,Consolas,monospace; font-size:12px; background:var(--sdm-surface-2); border-radius:11px; padding:11px 14px">chkdsk D: /scan</code>
+            <div style="display:flex; gap:11px; border-radius:11px; background:var(--sdm-warn-soft); padding:13px 15px">
+              <span style="width:18px; height:18px; flex:none; border-radius:50%; background:var(--sdm-warn); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center">!</span>
+              <span style="font-size:12.5px; line-height:1.55; text-wrap:pretty">El análisis puede tardar varios minutos y aumentar temporalmente la actividad del disco.</span>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:9px">
+              <button style="height:34px; padding:0 14px; border:1px solid transparent; border-radius:10px; background:transparent; color:var(--sdm-text-dim); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer">Cancelar</button>
+              <button style="height:34px; padding:0 16px; border:1px solid transparent; border-radius:10px; background:var(--sdm-accent); color:var(--sdm-text-on-accent); font-family:inherit; font-size:13px; font-weight:700; cursor:pointer">Ejecutar análisis</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGLAS -->
+    <section style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; align-items:baseline; gap:12px">
+        <h2 style="margin:0; font-size:20px; font-weight:800; letter-spacing:-.02em">Reglas que el agente debe cumplir</h2>
+        <code style="font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--sdm-text-faint)">AGENTS.md</code>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px">
+        <sc-for list="{{ rules }}" as="r" hint-placeholder-count="6">
+          <div style="border:1px solid var(--sdm-border); border-radius:14px; background:var(--sdm-surface); box-shadow:var(--sdm-shadow-card); padding:16px 18px; display:flex; flex-direction:column; gap:7px">
+            <span style="font-size:13.5px; font-weight:700">{{ r.title }}</span>
+            <p style="margin:0; font-size:12.5px; line-height:1.55; color:var(--sdm-text-dim); text-wrap:pretty">{{ r.body }}</p>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <footer style="display:flex; flex-wrap:wrap; gap:10px; border-top:1px solid var(--sdm-border); padding-top:18px">
+      <sc-for list="{{ files }}" as="f" hint-placeholder-count="8">
+        <code style="font-family:ui-monospace,Consolas,monospace; font-size:11.5px; padding:5px 10px; border-radius:8px; background:var(--sdm-surface-2); color:var(--sdm-text-dim)">{{ f }}</code>
+      </sc-for>
+    </footer>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = { theme: "light" };
+
+  seg(from, to, n, base, amp, phase) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const x = from + (to - from) * t;
+      const v = base + amp * (Math.sin(i * 0.5 + phase) * 0.6 + Math.sin(i * 0.19 + phase) * 0.4);
+      pts.push(x.toFixed(1) + "," + (180 - v * 180).toFixed(1));
+    }
+    return pts.join(" ");
+  }
+
+  renderVals() {
+    const dark = this.state.theme === "dark";
+    const tBtn = (active) =>
+      "padding:6px 14px; border:none; border-radius:8px; font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; background:" +
+      (active ? "var(--sdm-surface)" : "transparent") + "; color:" + (active ? "var(--sdm-text)" : "var(--sdm-text-dim)") +
+      (active ? "; box-shadow:var(--sdm-shadow-card)" : "");
+
+    const semantic = [
+      { name: "ok · Correcto", token: "--sdm-ok / --sdm-ok-soft", fg: "var(--sdm-ok)", soft: "var(--sdm-ok-soft)", use: "El elemento monitorizado está dentro de sus umbrales." },
+      { name: "warn · Advertencia", token: "--sdm-warn / --sdm-warn-soft", fg: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)", use: "Umbral cruzado o degradación que no bloquea el uso." },
+      { name: "crit · Crítico", token: "--sdm-crit / --sdm-crit-soft", fg: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)", use: "Requiere atención inmediata: salud SMART, errores de medios." },
+      { name: "unknown · Sin datos", token: "--sdm-unknown / -soft", fg: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", use: "No compatible, pausado o sin lectura. Nunca en rojo." },
+      { name: "accent · Acción", token: "--sdm-accent / -soft", fg: "var(--sdm-accent)", soft: "var(--sdm-accent-soft)", use: "Acción primaria, selección y serie principal. No indica salud." }
+    ];
+
+    const neutrals = ["--sdm-bg", "--sdm-surface", "--sdm-surface-2", "--sdm-surface-3", "--sdm-border", "--sdm-text-faint", "--sdm-text-dim", "--sdm-text"]
+      .map(t => ({ token: t, value: "var(" + t + ")" }));
+
+    const typeScale = [
+      { token: "--sdm-text-metric · 27/800", sample: "71 °C", style: "font-size:27px; font-weight:800; letter-spacing:-.03em; font-variant-numeric:tabular-nums" },
+      { token: "--sdm-text-xl · 20/800", sample: "Pruebas y diagnóstico", style: "font-size:20px; font-weight:800; letter-spacing:-.02em" },
+      { token: "--sdm-text-lg · 17/700", sample: "SmartDisk Monitor", style: "font-size:17px; font-weight:700" },
+      { token: "--sdm-text-base · 14/700", sample: "Historial de pruebas", style: "font-size:14px; font-weight:700" },
+      { token: "--sdm-text-sm · 13/400", sample: "El volumen D: se comprobó al montarse", style: "font-size:13px; font-weight:400" },
+      { token: "--sdm-text-xs · 12/600", sample: "smartctl · lectura exacta", style: "font-size:12px; font-weight:600; color:var(--sdm-text-dim)" },
+      { token: "--sdm-text-2xs · 11/700", sample: "ADVERTENCIA", style: "font-size:11px; font-weight:700; color:var(--sdm-warn)" }
+    ];
+
+    const radii = [
+      { name: "sm 8", value: "8px" }, { name: "md 10", value: "10px" }, { name: "lg 11", value: "11px" },
+      { name: "xl 14", value: "14px" }, { name: "pill", value: "999px" }
+    ];
+    const spacing = [
+      { name: "space-1 · 4", value: "4px" }, { name: "space-2 · 8", value: "8px" }, { name: "space-3 · 12", value: "12px" },
+      { name: "space-4 · 16 (gap de tarjetas)", value: "16px" }, { name: "space-5 · 20", value: "20px" }, { name: "space-6 · 22 (margen de pantalla)", value: "22px" }
+    ];
+
+    const pills = [
+      { label: "Correcto", fg: "var(--sdm-ok)", soft: "var(--sdm-ok-soft)" },
+      { label: "Advertencia", fg: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)" },
+      { label: "Crítico", fg: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)" },
+      { label: "Sin datos SMART", fg: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)" }
+    ];
+
+    const metrics = [
+      { label: "Salud del firmware", value: "Correcta", src: "smartctl · exacta", color: "var(--sdm-ok)" },
+      { label: "Temperatura", value: "71 °C", src: "límite fabricante 70 °C", color: "var(--sdm-warn)" },
+      { label: "Desgaste", value: "No disponible", src: "el dispositivo no lo expone", color: "var(--sdm-text-dim)" }
+    ];
+
+    const tabs = [
+      { label: "Panel", active: true }, { label: "Discos" }, { label: "Alertas", badge: "3" }, { label: "Pruebas" }, { label: "Informes" }
+    ].map(t => ({
+      label: t.label, badge: t.badge || "",
+      style: "display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 14px; font-size:13.5px; font-weight:700; border-bottom:2.5px solid " +
+        (t.active ? "var(--sdm-accent)" : "transparent") + "; color:" + (t.active ? "var(--sdm-text)" : "var(--sdm-text-dim)"),
+      badgeStyle: t.badge ? "padding:1px 7px; border-radius:999px; background:var(--sdm-warn-soft); color:var(--sdm-warn); font-size:11px; font-weight:800" : "display:none"
+    }));
+
+    const diskDemo = [
+      { alias: "Sistema", model: "Samsung 990 PRO 2TB · NVMe", state: "Correcto", fg: "var(--sdm-ok)", soft: "var(--sdm-ok-soft)", temp: "46 °C", wear: "3 %", vol: "C: · 1,86 TB", free: "1,21 TB libres", usedPct: "35%", barColor: "var(--sdm-ok)", tempColor: "var(--sdm-text)" },
+      { alias: "Externo", model: "WD Elements 5TB · USB", state: "Sin datos SMART", fg: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", temp: "No disp.", wear: "No disp.", vol: "F: · 4,55 TB", free: "402 GB libres", usedPct: "91%", barColor: "var(--sdm-crit)", tempColor: "var(--sdm-text-dim)" }
+    ];
+
+    const rules = [
+      { title: "Nunca inventes ceros", body: "Un dato ausente se muestra como «No disponible». Los formateadores de $lib/design/format.ts ya lo garantizan." },
+      { title: "No compatible ≠ averiado", body: "USB, RAID y discos virtuales sin SMART se presentan en gris y no generan alerta activa." },
+      { title: "Procedencia visible", body: "Cada métrica puede declarar fuente y antigüedad de la última lectura válida; si es obsoleta, se dice." },
+      { title: "Confirmar antes de escribir", body: "Benchmark, chkdsk y autotest abren ConfirmDialog con comando literal e impacto en rendimiento y temperatura." },
+      { title: "La UI no se bloquea", body: "Todo el trabajo va al backend Rust. Un colector caído degrada su tarjeta, nunca la aplicación." },
+      { title: "Solo tokens", body: "Ningún color, radio o tamaño literal en un componente: utilidad Tailwind o var(--sdm-*), y correcto en ambos temas." }
+    ];
+
+    const files = [
+      "design-system/tokens.css", "design-system/tokens.json", "design-system/README.md", "tailwind.config.cjs",
+      "src/lib/design/types.ts", "src/lib/design/format.ts", "src/lib/design/health.ts", "src/lib/design/theme.svelte.ts",
+      "src/lib/components/ (18)", "AGENTS.md"
+    ];
+
+    const lineL = this.seg(0, 330, 34, 0.42, 0.16, 0);
+    const lineR = this.seg(390, 780, 40, 0.5, 0.2, 2.1);
+
+    return {
+      theme: this.state.theme,
+      setLight: () => this.setState({ theme: "light" }),
+      setDark: () => this.setState({ theme: "dark" }),
+      lightBtn: tBtn(!dark), darkBtn: tBtn(dark),
+      semantic, neutrals, typeScale, radii, spacing, pills, metrics, tabs, diskDemo, rules, files,
+      lineL, lineR,
+      areaL: "0,180 " + lineL + " 330,180",
+      areaR: "390,180 " + lineR + " 780,180"
+    };
+  }
+}
+</script>
+</body>
+</html>

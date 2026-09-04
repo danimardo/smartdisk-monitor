@@ -1,0 +1,14 @@
+/* Única hoja de estilos global de la aplicación.
+ *
+ * Orden deliberado: los tokens primero, para que las variables `--sdm-*` existan antes de que
+ * Tailwind genere utilidades que las referencian; después las tres capas de Tailwind.
+ *
+ * `tokens.css` es la fuente única de verdad visual (AGENTS.md §2) y no se toca desde aquí:
+ * lo que hace este fichero es exponer esos valores como utilidades a través de
+ * `tailwind.config.cjs`, que es el único mapeo autorizado. */
+
+@import "./design-system/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

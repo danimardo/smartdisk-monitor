@@ -1,0 +1,7 @@
+packages:
+  - .
+
+# esbuild necesita su script de instalación para colocar el binario nativo de su plataforma.
+# Se aprueba explícitamente: es dependencia directa de Vite, no un paquete opaco.
+allowBuilds:
+  esbuild: true

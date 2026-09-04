@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SmartDisk Monitor",
+  "version": "../package.json",
+  "identifier": "es.danimardo.smartdisk-monitor",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SmartDisk Monitor",
+        "width": 1360,
+        "height": 880,
+        "minWidth": 1024,
+        "minHeight": 560,
+        "resizable": true,
+        "center": true,
+        "visible": false,
+        "decorations": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+    "publisher": "Daniel Diez Mardomingo",
+    "copyright": "Copyright (c) 2026 Daniel Diez Mardomingo",
+    "category": "Utility",
+    "shortDescription": "Supervisión local de discos",
+    "longDescription": "Supervisión local de salud, temperatura, actividad y capacidad de los discos de un equipo Windows.",
+    "licenseFile": "../LICENSE",
+    "resources": {
+      "../third-party/smartmontools/bin/smartctl.exe": "bin/smartctl.exe",
+      "../third-party/smartmontools/bin/drivedb.h": "bin/drivedb.h",
+      "../third-party/smartmontools/licenses/COPYING.txt": "licenses/smartmontools/COPYING.txt",
+      "../third-party/smartmontools/licenses/AUTHORS.txt": "licenses/smartmontools/AUTHORS.txt",
+      "../third-party/smartmontools/source/smartmontools-7.5.tar.gz": "licenses/smartmontools/smartmontools-7.5.tar.gz",
+      "../src/design-system/fonts/OFL.txt": "licenses/instrument-sans/OFL.txt"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["Spanish", "English"],
+        "displayLanguageSelector": true
+      }
+    }
+  }
+}

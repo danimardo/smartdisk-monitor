@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/windows-schema.json",
+  "identifier": "default",
+  "description": "Mínimo privilegio dentro de un proceso ya elevado (ADR-004). Sin shell genérica, sin fs genérico. Cualquier permiso nuevo exige una entrada en docs/decisions.md.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

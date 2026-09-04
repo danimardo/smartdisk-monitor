@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#dfe2e8; font-family:"Instrument Sans", system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color: var(--sdm-accent, #0067c0); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  [data-theme="light"] {
+    --sdm-bg:#e9ebf0; --sdm-bg-2:#dfe2ea;
+    --sdm-glass:rgba(255,255,255,.72); --sdm-glass-2:rgba(255,255,255,.5); --sdm-glass-3:rgba(120,124,140,.1);
+    --sdm-solid:#fdfdfe;
+    --sdm-hairline:rgba(22,24,32,.09); --sdm-highlight:rgba(255,255,255,.9);
+    --sdm-text:#191b22; --sdm-text-dim:#5f6371; --sdm-text-faint:#6a6f7b; --sdm-on-accent:#fff;
+    --sdm-accent:#0067c0; --sdm-accent-hi:#1a7cd4; --sdm-accent-soft:rgba(0,103,192,.12);
+    --sdm-ok:#2f7256; --sdm-ok-soft:rgba(47,114,86,.13);
+    --sdm-warn:#7d5619; --sdm-warn-soft:rgba(125,86,25,.12);
+    --sdm-crit:#a83d45; --sdm-crit-soft:rgba(168,61,69,.12);
+    --sdm-unknown:#5d616d; --sdm-unknown-soft:rgba(93,97,109,.11);
+    --sdm-shadow:0 1px 1px rgba(20,22,30,.05), 0 8px 22px -14px rgba(20,22,30,.28);
+    --sdm-shadow-lift:0 2px 4px rgba(20,22,30,.06), 0 24px 60px -22px rgba(20,22,30,.42);
+  }
+  [data-theme="dark"] {
+    --sdm-bg:#101014; --sdm-bg-2:#16161c;
+    --sdm-glass:rgba(42,42,50,.66); --sdm-glass-2:rgba(58,58,68,.42); --sdm-glass-3:rgba(255,255,255,.06);
+    --sdm-solid:#1b1b21;
+    --sdm-hairline:rgba(255,255,255,.09); --sdm-highlight:rgba(255,255,255,.13);
+    --sdm-text:#f2f2f6; --sdm-text-dim:#a2a4b0; --sdm-text-faint:#9195a1; --sdm-on-accent:#fff;
+    --sdm-accent:#3d95ea; --sdm-accent-hi:#5aa8f2; --sdm-accent-soft:rgba(61,149,234,.18);
+    --sdm-ok:#6cc79c; --sdm-ok-soft:rgba(108,199,156,.16);
+    --sdm-warn:#e0b473; --sdm-warn-soft:rgba(224,180,115,.16);
+    --sdm-crit:#e88b90; --sdm-crit-soft:rgba(232,139,144,.16);
+    --sdm-unknown:#9396a2; --sdm-unknown-soft:rgba(147,150,162,.14);
+    --sdm-shadow:0 1px 1px rgba(0,0,0,.3), 0 10px 26px -16px rgba(0,0,0,.7);
+    --sdm-shadow-lift:0 2px 6px rgba(0,0,0,.4), 0 28px 70px -24px rgba(0,0,0,.85);
+  }
+</style>
+</helmet>
+
+<div style="min-height:100vh; padding:44px 48px 88px; display:flex; flex-direction:column; gap:26px; align-items:flex-start">
+
+  <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap">
+    <span style="display:inline-flex; align-items:center; height:26px; padding:0 11px; border-radius:999px; background:#191b22; color:#fff; font-size:12.5px; font-weight:600">2a</span>
+    <span style="font-size:18px; font-weight:600; color:#191b22; letter-spacing:-.01em">Tema con material translúcido</span>
+    <span style="font-size:13.5px; color:#5f6371">Barra lateral + barra de herramientas unificada · acento heredado de Windows · salud suavizada</span>
+    <div style="display:flex; padding:3px; border-radius:999px; background:rgba(255,255,255,.7); border:1px solid rgba(22,24,32,.08); gap:2px">
+      <button onClick="{{ setLight }}" style="{{ lightBtn }}">Claro</button>
+      <button onClick="{{ setDark }}" style="{{ darkBtn }}">Oscuro</button>
+    </div>
+  </div>
+
+  <div data-theme="{{ theme }}" style="width:1300px; height:850px; border-radius:18px; overflow:hidden; background:var(--sdm-bg); color:var(--sdm-text); box-shadow:var(--sdm-shadow-lift); border:1px solid var(--sdm-hairline); display:flex; position:relative">
+
+    <!-- fondo de contenido: da vida al desenfoque de las capas de cristal -->
+    <div style="position:absolute; inset:0; background:linear-gradient(160deg, var(--sdm-bg) 0%, var(--sdm-bg-2) 100%)"></div>
+
+    <!-- ======= BARRA LATERAL DE CRISTAL ======= -->
+    <div style="position:relative; width:250px; flex:none; display:flex; flex-direction:column; background:var(--sdm-glass); backdrop-filter:blur(28px) saturate(180%); -webkit-backdrop-filter:blur(28px) saturate(180%); border-right:1px solid var(--sdm-hairline); box-shadow:inset -1px 0 0 var(--sdm-highlight)">
+      <div style="height:52px; flex:none; display:flex; align-items:center; gap:10px; padding:0 16px">
+        <div style="width:24px; height:24px; border-radius:7px; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); box-shadow:inset 0 1px 0 rgba(255,255,255,.45); display:flex; align-items:center; justify-content:center">
+          <div style="width:8px; height:8px; border-radius:50%; border:1.8px solid rgba(255,255,255,.95)"></div>
+        </div>
+        <span style="font-size:13.5px; font-weight:600; letter-spacing:-.01em">SmartDisk</span>
+        <span style="flex:1"></span>
+        <span style="font-size:11px; color:var(--sdm-text-faint)">1.0.0</span>
+      </div>
+
+      <div style="padding:6px 10px 4px; font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--sdm-text-faint)">Supervisión</div>
+      <div style="display:flex; flex-direction:column; gap:2px; padding:0 8px">
+        <sc-for list="{{ nav }}" as="n" hint-placeholder-count="4">
+          <button onClick="{{ n.go }}" style="{{ n.style }}">
+            <span style="{{ n.dotStyle }}"></span>
+            <span style="flex:1; text-align:left">{{ n.label }}</span>
+            <span style="{{ n.badgeStyle }}">{{ n.badge }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="padding:14px 10px 4px; font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--sdm-text-faint)">Discos monitorizados</div>
+      <div style="display:flex; flex-direction:column; gap:2px; padding:0 8px">
+        <sc-for list="{{ sideDisks }}" as="d" hint-placeholder-count="4">
+          <button onClick="{{ d.go }}" style="{{ d.style }}">
+            <span style="width:8px; height:8px; border-radius:50%; background:{{ d.color }}; flex:none; box-shadow:0 0 0 3px {{ d.soft }}"></span>
+            <span style="flex:1; min-width:0; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{ d.alias }}</span>
+            <span style="font-size:11.5px; color:var(--sdm-text-faint); font-variant-numeric:tabular-nums">{{ d.temp }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="flex:1"></div>
+      <div style="margin:10px; padding:12px 13px; border-radius:13px; background:var(--sdm-glass-2); border:1px solid var(--sdm-hairline); box-shadow:inset 0 1px 0 var(--sdm-highlight); display:flex; flex-direction:column; gap:8px">
+        <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--sdm-text-dim)"><span style="width:7px; height:7px; border-radius:50%; background:var(--sdm-warn)"></span>1 advertencia activa</div>
+        <button style="height:30px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass); color:var(--sdm-text); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">Pausar recopilación</button>
+      </div>
+    </div>
+
+    <!-- ======= COLUMNA PRINCIPAL ======= -->
+    <div style="position:relative; flex:1; min-width:0; display:flex; flex-direction:column">
+
+      <!-- barra de herramientas unificada -->
+      <div style="height:52px; flex:none; display:flex; align-items:center; gap:12px; padding:0 18px; background:var(--sdm-glass); backdrop-filter:blur(28px) saturate(180%); -webkit-backdrop-filter:blur(28px) saturate(180%); border-bottom:1px solid var(--sdm-hairline); box-shadow:inset 0 1px 0 var(--sdm-highlight); z-index:2">
+        <div style="display:flex; flex-direction:column">
+          <span style="font-size:14.5px; font-weight:600; letter-spacing:-.01em">{{ title }}</span>
+          <span style="font-size:11.5px; color:var(--sdm-text-faint)">{{ subtitle }}</span>
+        </div>
+        <div style="flex:1"></div>
+        <sc-if value="{{ showRange }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; padding:3px; border-radius:999px; background:var(--sdm-glass-3); gap:2px">
+            <sc-for list="{{ ranges }}" as="r" hint-placeholder-count="4">
+              <span style="{{ r.style }}">{{ r.label }}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="display:flex; align-items:center; gap:7px; padding:0 11px; height:30px; border-radius:999px; background:var(--sdm-ok-soft); color:var(--sdm-ok); font-size:12px; font-weight:600">
+          <span style="width:6px; height:6px; border-radius:50%; background:var(--sdm-ok)"></span>Todo en orden
+        </div>
+        <span style="font-size:11.5px; color:var(--sdm-text-faint)">hace 12 s</span>
+        <button style="height:30px; padding:0 14px; border-radius:999px; border:1px solid transparent; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); color:var(--sdm-on-accent); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 1px 2px rgba(0,0,0,.14)">Actualizar</button>
+        <button style="width:30px; height:30px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass-2); color:var(--sdm-text-dim); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">?</button>
+      </div>
+
+      <div style="flex:1; min-height:0; overflow:auto">
+
+        <!-- ===== PANEL ===== -->
+        <sc-if value="{{ isPanel }}" hint-placeholder-val="{{ true }}">
+          <div style="min-height:100%; box-sizing:border-box; padding:20px; display:flex; flex-direction:column; gap:18px">
+            <div style="display:grid; grid-template-columns:326px 1fr; gap:18px">
+              <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:20px; display:flex; flex-direction:column; gap:16px">
+                <span style="font-size:12.5px; font-weight:600; color:var(--sdm-text-dim)">Estado del equipo</span>
+                <div style="display:flex; align-items:center; gap:18px">
+                  <svg viewBox="0 0 120 120" style="width:104px; height:104px; flex:none">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--sdm-glass-3)" stroke-width="11"></circle>
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--sdm-ok)" stroke-width="11" stroke-linecap="round" stroke-dasharray="228 314" transform="rotate(-90 60 60)"></circle>
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="var(--sdm-warn)" stroke-width="11" stroke-linecap="round" stroke-dasharray="52 314" transform="rotate(172 60 60)"></circle>
+                  </svg>
+                  <div style="display:flex; flex-direction:column; gap:8px">
+                    <sc-for list="{{ statusLegend }}" as="s" hint-placeholder-count="4">
+                      <div style="display:flex; align-items:center; gap:9px; font-size:12.5px">
+                        <span style="width:8px; height:8px; border-radius:50%; background:{{ s.color }}"></span>
+                        <span style="font-weight:600; width:14px; font-variant-numeric:tabular-nums">{{ s.value }}</span>
+                        <span style="color:var(--sdm-text-dim)">{{ s.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="padding:13px 15px; border-radius:13px; background:var(--sdm-warn-soft); display:flex; flex-direction:column; gap:6px">
+                  <span style="font-size:12.5px; font-weight:600; color:var(--sdm-warn)">1 disco necesita atención</span>
+                  <span style="font-size:12.5px; line-height:1.5; color:var(--sdm-text-dim); text-wrap:pretty">«Datos» superó el límite térmico del fabricante 14 veces hoy.</span>
+                  <button onClick="{{ goAlerts }}" style="align-self:flex-start; margin-top:3px; height:29px; padding:0 13px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass); color:var(--sdm-text); font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">Ver alerta</button>
+                </div>
+              </div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px">
+                <sc-for list="{{ disks }}" as="d" hint-placeholder-count="4">
+                  <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:17px 19px; display:flex; flex-direction:column; gap:12px">
+                    <div style="display:flex; align-items:flex-start; gap:10px">
+                      <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:1px">
+                        <span style="font-size:14.5px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ d.alias }}</span>
+                        <span style="font-size:11.5px; color:var(--sdm-text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ d.model }} · {{ d.type }}</span>
+                      </div>
+                      <span style="{{ d.pill }}">{{ d.stateLabel }}</span>
+                    </div>
+                    <div style="display:flex; gap:22px">
+                      <div style="display:flex; flex-direction:column"><span style="font-size:11px; font-weight:500; color:var(--sdm-text-faint)">Temperatura</span><span style="font-size:22px; font-weight:600; letter-spacing:-.025em; font-variant-numeric:tabular-nums; color:{{ d.tempColor }}">{{ d.temp }}</span></div>
+                      <div style="display:flex; flex-direction:column"><span style="font-size:11px; font-weight:500; color:var(--sdm-text-faint)">Desgaste</span><span style="font-size:22px; font-weight:600; letter-spacing:-.025em; font-variant-numeric:tabular-nums">{{ d.wear }}</span></div>
+                      <div style="display:flex; flex-direction:column"><span style="font-size:11px; font-weight:500; color:var(--sdm-text-faint)">Actividad</span><span style="font-size:22px; font-weight:600; letter-spacing:-.025em; font-variant-numeric:tabular-nums">{{ d.act }}</span></div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:6px">
+                      <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--sdm-text-dim)"><span>{{ d.vol }}</span><span>{{ d.free }}</span></div>
+                      <div style="height:7px; border-radius:999px; background:var(--sdm-glass-3); overflow:hidden"><div style="height:100%; border-radius:999px; background:{{ d.barColor }}; width:{{ d.usedPct }}; box-shadow:inset 0 1px 0 rgba(255,255,255,.25)"></div></div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:17px 19px; display:flex; flex-direction:column; gap:10px">
+              <div style="display:flex; align-items:center; gap:10px"><span style="font-size:13.5px; font-weight:600">Sucesos recientes</span><span style="flex:1"></span><span style="font-size:12px; font-weight:600; color:var(--sdm-accent); cursor:pointer">Ver todos</span></div>
+              <sc-for list="{{ events }}" as="e" hint-placeholder-count="4">
+                <div style="display:flex; align-items:center; gap:12px; padding:8px 0; border-top:1px solid var(--sdm-hairline)">
+                  <span style="{{ e.pill }}">{{ e.level }}</span>
+                  <span style="flex:1; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ e.msg }}</span>
+                  <span style="{{ e.inferStyle }}">asociación inferida</span>
+                  <span style="font-size:11.5px; color:var(--sdm-text-dim)">{{ e.provider }} · {{ e.id }}</span>
+                  <span style="font-size:11.5px; color:var(--sdm-text-faint); width:44px; text-align:right; font-variant-numeric:tabular-nums">{{ e.time }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== DETALLE DE DISCO ===== -->
+        <sc-if value="{{ isDisk }}" hint-placeholder-val="{{ false }}">
+          <div style="min-height:100%; box-sizing:border-box; padding:20px; display:flex; flex-direction:column; gap:18px">
+            <div style="display:flex; align-items:center; gap:14px">
+              <div style="width:46px; height:46px; border-radius:14px; background:var(--sdm-warn-soft); display:flex; align-items:center; justify-content:center; box-shadow:inset 0 1px 0 var(--sdm-highlight)"><div style="width:14px; height:14px; border-radius:50%; border:3px solid var(--sdm-warn)"></div></div>
+              <div style="display:flex; flex-direction:column; gap:3px">
+                <div style="display:flex; align-items:center; gap:10px"><span style="font-size:20px; font-weight:600; letter-spacing:-.02em">Datos</span><span style="padding:3px 10px; border-radius:999px; background:var(--sdm-warn-soft); color:var(--sdm-warn); font-size:11.5px; font-weight:600">Advertencia térmica</span></div>
+                <span style="font-size:12px; color:var(--sdm-text-dim)">Crucial MX500 1TB · SATA SSD · S/N 2149E6••••42 · firmware M3CR046 · lectura hace 8 s</span>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px">
+              <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+                <div style="border-radius:16px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:16px 18px; display:flex; flex-direction:column; gap:5px">
+                  <span style="font-size:12px; font-weight:500; color:var(--sdm-text-dim)">{{ m.label }}</span>
+                  <span style="font-size:27px; font-weight:600; letter-spacing:-.03em; font-variant-numeric:tabular-nums; color:{{ m.color }}">{{ m.value }}</span>
+                  <span style="font-size:11px; color:var(--sdm-text-faint)">{{ m.src }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:18px; align-items:start">
+              <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:19px 21px; display:flex; flex-direction:column; gap:13px">
+                <div style="display:flex; align-items:center; gap:10px"><span style="font-size:13.5px; font-weight:600">Temperatura</span><span style="flex:1"></span><span style="font-size:11.5px; color:var(--sdm-text-dim); font-variant-numeric:tabular-nums">mín 38 · media 52 · máx 71 °C</span></div>
+                <svg viewBox="0 0 780 210" preserveAspectRatio="none" style="width:100%; height:210px; display:block">
+                  <line x1="0" y1="52" x2="780" y2="52" stroke="var(--sdm-hairline)" stroke-width="1.5"></line>
+                  <line x1="0" y1="105" x2="780" y2="105" stroke="var(--sdm-hairline)" stroke-width="1.5"></line>
+                  <line x1="0" y1="158" x2="780" y2="158" stroke="var(--sdm-hairline)" stroke-width="1.5"></line>
+                  <rect x="330" y="0" width="58" height="210" fill="var(--sdm-unknown)" opacity=".12"></rect>
+                  <line x1="0" y1="57" x2="780" y2="57" stroke="var(--sdm-warn)" stroke-width="1.5" stroke-dasharray="6 6"></line>
+                  <polygon points="{{ areaL }}" fill="var(--sdm-accent)" opacity=".12"></polygon>
+                  <polyline points="{{ lineL }}" fill="none" stroke="var(--sdm-accent)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                  <polygon points="{{ areaR }}" fill="var(--sdm-accent)" opacity=".12"></polygon>
+                  <polyline points="{{ lineR }}" fill="none" stroke="var(--sdm-accent)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></polyline>
+                </svg>
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--sdm-text-faint)"><span>Ayer 12:41</span><span>Sin datos 03:10 – 04:05</span><span style="color:var(--sdm-warn)">límite fabricante 70 °C</span><span>Hoy 12:41</span></div>
+              </div>
+              <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:19px 21px; display:flex; flex-direction:column; gap:11px">
+                <span style="font-size:13.5px; font-weight:600">Contadores del firmware</span>
+                <sc-for list="{{ smartRows }}" as="r" hint-placeholder-count="5">
+                  <div style="display:flex; align-items:center; gap:10px; padding-bottom:9px; border-bottom:1px solid var(--sdm-hairline)">
+                    <span style="flex:1; font-size:12px; color:var(--sdm-text-dim)">{{ r.label }}</span>
+                    <span style="font-size:13px; font-weight:600; font-variant-numeric:tabular-nums">{{ r.val }}</span>
+                    <span style="font-size:11px; font-weight:600; width:58px; text-align:right; font-variant-numeric:tabular-nums; color:{{ r.color }}">{{ r.delta }}</span>
+                  </div>
+                </sc-for>
+                <div style="display:flex; gap:9px; margin-top:2px">
+                  <button style="flex:1; height:33px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass-2); color:var(--sdm-text); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">Detalles avanzados</button>
+                  <button onClick="{{ goTests }}" style="flex:1; height:33px; border-radius:999px; border:1px solid transparent; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); color:var(--sdm-on-accent); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.35)">Probar disco</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== ALERTAS ===== -->
+        <sc-if value="{{ isAlerts }}" hint-placeholder-val="{{ false }}">
+          <div style="min-height:100%; box-sizing:border-box; padding:20px; display:flex; gap:18px">
+            <div style="width:430px; flex:none; display:flex; flex-direction:column; gap:12px">
+              <div style="display:flex; padding:3px; border-radius:999px; background:var(--sdm-glass-3); gap:2px; align-self:flex-start">
+                <sc-for list="{{ alertFilters }}" as="f" hint-placeholder-count="4">
+                  <span style="{{ f.style }}">{{ f.label }}</span>
+                </sc-for>
+              </div>
+              <sc-for list="{{ alerts }}" as="a" hint-placeholder-count="5">
+                <div style="{{ a.card }}">
+                  <div style="display:flex; align-items:center; gap:9px">
+                    <span style="padding:3px 10px; border-radius:999px; background:{{ a.soft }}; color:{{ a.color }}; font-size:11.5px; font-weight:600">{{ a.sev }}</span>
+                    <span style="flex:1; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ a.title }}</span>
+                    <span style="font-size:11.5px; font-weight:600; color:var(--sdm-text-dim); font-variant-numeric:tabular-nums">×{{ a.count }}</span>
+                  </div>
+                  <span style="font-size:12px; color:var(--sdm-text-dim); line-height:1.5">{{ a.meta }}</span>
+                  <span style="font-size:11px; color:var(--sdm-text-faint)">{{ a.target }} · {{ a.status }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="flex:1; min-width:0; border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:24px; display:flex; flex-direction:column; gap:17px">
+              <div style="display:flex; flex-direction:column; gap:9px">
+                <span style="align-self:flex-start; padding:4px 11px; border-radius:999px; background:var(--sdm-warn-soft); color:var(--sdm-warn); font-size:11.5px; font-weight:600">Advertencia · activa</span>
+                <span style="font-size:21px; font-weight:600; letter-spacing:-.02em; text-wrap:pretty">La temperatura supera el límite recomendado por el fabricante</span>
+                <span style="font-size:13px; line-height:1.6; color:var(--sdm-text-dim); max-width:620px; text-wrap:pretty">El disco «Datos» alcanzó 71 °C, por encima del límite de 70 °C declarado por el fabricante. Ocurrió 14 veces desde las 09:12. Comprueba la ventilación del equipo; si se alcanzan 80 °C la alerta pasará a crítica.</span>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:13px">
+                <sc-for list="{{ alertFacts }}" as="f" hint-placeholder-count="4">
+                  <div style="border-radius:13px; background:var(--sdm-glass-3); padding:13px 15px; display:flex; flex-direction:column; gap:3px">
+                    <span style="font-size:11px; font-weight:500; color:var(--sdm-text-faint)">{{ f.label }}</span>
+                    <span style="font-size:15px; font-weight:600; font-variant-numeric:tabular-nums">{{ f.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex; gap:9px">
+                <button style="height:34px; padding:0 16px; border-radius:999px; border:1px solid transparent; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); color:var(--sdm-on-accent); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.35)">Reconocer</button>
+                <button style="height:34px; padding:0 14px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass-2); color:var(--sdm-text); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">Silenciar 1 h</button>
+                <button style="height:34px; padding:0 14px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass-2); color:var(--sdm-text); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">Archivar</button>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px">
+                <span style="font-size:12.5px; font-weight:600; color:var(--sdm-text-dim)">Cronología de las 14 ocurrencias</span>
+                <sc-for list="{{ occurrences }}" as="o" hint-placeholder-count="6">
+                  <div style="display:flex; align-items:center; gap:14px; padding:7px 0; border-top:1px solid var(--sdm-hairline)">
+                    <span style="width:8px; height:8px; border-radius:50%; background:var(--sdm-warn); flex:none"></span>
+                    <span style="font-size:12px; color:var(--sdm-text-dim); width:116px; font-variant-numeric:tabular-nums">{{ o.time }}</span>
+                    <span style="font-size:12.5px; font-weight:600; width:64px; font-variant-numeric:tabular-nums">{{ o.value }}</span>
+                    <span style="flex:1; font-size:12px; color:var(--sdm-text-faint)">{{ o.ctx }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== PRUEBAS ===== -->
+        <sc-if value="{{ isTests }}" hint-placeholder-val="{{ false }}">
+          <div style="min-height:100%; box-sizing:border-box; padding:20px; display:flex; flex-direction:column; gap:18px">
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:18px">
+              <sc-for list="{{ testCards }}" as="t" hint-placeholder-count="3">
+                <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:19px; display:flex; flex-direction:column; gap:10px">
+                  <div style="display:flex; align-items:center; gap:9px"><span style="font-size:14.5px; font-weight:600; letter-spacing:-.01em">{{ t.title }}</span><span style="flex:1"></span><span style="{{ t.pill }}">{{ t.chip }}</span></div>
+                  <span style="font-size:12px; line-height:1.55; color:var(--sdm-text-dim); min-height:58px; text-wrap:pretty">{{ t.desc }}</span>
+                  <button onClick="{{ t.act }}" style="{{ t.btn }}">{{ t.cta }}</button>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:21px; display:flex; flex-direction:column; gap:15px">
+              <div style="display:flex; align-items:center; gap:12px">
+                <div style="display:flex; flex-direction:column; gap:2px">
+                  <span style="font-size:14.5px; font-weight:600; letter-spacing:-.01em">Prueba de lectura y escritura en curso</span>
+                  <span style="font-size:12px; color:var(--sdm-text-dim)">Samsung 990 PRO 2TB → volumen C: · archivo temporal de 2 GiB, se elimina al terminar</span>
+                </div>
+                <span style="flex:1"></span>
+                <button style="height:33px; padding:0 15px; border-radius:999px; border:1px solid var(--sdm-crit); background:var(--sdm-crit-soft); color:var(--sdm-crit); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer">Cancelar</button>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:7px">
+                <div style="height:9px; border-radius:999px; background:var(--sdm-glass-3); overflow:hidden"><div style="height:100%; width:62%; border-radius:999px; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); box-shadow:inset 0 1px 0 rgba(255,255,255,.35)"></div></div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--sdm-text-dim)"><span>Escritura secuencial · verificando patrón por bloques</span><span style="font-weight:600; color:var(--sdm-text); font-variant-numeric:tabular-nums">62 % · quedan 48 s</span></div>
+              </div>
+              <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:14px">
+                <sc-for list="{{ benchMetrics }}" as="b" hint-placeholder-count="5">
+                  <div style="border-radius:13px; background:var(--sdm-glass-3); padding:13px 15px; display:flex; flex-direction:column; gap:3px">
+                    <span style="font-size:11px; font-weight:500; color:var(--sdm-text-faint)">{{ b.label }}</span>
+                    <span style="font-size:21px; font-weight:600; letter-spacing:-.025em; font-variant-numeric:tabular-nums; color:{{ b.color }}">{{ b.value }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="padding:13px 15px; border-radius:13px; background:var(--sdm-warn-soft); display:flex; gap:11px; align-items:flex-start">
+                <span style="width:18px; height:18px; flex:none; border-radius:50%; background:var(--sdm-warn); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center">!</span>
+                <span style="font-size:12px; line-height:1.55; text-wrap:pretty">La prueba se detiene sola si el disco llega a 80 °C o si el espacio libre baja de la reserva de 10 GB. Mientras dure, el rendimiento del equipo puede bajar.</span>
+              </div>
+            </div>
+
+            <div style="border-radius:18px; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); padding:19px 21px; display:flex; flex-direction:column; gap:9px">
+              <span style="font-size:13.5px; font-weight:600">Historial de pruebas</span>
+              <sc-for list="{{ testRuns }}" as="r" hint-placeholder-count="4">
+                <div style="display:grid; grid-template-columns:118px 148px 1.3fr 1fr 108px; gap:14px; align-items:center; padding:9px 0; border-top:1px solid var(--sdm-hairline)">
+                  <span style="font-size:12px; color:var(--sdm-text-dim); font-variant-numeric:tabular-nums">{{ r.date }}</span>
+                  <span style="font-size:12.5px; font-weight:600">{{ r.type }}</span>
+                  <span style="font-size:12px; color:var(--sdm-text-dim)">{{ r.target }}</span>
+                  <span style="font-size:12px; color:var(--sdm-text-dim)">{{ r.result }}</span>
+                  <span style="{{ r.pill }}">{{ r.status }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <!-- diálogo de confirmación sobre material oscurecido -->
+    <sc-if value="{{ dialogOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeDialog }}" style="position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; background:rgba(10,10,14,.34); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px)">
+        <div style="width:500px; border-radius:20px; background:var(--sdm-glass); backdrop-filter:blur(44px) saturate(190%); -webkit-backdrop-filter:blur(44px) saturate(190%); border:1px solid var(--sdm-hairline); box-shadow:var(--sdm-shadow-lift), inset 0 1px 0 var(--sdm-highlight); padding:25px; display:flex; flex-direction:column; gap:15px">
+          <span style="font-size:19px; font-weight:600; letter-spacing:-.02em">Ejecutar chkdsk /scan en D:</span>
+          <span style="font-size:13px; line-height:1.6; color:var(--sdm-text-dim); text-wrap:pretty">Se comprobará el sistema de archivos en línea. No se programa ninguna reparación fuera de línea y no se modifica ningún archivo.</span>
+          <code style="font-family:ui-monospace,Consolas,monospace; font-size:12px; padding:11px 14px; border-radius:12px; background:var(--sdm-glass-3)">chkdsk D: /scan</code>
+          <div style="display:flex; gap:11px; padding:13px 15px; border-radius:13px; background:var(--sdm-warn-soft)">
+            <span style="width:18px; height:18px; flex:none; border-radius:50%; background:var(--sdm-warn); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center">!</span>
+            <span style="font-size:12px; line-height:1.55; text-wrap:pretty">El análisis puede tardar varios minutos y aumentar temporalmente la actividad del disco.</span>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:9px">
+            <button onClick="{{ closeDialog }}" style="height:34px; padding:0 15px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass-2); color:var(--sdm-text); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)">Cancelar</button>
+            <button onClick="{{ closeDialog }}" style="height:34px; padding:0 17px; border-radius:999px; border:1px solid transparent; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); color:var(--sdm-on-accent); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.35)">Ejecutar análisis</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <div style="display:flex; flex-wrap:wrap; gap:22px; max-width:1300px">
+    <sc-for list="{{ notes }}" as="n" hint-placeholder-count="4">
+      <div style="flex:1; min-width:260px; display:flex; flex-direction:column; gap:5px">
+        <span style="font-size:13px; font-weight:600; color:#191b22">{{ n.title }}</span>
+        <span style="font-size:12.5px; line-height:1.55; color:#5f6371; text-wrap:pretty">{{ n.body }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+class Component extends DCLogic {
+  state = { theme: "light", screen: "panel", dialog: false };
+
+  seg(from, to, n, base, amp, phase) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const x = from + (to - from) * t;
+      const v = base + amp * (Math.sin(i * 0.5 + phase) * 0.6 + Math.sin(i * 0.19 + phase) * 0.4);
+      pts.push(x.toFixed(1) + "," + (210 - v * 210).toFixed(1));
+    }
+    return pts.join(" ");
+  }
+
+  renderVals() {
+    const S = this.state;
+    const go = (k) => () => this.setState({ screen: k });
+    const dark = S.theme === "dark";
+
+    const themeBtn = (active) =>
+      "height:26px; padding:0 13px; border:none; border-radius:999px; font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; background:" +
+      (active ? "#191b22" : "transparent") + "; color:" + (active ? "#fff" : "#5f6371");
+
+    const navRow = (active) =>
+      "display:flex; align-items:center; gap:10px; height:32px; padding:0 10px; border-radius:9px; border:1px solid " +
+      (active ? "var(--sdm-hairline)" : "transparent") + "; background:" + (active ? "var(--sdm-glass-2)" : "transparent") +
+      "; color:" + (active ? "var(--sdm-text)" : "var(--sdm-text-dim)") +
+      "; font-family:inherit; font-size:12.5px; font-weight:" + (active ? "600" : "500") +
+      "; cursor:pointer; transition:background 200ms cubic-bezier(.32,.72,0,1), color 200ms cubic-bezier(.32,.72,0,1);" +
+      (active ? " box-shadow:inset 0 1px 0 var(--sdm-highlight);" : "");
+
+    const nav = [
+      { label: "Panel general", k: "panel" },
+      { label: "Alertas", k: "alerts", badge: "3" },
+      { label: "Pruebas y diagnóstico", k: "tests" },
+      { label: "Informes", k: "reports" }
+    ].map(n => ({
+      label: n.label, badge: n.badge || "",
+      go: go(n.k === "reports" ? S.screen : n.k),
+      style: navRow(S.screen === n.k),
+      dotStyle: "width:5px; height:5px; border-radius:50%; flex:none; background:" + (S.screen === n.k ? "var(--sdm-accent)" : "var(--sdm-text-faint)"),
+      badgeStyle: n.badge ? "padding:1px 7px; border-radius:999px; background:var(--sdm-warn-soft); color:var(--sdm-warn); font-size:11px; font-weight:600" : "display:none"
+    }));
+
+    const pill = (c, s) => "padding:3px 10px; border-radius:999px; background:" + s + "; color:" + c + "; font-size:11.5px; font-weight:600; white-space:nowrap";
+
+    const raw = [
+      { alias: "Sistema", model: "Samsung 990 PRO 2TB", type: "NVMe", stateLabel: "Correcto", color: "var(--sdm-ok)", soft: "var(--sdm-ok-soft)", temp: "46 °C", wear: "3 %", act: "12 %", vol: "C: · 1,86 TB", free: "1,21 TB libres", usedPct: "35%", barColor: "var(--sdm-ok)", tempColor: "var(--sdm-text)" },
+      { alias: "Datos", model: "Crucial MX500 1TB", type: "SATA SSD", stateLabel: "Advertencia", color: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)", temp: "71 °C", wear: "18 %", act: "64 %", vol: "D: · 931 GB", free: "96 GB libres", usedPct: "90%", barColor: "var(--sdm-warn)", tempColor: "var(--sdm-warn)" },
+      { alias: "Copias", model: "Seagate IronWolf 4TB", type: "HDD", stateLabel: "Correcto", color: "var(--sdm-ok)", soft: "var(--sdm-ok-soft)", temp: "38 °C", wear: "No disp.", act: "3 %", vol: "E: · 3,64 TB", free: "2,4 TB libres", usedPct: "34%", barColor: "var(--sdm-ok)", tempColor: "var(--sdm-text)" },
+      { alias: "Externo", model: "WD Elements 5TB", type: "USB", stateLabel: "Sin datos SMART", color: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", temp: "No disp.", wear: "No disp.", act: "0 %", vol: "F: · 4,55 TB", free: "402 GB libres", usedPct: "91%", barColor: "var(--sdm-crit)", tempColor: "var(--sdm-text-dim)" }
+    ];
+    const disks = raw.map(d => Object.assign({}, d, { pill: pill(d.color, d.soft) }));
+    const sideDisks = raw.map(d => ({
+      alias: d.alias, temp: d.temp === "No disp." ? "—" : d.temp, color: d.color, soft: d.soft,
+      go: go("disk"), style: navRow(S.screen === "disk" && d.alias === "Datos")
+    }));
+
+    const statusLegend = [
+      { value: "3", label: "correctos", color: "var(--sdm-ok)" },
+      { value: "1", label: "con advertencia", color: "var(--sdm-warn)" },
+      { value: "0", label: "críticos", color: "var(--sdm-crit)" },
+      { value: "1", label: "sin datos SMART", color: "var(--sdm-unknown)" }
+    ];
+
+    const events = [
+      { time: "12:31", level: "Error", color: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)", provider: "disk", id: "153", msg: "Se reintentó la operación de E/S en \\Device\\Harddisk1\\DR1", infer: true },
+      { time: "11:58", level: "Aviso", color: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)", provider: "storahci", id: "129", msg: "Se restableció el dispositivo de puerto de almacenamiento", infer: false },
+      { time: "10:22", level: "Info", color: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", provider: "Ntfs", id: "98", msg: "El volumen D: se comprobó correctamente al montarse", infer: false },
+      { time: "09:14", level: "Info", color: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", provider: "PartMgr", id: "1006", msg: "Se detectó un nuevo disco: WD Elements 5TB", infer: true }
+    ].map(e => Object.assign({}, e, {
+      pill: pill(e.color, e.soft),
+      inferStyle: e.infer
+        ? "padding:2px 9px; border-radius:999px; background:var(--sdm-unknown-soft); color:var(--sdm-unknown); font-size:11px; font-weight:600; white-space:nowrap"
+        : "display:none"
+    }));
+
+    const metrics = [
+      { label: "Salud del firmware", value: "Correcta", src: "smartctl · lectura exacta", color: "var(--sdm-ok)" },
+      { label: "Temperatura actual", value: "71 °C", src: "límite del fabricante 70 °C", color: "var(--sdm-warn)" },
+      { label: "Desgaste", value: "18 %", src: "queda ~82 % de vida estimada", color: "var(--sdm-text)" },
+      { label: "Horas encendido", value: "21 470 h", src: "2 448 ciclos de encendido", color: "var(--sdm-text)" }
+    ];
+
+    const smartRows = [
+      { label: "Ciclos de encendido", val: "2 448", delta: "+1", color: "var(--sdm-text-dim)" },
+      { label: "Apagados inseguros", val: "37", delta: "+0", color: "var(--sdm-text-dim)" },
+      { label: "Errores de medios", val: "0", delta: "+0", color: "var(--sdm-ok)" },
+      { label: "Registro de errores", val: "12", delta: "+3", color: "var(--sdm-warn)" },
+      { label: "Datos escritos", val: "142 TB", delta: "+0,4 TB", color: "var(--sdm-text-dim)" }
+    ];
+
+    const alertsRaw = [
+      { sev: "Advertencia", color: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)", title: "Temperatura sobre el límite", meta: "Datos · 71 °C sobre el límite de 70 °C · última vez a las 12:38", target: "Crucial MX500 1TB", status: "activa", count: "14" },
+      { sev: "Advertencia", color: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)", title: "Poco espacio libre en F:", meta: "Externo · quedan 402 GB (8,6 %), umbral 10 %", target: "WD Elements 5TB", status: "reconocida", count: "2" },
+      { sev: "Advertencia", color: "var(--sdm-warn)", soft: "var(--sdm-warn-soft)", title: "Reintentos del controlador", meta: "Datos · 6 reintentos del controlador en 24 h", target: "Crucial MX500 1TB", status: "activa", count: "6" },
+      { sev: "Crítica", color: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)", title: "Errores de medios incrementados", meta: "Sistema · resuelta automáticamente el 02/09 a las 04:55", target: "Samsung 990 PRO 2TB", status: "resuelta", count: "1" },
+      { sev: "Informativa", color: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)", title: "SMART ilegible en disco USB", meta: "Externo · el puente USB no expone SMART; no cuenta como avería", target: "WD Elements 5TB", status: "archivada", count: "3" }
+    ];
+    const alerts = alertsRaw.map((a, i) => Object.assign({}, a, {
+      card: "border-radius:15px; padding:14px 16px; display:flex; flex-direction:column; gap:6px; cursor:pointer; background:var(--sdm-glass); backdrop-filter:blur(24px) saturate(160%); -webkit-backdrop-filter:blur(24px) saturate(160%); border:1px solid " +
+        (i === 0 ? "var(--sdm-accent)" : "var(--sdm-hairline)") +
+        "; box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight); transition:transform 220ms cubic-bezier(.32,.72,0,1), border-color 220ms cubic-bezier(.32,.72,0,1)"
+    }));
+
+    const segItem = (active) =>
+      "padding:5px 12px; border-radius:999px; font-size:12px; font-weight:600; cursor:pointer; transition:all 200ms cubic-bezier(.32,.72,0,1); background:" +
+      (active ? "var(--sdm-glass)" : "transparent") + "; color:" + (active ? "var(--sdm-text)" : "var(--sdm-text-dim)") +
+      (active ? "; box-shadow:var(--sdm-shadow), inset 0 1px 0 var(--sdm-highlight)" : "");
+
+    const alertFilters = ["Activas", "Reconocidas", "Resueltas", "Archivadas"].map((l, i) => ({ label: l, style: segItem(i === 0) }));
+    const ranges = ["24 h", "7 d", "30 d", "Personalizado"].map((l, i) => ({ label: l, style: segItem(i === 0) }));
+
+    const alertFacts = [
+      { label: "Valor actual", value: "71 °C" },
+      { label: "Umbral", value: "70 °C" },
+      { label: "Ocurrencias", value: "14" },
+      { label: "Desde", value: "Hoy 09:12" }
+    ];
+
+    const occurrences = [
+      { time: "04/09 12:38:00", value: "71 °C", ctx: "actividad 64 % · benchmark inactivo" },
+      { time: "04/09 12:07:30", value: "70 °C", ctx: "actividad 58 % · copia programada" },
+      { time: "04/09 11:41:00", value: "71 °C", ctx: "actividad 71 % · copia programada" },
+      { time: "04/09 10:18:00", value: "72 °C", ctx: "actividad 80 % · pico de escritura" },
+      { time: "04/09 09:44:30", value: "70 °C", ctx: "actividad 39 %" },
+      { time: "04/09 09:12:30", value: "70 °C", ctx: "primera ocurrencia del ciclo" }
+    ];
+
+    const primaryBtn = "height:35px; border-radius:999px; border:1px solid transparent; background:linear-gradient(180deg, var(--sdm-accent-hi), var(--sdm-accent)); color:var(--sdm-on-accent); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,255,255,.35), 0 1px 2px rgba(0,0,0,.14)";
+    const secondaryBtn = "height:35px; border-radius:999px; border:1px solid var(--sdm-hairline); background:var(--sdm-glass-2); color:var(--sdm-text); font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; box-shadow:inset 0 1px 0 var(--sdm-highlight)";
+
+    const testCards = [
+      { title: "Lectura y escritura", chip: "En curso", pill: pill("var(--sdm-accent)", "var(--sdm-accent-soft)"), desc: "Crea un archivo temporal nuevo, escribe, sincroniza, lee y verifica el patrón. Nunca sobrescribe archivos existentes.", cta: "Ver progreso", btn: primaryBtn, act: () => {} },
+      { title: "Escaneo del sistema de archivos", chip: "Disponible", pill: pill("var(--sdm-text-dim)", "var(--sdm-glass-3)"), desc: "Ejecuta chkdsk /scan en línea sobre un volumen NTFS compatible y conserva la salida completa. Sin opciones de reparación.", cta: "Configurar y ejecutar", btn: secondaryBtn, act: () => this.setState({ dialog: true }) },
+      { title: "Autotest SMART corto", chip: "No soportado en 1 disco", pill: pill("var(--sdm-unknown)", "var(--sdm-unknown-soft)"), desc: "Solicita al firmware su autotest corto. Solo se habilita si el dispositivo declara compatibilidad; no puede coincidir con el benchmark.", cta: "Elegir disco", btn: secondaryBtn, act: () => {} }
+    ];
+
+    const benchMetrics = [
+      { label: "Escritura", value: "3 148", color: "var(--sdm-text)" },
+      { label: "Lectura", value: "5 022", color: "var(--sdm-text)" },
+      { label: "Latencia media", value: "0,21", color: "var(--sdm-text)" },
+      { label: "Temperatura", value: "58 °C", color: "var(--sdm-warn)" },
+      { label: "Verificado", value: "100 %", color: "var(--sdm-ok)" }
+    ];
+
+    const testRuns = [
+      { date: "04/09 12:40", type: "Lectura/escritura", target: "Samsung 990 PRO → C:", result: "62 % · 2 GiB", status: "En curso", pill: pill("var(--sdm-accent)", "var(--sdm-accent-soft)") + "; text-align:center" },
+      { date: "03/09 21:12", type: "chkdsk /scan", target: "Volumen D: (NTFS)", result: "Sin errores encontrados", status: "Completada", pill: pill("var(--sdm-ok)", "var(--sdm-ok-soft)") + "; text-align:center" },
+      { date: "02/09 18:03", type: "Autotest corto", target: "Crucial MX500 1TB", result: "Completed without error", status: "Completada", pill: pill("var(--sdm-ok)", "var(--sdm-ok-soft)") + "; text-align:center" },
+      { date: "01/09 09:47", type: "Lectura/escritura", target: "Seagate IronWolf → E:", result: "Detenida en umbral térmico", status: "Cancelada", pill: pill("var(--sdm-warn)", "var(--sdm-warn-soft)") + "; text-align:center" }
+    ];
+
+    const titles = {
+      panel: ["Panel general", "5 discos detectados · 4 monitorizados · próxima lectura SMART en 2:41"],
+      disk: ["Datos · Crucial MX500 1TB", "SATA SSD · alias editable · historial identificado por número de serie"],
+      alerts: ["Alertas", "3 grupos activos · 1 reconocido · notificaciones nativas al minimizar"],
+      tests: ["Pruebas y diagnóstico", "exclusión mutua por disco · recopilación incompatible suspendida durante la prueba"]
+    };
+
+    const notes = [
+      { title: "Material, no relleno", body: "Cabecera, barra lateral, tarjetas, píldoras y diálogos usan un cristal traslúcido con desenfoque; el fondo de la ventana se percibe a través de ellos. La opacidad se mantiene alta para que el texto siga cumpliendo contraste AA." },
+      { title: "Acento heredado de Windows", body: "El azul viene del color de acento del sistema (aquí el predeterminado de Windows 11). En la app se leerá al arrancar y se degradará al azul por defecto si el usuario lo tiene desactivado." },
+      { title: "Salud suavizada", body: "Verde, ámbar y rojo bajan de saturación para convivir con el material, manteniendo el contraste del texto. El gris sigue reservado a «no compatible» y «sin datos»." },
+      { title: "Movimiento breve y elástico", body: "Selección de navegación, pestañas y aparición de diálogos usan una curva elástica de ~200 ms. Se anula por completo con «prefiere menos movimiento»." }
+    ];
+
+    const lineL = this.seg(0, 330, 34, 0.42, 0.16, 0);
+    const lineR = this.seg(388, 780, 40, 0.5, 0.2, 2.1);
+
+    return {
+      theme: S.theme,
+      setLight: () => this.setState({ theme: "light" }),
+      setDark: () => this.setState({ theme: "dark" }),
+      lightBtn: themeBtn(!dark), darkBtn: themeBtn(dark),
+      isPanel: S.screen === "panel", isDisk: S.screen === "disk", isAlerts: S.screen === "alerts", isTests: S.screen === "tests",
+      showRange: S.screen === "disk" || S.screen === "panel",
+      title: (titles[S.screen] || titles.panel)[0],
+      subtitle: (titles[S.screen] || titles.panel)[1],
+      goAlerts: go("alerts"), goTests: go("tests"),
+      dialogOpen: S.dialog, closeDialog: () => this.setState({ dialog: false }),
+      nav, sideDisks, statusLegend, disks, events, metrics, smartRows,
+      alerts, alertFilters, ranges, alertFacts, occurrences,
+      testCards, benchMetrics, testRuns, notes,
+      lineL, lineR,
+      areaL: "0,210 " + lineL + " 330,210",
+      areaR: "388,210 " + lineR + " 780,210"
+    };
+  }
+}
+</script>
+</body>
+</html>
