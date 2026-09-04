@@ -94,5 +94,6 @@
   "error.schemaMismatch": "The data received from the monitoring service does not have the expected shape. The application and its service may be on different versions.",
   "nav.monitoring": "Monitoring",
   "disk.noVolumes": "No mounted volumes",
-  "error.screenFailed": "This screen could not be shown"
+  "error.screenFailed": "This screen could not be shown",
+  "donut.label": "Breakdown of monitored disk states"
 }

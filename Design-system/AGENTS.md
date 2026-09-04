@@ -231,6 +231,17 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
   texto y no pongas texto directamente sobre `glass-3`. Si necesitas más translucidez en una capa, sube la
   opacidad del material, nunca rebajes el color del texto.
 - Foco visible en todo elemento interactivo (`:focus-visible` global en `tokens.css`; no lo anules).
+  La regla se escribe **con la pseudoclase repetida**, `:focus-visible:focus-visible`, y eso no es
+  un descuido: con una sola (0,1,0) empata en especificidad con cualquier utilidad de Tailwind
+  —`shadow-edge`, `shadow-[...]`— y pierde por orden, porque las utilidades se generan después de
+  `tokens.css`. Se midió: antes de arreglarlo, **ningún** botón mostraba anillo de foco, ni siquiera
+  la variante `ghost`, y como la regla hace `outline: none`, los controles quedaban sin ningún
+  indicador. Si añades otra regla de estado que compita con una utilidad, súbele la especificidad
+  igual. Lo vigila `src/lib/components/Button.browser.test.ts`.
+- **Un `role="img"` sin nombre accesible es peor que no ponerlo.** `StatusDot` emitía
+  `aria-label=""` cuando no recibía etiqueta y un lector de pantalla anunciaba «imagen» y nada más.
+  Regla: si hay etiqueta visible al lado, el gráfico es decorativo y va con `aria-hidden="true"`;
+  si no la hay, lleva su propio nombre traducido. Lo detectó `axe` en `e2e/ui/a11y.spec.ts`.
 - Navegación completa por teclado: pestañas con `role="tablist"`, diálogos con `role="dialog" aria-modal` y foco atrapado.
 - Toda gráfica y todo anillo llevan `role="img"` con `aria-label` que resume el dato, y una lectura textual equivalente cerca.
 - `prefers-reduced-motion` respetado globalmente; no añadas animaciones decorativas.

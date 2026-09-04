@@ -2,6 +2,7 @@
   /** Anillo de estado global del equipo: un segmento por estado, en orden ok → warn → crit → unknown.
    *  Acompañar SIEMPRE de la leyenda numérica (el anillo solo no es accesible). */
   import { healthToken } from "$lib/design/health";
+  import { t } from "$lib/i18n";
   import type { HealthState } from "$lib/design/types";
 
   let { counts = { ok: 0, warn: 0, crit: 0, unknown: 0 } as Record<HealthState, number>, size = 104 } =
@@ -21,13 +22,7 @@
   );
 </script>
 
-<svg
-  viewBox="0 0 120 120"
-  width={size}
-  height={size}
-  role="img"
-  aria-label="Reparto de estados de los discos monitorizados"
->
+<svg viewBox="0 0 120 120" width={size} height={size} role="img" aria-label={t("donut.label")}>
   <circle cx="60" cy="60" r="50" fill="none" stroke="var(--sdm-glass-3)" stroke-width="12" />
   {#each segments as seg (seg.state)}
     <circle

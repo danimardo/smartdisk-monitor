@@ -216,7 +216,14 @@ a:hover {
   text-decoration: underline;
 }
 
-:focus-visible {
+/* La doble pseudoclase NO es un descuido: sube la especificidad a (0,2,0) a propósito.
+   Con `:focus-visible` a secas (0,1,0) empata con cualquier utilidad de Tailwind —`shadow-edge`,
+   `shadow-[...]`— y pierde por orden de aparición, porque las utilidades se generan después de
+   este fichero. Resultado medido antes del arreglo: el anillo de foco no aparecía en NINGUNA
+   variante de Button, ni siquiera en `ghost`. Como aquí se hace `outline: none`, eso dejaba a los
+   controles sin ningún indicador de foco: WCAG 2.4.7 incumplido en todo el catálogo.
+   Lo vigila `src/lib/components/Button.browser.test.ts`. */
+:focus-visible:focus-visible {
   outline: none;
   box-shadow: var(--sdm-focus-ring);
   border-radius: var(--sdm-radius-pill);

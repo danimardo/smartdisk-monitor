@@ -94,5 +94,6 @@
   "error.schemaMismatch": "Los datos recibidos del servicio de supervisión no tienen la forma esperada. Puede que la aplicación y su servicio no coincidan de versión.",
   "nav.monitoring": "Supervisión",
   "disk.noVolumes": "Sin volúmenes montados",
-  "error.screenFailed": "No se pudo mostrar esta pantalla"
+  "error.screenFailed": "No se pudo mostrar esta pantalla",
+  "donut.label": "Reparto de estados de los discos monitorizados"
 }
