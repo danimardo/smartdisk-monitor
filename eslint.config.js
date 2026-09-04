@@ -102,7 +102,7 @@ export default ts.config(
 
   {
     // Scripts y herramientas: son Node, no la aplicación. `console` es su salida legítima.
-    files: ["scripts/**/*.mjs", "tools/**/*.mjs"],
+    files: ["scripts/**/*.mjs", "tools/**/*.mjs", ".claude/hooks/**/*.mjs"],
     languageOptions: { globals: globals.node },
     // Fuera del `tsconfig` del proyecto: las reglas con información de tipos no pueden aplicarse.
     ...ts.configs.disableTypeChecked,

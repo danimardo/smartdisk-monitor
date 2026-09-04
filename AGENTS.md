@@ -57,7 +57,7 @@ valores visuales literales, diccionarios sincronizados y validación de frontera
    descripción informal de alertas o de comandos.
 4. **`docs/open-questions.md`** — decisiones adoptadas y mediciones. Recoge correcciones
    posteriores, varias nacidas de medir sobre un Windows real.
-5. **`docs/decisions.md`** — 24 ADR.
+5. **`docs/decisions.md`** — registro de decisiones técnicas (ADR).
 6. Resto de `docs/` — especificación, arquitectura, modelo de datos, historias, testing.
 7. `specs/<feature>/` cuando exista — spec, plan y tasks de la feature en curso.
 8. Código existente.
@@ -105,6 +105,9 @@ Nada de esto se hace sin autorización explícita:
 - **Borrar o fusionar specs históricas.**
 - **Tocar `third-party/`.** Los hashes están registrados en `THIRD_PARTY_NOTICES.md` y
   `pnpm verify` falla si cambian.
+
+Los tres primeros **están bloqueados por un hook** (`.claude/hooks/proteger-rutas.mjs`): el intento
+se rechaza con un mensaje que explica la vía correcta. No es una sugerencia.
 - **Resolver una ambigüedad dentro del código, en silencio.** Si al construir aparece una decisión
   que no está escrita, se añade a `docs/open-questions.md` con su valor propuesto **antes** de
   programarla. Es la infracción más grave del proceso.
@@ -127,5 +130,7 @@ exactas. Si Context7 no está disponible, dilo y trabaja con documentación ofic
 - **Procedimientos**: `.claude/skills/` — se activan por su descripción o con `/nombre`.
 - **Fallos conocidos y silencios**: `docs/known-issues.md`. Todo `svelte-ignore` o
   `eslint-disable` debe enlazar a una entrada suya, y `pnpm verify` lo comprueba.
+- **Enforcement**: `.claude/settings.json` preaprueba los comandos de solo lectura y registra el
+  hook que protege las rutas críticas.
 - La **memoria automática** del agente es local a la máquina y no se comparte con el equipo. Nada
   que deba conocer otra persona u otro agente vive solo ahí: va versionado en el repositorio.

@@ -89,6 +89,8 @@ smartdisk-monitor/
   CLAUDE.md                     Importa AGENTS.md y añade lo específico de Claude Code
   .claude/rules/                Reglas por ámbito; se cargan al tocar sus `paths:`
   .claude/skills/               Procedimientos; se cargan al activarse
+  .claude/settings.json         Permisos y hooks (enforcement)
+  .claude/hooks/                Scripts de los hooks
 ```
 
 ### Instrucciones para agentes de IA

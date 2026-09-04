@@ -15,7 +15,7 @@ los documentos normativos, que desarrollan estos principios sin poder relajarlos
 | `docs/ui-contract.md` | Comandos, eventos y errores |
 | `docs/engineering-conventions.md` | Versiones, estructura, linters |
 | `docs/testing-strategy.md` | Niveles de prueba, lotes y checkpoints (§VIII) |
-| `docs/decisions.md` | ADR-001 a ADR-023 |
+| `docs/decisions.md` | Registro de decisiones técnicas (ADR) |
 | `docs/open-questions.md` | Decisiones adoptadas y mediciones |
 | `Design-system/AGENTS.md` | Reglas de interfaz, vinculantes |
 | `docs/known-issues.md` | Registro de silencios y fallos conocidos (§XIII) |

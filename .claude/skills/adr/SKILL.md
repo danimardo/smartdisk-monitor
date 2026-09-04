@@ -8,9 +8,6 @@ description: Cuándo una decisión merece un ADR, la plantilla que usa este proy
 Los ADR de este proyecto viven en **`docs/decisions.md`**, un fichero único con numeración
 correlativa. Hay 24, de ADR-001 a ADR-024.
 
-> Nota: la constitución menciona `docs/decisions/` como carpeta. Aquí es un fichero único. Si
-> algún día se parte en carpeta, hay que actualizar `tools/build-historias.py` y las referencias.
-
 ## Cuándo procede
 
 Sí, cuando la decisión:
