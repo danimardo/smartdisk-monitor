@@ -150,6 +150,10 @@ La comunicación UI-backend se definirá con DTO tipados coherentes con `Design-
   huérfanos: toda prueba que quedó en `running` o `cancelling` pasa a `interrupted` y los archivos
   huérfanos se listan con su ruta para que el usuario decida (US-074).
 - Solo puede haber una instancia en ejecución; abrir una segunda restaura la ventana de la primera.
+  Lo resuelve `tauri-plugin-single-instance`, registrado **el primero** de los plugins porque se
+  ejecutan en orden de registro (ADR-025). Su devolución de llamada corre en el proceso que ya
+  estaba vivo y llama a `platform::ventana::restaurar_ventana_principal()`, el mismo camino que usa
+  el arranque normal: desminimizar, mostrar y enfocar, en ese orden.
 
 ## 5. Rutas previstas
 

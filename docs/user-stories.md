@@ -74,6 +74,12 @@ Criterios de aceptación:
 - Se muestran modelo, serie, firmware, interfaz, capacidad y volúmenes asociados cuando estén disponibles.
 - No se confunde una letra de unidad con la identidad física.
 - Un RAID, USB o disco virtual sin SMART aparece como no compatible o parcialmente compatible, no como averiado.
+- **Cierra el riesgo I.5**: se fija y documenta la cascada de `-d` que `smartctl` intenta
+  (`sat`, `nvme`, `sntjmicron`, `csmi`, …) antes de declarar un dispositivo no compatible, medida
+  contra el hardware disponible. Lo que no se pueda medir se documenta como limitación por modelo
+  de puente, con su identificador USB, en vez de dejarse como un «no compatible» sin explicación.
+  Recordatorio de `.claude/rules/backend-rust.md`: `smartctl` sin elevación devuelve
+  `Unable to detect device type`, que **no** significa que el disco sea incompatible.
 
 ### US-011 — Seleccionar discos (P0)
 
@@ -149,6 +155,10 @@ Criterios de aceptación:
 - Puede filtrarse por disco, volumen, nivel, proveedor e intervalo.
 - La asociación inferida se etiqueta como tal.
 - Reiniciar la aplicación no duplica eventos importados.
+- **Cierra el riesgo I.7**: la lista se virtualiza y se mide con el peor caso previsto —20 discos y
+  5.000 eventos— comprobando que el desplazamiento y el filtrado no producen bloqueo perceptible.
+  Si no aguanta, se recorta la densidad del panel o se pagina, y la decisión se registra. Esta es
+  la historia que crea la lista virtualizada, así que es aquí donde el riesgo deja de ser teórico.
 
 ### US-022 — Conservar y compactar historial (P1)
 
@@ -308,6 +318,18 @@ Criterios de aceptación:
 - La versión procede del manifiesto, no de texto duplicado.
 - Desinstalar conserva `ProgramData` y el historial.
 - Se documenta cómo borrar manualmente los datos.
+- **La carpeta de `ProgramData` se crea con la propiedad y la ACL de ADR-026**: `/setowner` a
+  administradores **antes** de `/inheritance:r`, y con SID numéricos, no nombres de grupo. Se
+  verifica que un usuario sin privilegios no puede escribir en ella ni recuperar el permiso, y que
+  pre-crearla antes de instalar no le sirve de nada (`open-questions.md` §R).
+- **Cierra el riesgo I.2**: se comprueba en la máquina empaquetada que Windows entrega las
+  notificaciones toast con la aplicación bajo `requireAdministrator` y su AUMID registrado. Si no
+  las entrega, se activa el plan B —ventana propia con el componente `Toast` anclada sobre la
+  bandeja— y se anota en `open-questions.md`. Es lo que sostiene US-030: sin toast, esa historia
+  pierde su mecanismo principal.
+- **Comprobación de humo de la instancia única** (ADR-025): con la aplicación abierta y
+  minimizada, lanzarla de nuevo no crea un segundo proceso y **restaura y enfoca la ventana
+  existente**. No es automatizable: exige aceptar el UAC.
 
 ### US-061 — Ver información de la aplicación (P1)
 

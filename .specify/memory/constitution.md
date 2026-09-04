@@ -561,6 +561,7 @@ o **major** requiere enmienda de esta constitución.
 |---|---|
 | `tauri` | 2.11.5 |
 | `tauri-build` | 2.6.3 |
+| `tauri-plugin-single-instance` | 2.4.4 |
 | `serde` | 1.0.229 |
 | `serde_json` | 1.0.151 |
 | `thiserror` | 2.0.20 |
@@ -696,6 +697,7 @@ sola razón, sin necesidad de más argumento.
 | 1.1.0 | 2026-09-04 | Principios XI (validación de fronteras con Zod), XII (configuración sin variables de entorno) y XIII (validación de tipos antes que nada). Ninguna norma anterior se relaja |
 | 1.2.0 | 2026-09-04 | Principio XIV (arquitectura idiomática de SvelteKit adaptada a Tauri): carga con `load`, navegación por enlaces, `$derived` antes que `$effect`, y dónde vive la lógica. Ninguna norma anterior se relaja |
 | 1.3.0 | 2026-09-04 | Principio XV (registro de actividad): API única, niveles y su significado, precedencia del nivel, prohibición de datos personales, formato en hora local. Ninguna norma anterior se relaja |
+| 1.3.1 | 2026-09-04 | `tauri-plugin-single-instance` 2.4.4 entra en la pila fija (ADR-025). No se añade, relaja ni reinterpreta ningún principio: solo actualiza la tabla de dependencias de Rust que exige el principio III |
 
 ### Cumplimiento
 
@@ -712,4 +714,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.3.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04
+**Versión**: 1.3.1 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04

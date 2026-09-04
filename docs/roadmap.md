@@ -27,7 +27,12 @@ Objetivo: reducir riesgos antes de construir la interfaz completa.
   herramientas de Windows no coinciden entre sí. Queda **implementar y probar** la detección de
   `open-questions.md` §Q con volcados reales como fixtures.
 - **Validar `accessibleAccent()`** contra los acentos de Windows, empezando por los claros.
-- Probar bloqueo de instancia única y ACL de la carpeta de `ProgramData`.
+- ~~Probar bloqueo de instancia única y ACL de la carpeta de `ProgramData`~~ **hecho**: eran dos
+  problemas distintos. La instancia única va con el plugin oficial (ADR-025); queda una
+  comprobación de humo manual, que exige UAC, dentro de US-060. Y `%ProgramData%` **no** restringe
+  la escritura a administradores: un usuario sin privilegios se apropia de la carpeta
+  pre-creándola, y restablecer la ACL sin tomar la propiedad no lo arregla (ADR-026,
+  `open-questions.md` §R).
 - Validar `smartctl --scan-open --json` en NVMe, SATA y USB disponibles.
 - Interpretar correctamente los bits del código de salida de smartctl.
 - Contrastar en **Windows Server** la lista de eventos de `alert-rules.md` §3, verificada hasta ahora

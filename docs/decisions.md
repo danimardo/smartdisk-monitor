@@ -403,3 +403,107 @@ genérica sabe hablar con Tauri.
   temperatura con un evento de disco. El desplazamiento evita la ambigüedad cuando el fichero viaja
   por correo.
 
+
+## ADR-025 — Instancia única con el plugin oficial de Tauri
+
+Estado: aceptada.
+
+### El problema
+
+La especificación no pide solo impedir una segunda instancia: pide que **abrir una segunda restaure
+la ventana de la primera** (`docs/product-specification.md` §11, `docs/architecture.md` §4). Son dos
+requisitos distintos, y el segundo obliga a comunicar los dos procesos.
+
+### La decisión
+
+`tauri-plugin-single-instance` 2.4, del propio equipo de Tauri, registrado **el primero** de todos
+los plugins: se ejecutan en el orden en que se añaden al `Builder`, y este tiene que decidir si el
+proceso sigue vivo antes de que nada más se inicialice.
+
+Su devolución de llamada corre en el proceso que ya estaba en marcha y recibe los argumentos y el
+directorio de trabajo del segundo, que termina solo. Ahí se llama a
+`platform::ventana::restaurar_ventana_principal()`, que desminimiza, muestra y enfoca **en ese
+orden**: una ventana minimizada sigue contando como visible, y `set_focus()` sobre una ventana
+oculta no hace nada.
+
+### Alternativas descartadas
+
+- **Mutex con nombre (`CreateMutexW`) sin dependencias.** Quince líneas y cero superficie añadida,
+  pero solo resuelve la mitad: la segunda instancia muere en silencio y el usuario, que no ve
+  aparecer nada, concluye que la aplicación no arranca. Restaurar la primera ventana exigiría
+  escribir igualmente el canal entre procesos, que es exactamente lo que aporta el plugin.
+- **Fichero de bloqueo en `%ProgramData%`.** Sobrevive a un cierre inesperado y deja la aplicación
+  inarrancable hasta que alguien lo borra a mano. Un mutex del núcleo desaparece con el proceso.
+
+### Consecuencias
+
+- Una dependencia más en un binario privilegiado. Se acepta porque es oficial, está en el mismo
+  espacio de versiones que Tauri y su alternativa exigiría escribir el mismo mecanismo peor.
+- El nivel de registro del segundo proceso **no se aplica**: el suscriptor de `tracing` ya está
+  instalado con el nivel del primero. Los argumentos del segundo se registran en el log, que es lo
+  útil para diagnosticar; cambiar el nivel en caliente requeriría un `reload::Handle` y no compensa.
+- La restauración de ventana queda en un único sitio, compartida con el arranque normal.
+
+## ADR-026 — ACL explícita y toma de propiedad de la carpeta de `ProgramData`
+
+Estado: aceptada.
+
+### El problema
+
+La aplicación guarda en `%ProgramData%\SmartDisk Monitor\` la base SQLite, los logs y los informes.
+La suposición de partida era que `ProgramData` ya restringe la escritura a administradores. **Es
+falsa**, y se ha medido en un Windows 11 real (`docs/open-questions.md` §R):
+
+```text
+C:\ProgramData  BUILTIN\Usuarios:(CI)(WD,AD,WEA,WA)
+                CREATOR OWNER:(OI)(CI)(IO)(F)
+```
+
+`(CI)` propaga a toda subcarpeta. Un usuario **sin privilegios** puede crear
+`C:\ProgramData\SmartDisk Monitor\` antes de que se instale nada y, por `CREATOR OWNER`, queda con
+Control total sobre ella. Se comprobó ejecutándolo desde una sesión no elevada.
+
+### La decisión
+
+El instalador, y solo el instalador, crea la carpeta y le aplica:
+
+```text
+icacls "%ProgramData%\SmartDisk Monitor" /setowner *S-1-5-32-544 /t /c
+icacls "%ProgramData%\SmartDisk Monitor" /inheritance:r ^
+  /grant:r *S-1-5-18:(OI)(CI)F ^
+  /grant:r *S-1-5-32-544:(OI)(CI)F ^
+  /grant:r *S-1-5-32-545:(OI)(CI)RX
+```
+
+Tres detalles que no son opcionales:
+
+1. **`/setowner` primero.** Restablecer la ACL no basta: el propietario conserva `WRITE_DAC`
+   implícito y vuelve a concederse Control total en silencio. Medido: tras endurecer la carpeta, el
+   usuario que la había creado recuperó la escritura con un solo `icacls /grant`.
+2. **SID numéricos, no nombres.** En esta máquina el grupo se llama `Administradores`; en un Windows
+   en inglés, `Administrators`. Un instalador que use nombres falla en la mitad del planeta.
+   `S-1-5-18` es `SYSTEM`, `S-1-5-32-544` administradores, `S-1-5-32-545` usuarios.
+3. **`/inheritance:r` y sin `CREATOR OWNER`.** Sin cortar la herencia, los permisos de `ProgramData`
+   siguen aplicándose por debajo de los explícitos.
+
+`platform::paths::log_dir()` deja de crear la raíz en compilación de publicación: si falta, la
+instalación está rota y debe notarse, no repararse creando una carpeta con la ACL heredada débil.
+
+### Alternativas descartadas
+
+- **Comprobar y reparar la ACL al arrancar.** La aplicación va elevada y podría hacerlo, pero exige
+  el crate `windows` con `Win32_Security` y código `unsafe` para leer descriptores de seguridad,
+  para cubrir un hueco que el instalador ya cierra por completo: después de instalar, nadie sin
+  privilegios puede cambiar esos permisos. Se descarta por coste frente a beneficio.
+- **Usar `%LocalAppData%` por usuario.** Evitaría el problema, pero rompe el requisito de que el
+  historial sea del equipo y no de la cuenta que abrió la aplicación.
+
+### Consecuencias
+
+- El instalador gana un paso obligatorio y verificable, que forma parte de los criterios de US-060.
+- Un usuario sin privilegios puede seguir **leyendo** la carpeta. Es deliberado: la interfaz muestra
+  informes y el ZIP de diagnóstico se genera ahí. Los datos ya se anonimizan por defecto y ningún
+  número de serie ni ruta de perfil entra en un log.
+- Desinstalar conserva `ProgramData` (US-060), así que la ACL endurecida sobrevive a la
+  desinstalación y una reinstalación se la vuelve a encontrar. `/setowner` la deja consistente
+  igualmente.

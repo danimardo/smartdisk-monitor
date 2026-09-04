@@ -22,6 +22,17 @@ pub fn run() {
     let _guard = logging::init(level, &log_dir);
 
     tauri::Builder::default()
+        // Primero de todos a propósito: los plugins se ejecutan en el orden en que se registran,
+        // y este tiene que decidir si el proceso sigue vivo antes de que nada más se inicialice.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // Corre en el proceso que YA estaba en marcha. El segundo termina solo.
+            tracing::info!(
+                argumentos = ?argv,
+                directorio = %cwd,
+                "segunda instancia rechazada; se restaura la ventana existente"
+            );
+            platform::ventana::restaurar_ventana_principal(app);
+        }))
         .invoke_handler(tauri::generate_handler![
             // apariencia y ajustes
             commands::get_appearance_settings,
@@ -67,10 +78,7 @@ pub fn run() {
         .setup(|app| {
             // La ventana nace oculta y se muestra cuando el frontend ha pintado: así no se ve un
             // rectángulo blanco antes de que se aplique el tema.
-            use tauri::Manager;
-            if let Some(w) = app.get_webview_window("main") {
-                w.show()?;
-            }
+            platform::ventana::restaurar_ventana_principal(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

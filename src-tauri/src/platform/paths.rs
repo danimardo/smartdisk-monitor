@@ -19,10 +19,22 @@ pub fn data_dir() -> PathBuf {
         .join("SmartDisk Monitor")
 }
 
-/// Carpeta de logs. Se crea si no existe: sin ella no habría registro justo cuando hace falta.
+/// Carpeta de logs, creada si no existe: sin ella no habría registro justo cuando hace falta.
+///
+/// **Solo se crea si la carpeta de datos ya existe.** No es una precaución de estilo: la ACL por
+/// omisión de `%ProgramData%` concede al grupo `Usuarios` los permisos `(CI)(WD,AD,WEA,WA)`, que
+/// se heredan a toda subcarpeta. Crear aquí la raíz `SmartDisk Monitor` la dejaría escribible por
+/// cualquier usuario sin privilegios, deshaciendo el endurecimiento que aplica el instalador
+/// (ADR-026, `docs/open-questions.md` §R). La raíz la crea el instalador, con su ACL explícita; si
+/// falta, la instalación está rota y eso tiene que notarse, no repararse a medias.
+///
+/// En desarrollo sí se crea entera: `data_dir()` apunta a `.dev-data`, fuera de `%ProgramData%`.
 pub fn log_dir() -> PathBuf {
-    let dir = data_dir().join("logs");
-    let _ = std::fs::create_dir_all(&dir);
+    let raiz = data_dir();
+    let dir = raiz.join("logs");
+    if cfg!(debug_assertions) || raiz.is_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+    }
     dir
 }
 
@@ -39,5 +51,6 @@ mod tests {
     #[test]
     fn los_logs_cuelgan_de_la_carpeta_de_datos() {
         assert!(log_dir().ends_with("logs"));
+        assert_eq!(log_dir().parent(), Some(data_dir().as_path()));
     }
 }

@@ -301,9 +301,12 @@ pedido y resolución servida está en [`open-questions.md`](open-questions.md) �
 - Los comandos elevados se implementan en Rust mediante una API cerrada y argumentos validados.
 - Los archivos de prueba se crean exclusivamente en rutas calculadas y verificadas.
 - Las exportaciones se anonimizan por defecto.
-- Solo una instancia de la aplicación puede ejecutarse a la vez; abrir una segunda restaura la
-  ventana de la primera. La carpeta de datos de `ProgramData` restringe la escritura a
-  administradores.
+- Solo una instancia de la aplicación puede ejecutarse a la vez; abrir una segunda **restaura y
+  enfoca la ventana de la primera** en lugar de morir en silencio (ADR-025).
+- La carpeta de datos de `ProgramData` restringe la escritura a administradores **mediante una ACL
+  explícita que aplica el instalador**, con toma de propiedad previa (ADR-026). No se hereda: los
+  permisos por omisión de `%ProgramData%` permiten a cualquier usuario crear ficheros y carpetas, y
+  quedarse con el control de las que crea. La lectura sí queda abierta, deliberadamente.
 
 ## 12. Criterios globales de calidad
 

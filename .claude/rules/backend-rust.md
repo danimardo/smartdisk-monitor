@@ -35,5 +35,12 @@ Están documentadas porque volver a descubrirlas cuesta horas:
   type`, que **no** significa que el disco sea incompatible.
 - `main.rs` lleva `test = false`: hereda el manifiesto de elevación y su arnés de pruebas no puede
   arrancar sin privilegios.
+- `%ProgramData%` **no** restringe la escritura a administradores: concede a `Usuarios`
+  `(CI)(WD,AD,WEA,WA)`, heredado a toda subcarpeta. La raíz de datos la crea el instalador con su
+  ACL explícita; crearla desde Rust reproduce el agujero (ADR-026).
+- Restablecer una ACL **sin tomar antes la propiedad** no cierra nada: el propietario conserva
+  `WRITE_DAC` y se vuelve a conceder Control total.
+- Git Bash convierte los modificadores de `icacls` en rutas: `/grant` acaba como
+  `C:/Program Files/Git/grant`. Estos comandos se lanzan desde PowerShell.
 
 Al terminar: `cargo clippy --all-targets -- -D warnings` y `cargo fmt --check` en verde.

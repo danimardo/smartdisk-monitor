@@ -276,17 +276,20 @@ Versiones, gestor de paquetes, estructura de carpetas, linters y CI en
 
 ## I. Riesgos técnicos a validar en Fase 0
 
-Ninguno está resuelto: son mediciones pendientes, y cada uno puede obligar a cambiar una decisión.
+De los siete, cuatro están cerrados. Los tres que siguen abiertos **no son medibles hoy**: uno
+necesita el instalador, otro hardware que no hay y el tercero una lista virtualizada que aún no
+existe. Cada uno queda anclado a la historia que lo desbloquea, en lugar de a una lista aparte que
+nadie mira.
 
 | # | Riesgo | Qué hay que comprobar | Si sale mal | Estado |
 |---|---|---|---|---|
 | I.1 | WebView2 no viene preinstalado en Windows Server | ~~Pendiente~~ **Resuelto**: instalador sin conexión del runtime Evergreen (ADR-020). La matriz de sistemas no cambia; el instalador pasa a ~140 MB. Véase §M | — | `DECIDIDO` |
-| I.2 | Notificaciones toast desde un proceso elevado | Si Windows las entrega con la app bajo `requireAdministrator` y AUMID registrado | Plan B: ventana propia con el componente `Toast`, anclada sobre la bandeja | `ABIERTO` |
+| I.2 | Notificaciones toast desde un proceso elevado | Si Windows las entrega con la app bajo `requireAdministrator` y AUMID registrado | Plan B: ventana propia con el componente `Toast`, anclada sobre la bandeja | `ABIERTO` — se mide al empaquetar: **US-060** |
 | I.3 | Codificación de la salida de `chkdsk` | ~~Pendiente~~ **Resuelto**: no es CP850 sino CP1252, y las herramientas de Windows no coinciden entre sí. Detección validada. Véase §Q | — | `DECIDIDO` |
 | I.4 | Acento del sistema con contraste bajo | ~~Pendiente~~ **Resuelto**: barrido del espacio sRGB completo. `accessibleAccent()` era correcto, pero faltaba el acento como texto. Véase §O | — | `DECIDIDO` |
-| I.5 | `smartctl` tras controladoras RAID y puentes USB | Qué cascada de `-d` (`sat`, `nvme`, `sntjmicron`, `csmi`) merece la pena antes de declarar "no compatible" | Se documenta la limitación por modelo de puente | `ABIERTO` |
-| I.6 | Instancia única y ACL de `ProgramData` | Bloqueo de instancia única, y qué ACL necesita la carpeta para que solo administradores escriban | Se ajusta el instalador | `ABIERTO` |
-| I.7 | Rendimiento de la interfaz con 20 discos y 5.000 eventos | Que la lista virtualizada y el panel aguantan sin bloqueo perceptible | Se recorta la densidad del panel o se pagina | `ABIERTO` |
+| I.5 | `smartctl` tras controladoras RAID y puentes USB | Qué cascada de `-d` (`sat`, `nvme`, `sntjmicron`, `csmi`) merece la pena antes de declarar "no compatible" | Se documenta la limitación por modelo de puente | `ABIERTO` — necesita hardware: **US-010** |
+| I.6 | Instancia única y ACL de `ProgramData` | ~~Pendiente~~ **Resuelto**: eran dos problemas. La instancia única exige comunicar procesos, no solo detectarlos (ADR-025). Y `ProgramData` **no** restringe la escritura a administradores: un usuario sin privilegios se apropia de la carpeta pre-creándola (ADR-026). Véase §R | — | `DECIDIDO` |
+| I.7 | Rendimiento de la interfaz con 20 discos y 5.000 eventos | Que la lista virtualizada y el panel aguantan sin bloqueo perceptible | Se recorta la densidad del panel o se pagina | `ABIERTO` — necesita la lista virtualizada: **US-021** |
 
 ---
 
@@ -802,3 +805,103 @@ constante.
   emite JSON en inglés, pero conviene aplicarla igual: sale gratis y evita una sorpresa.
 - Hay que **guardar volcados reales como fixtures** de test, uno de CP1252 y otro de CP850. Es la
   única forma de que una regresión en esto se note antes de llegar al usuario.
+
+---
+
+## R. Instancia única y ACL de `ProgramData` — medido
+
+Cierra I.6 el 2026-09-04. Decisiones resultantes: ADR-025 (instancia única) y ADR-026 (ACL).
+
+### R.1 · Eran dos preguntas, no una
+
+I.6 juntaba dos cosas sin relación técnica. Separadas:
+
+- **Instancia única.** El requisito real no es «bloquear la segunda», sino «abrir una segunda
+  restaura la ventana de la primera». Eso obliga a comunicar dos procesos, no solo a detectarse.
+  Resuelto con `tauri-plugin-single-instance` (ADR-025).
+- **ACL de la carpeta de datos.** Aquí estaba el hallazgo.
+
+### R.2 · La suposición de partida era falsa
+
+La especificación daba por hecho que `%ProgramData%` restringe la escritura a administradores.
+Medido con `icacls` en Windows 11 Pro 26200, en español:
+
+```text
+C:\ProgramData  NT AUTHORITY\SYSTEM:(OI)(CI)(F)
+                BUILTIN\Administradores:(OI)(CI)(F)
+                CREATOR OWNER:(OI)(CI)(IO)(F)
+                BUILTIN\Usuarios:(OI)(CI)(RX)
+                BUILTIN\Usuarios:(CI)(WD,AD,WEA,WA)
+```
+
+La última línea concede a **cualquier usuario** crear ficheros (`WD`) y carpetas (`AD`), y `(CI)`
+lo propaga a toda subcarpeta. `CREATOR OWNER` remata: quien cree algo ahí queda con Control total
+sobre ello.
+
+### R.3 · Verificado: un usuario sin privilegios se apropia de la carpeta
+
+Desde una sesión **no elevada** (`net session` → acceso denegado):
+
+```text
+mkdir C:\ProgramData\_smartdisk_acl_probe        ->  creada, sin UAC
+icacls C:\ProgramData\_smartdisk_acl_probe
+   ...
+   RYZEN\danimardo:(I)(F)        <- Control total heredado de CREATOR OWNER
+```
+
+Es un ataque de **pre-creación**: basta con adelantarse al instalador. A partir de ahí el atacante
+controla dónde va a vivir la base SQLite del historial.
+
+Nota: el usuario **no** puede modificar ficheros que cree un administrador. `WD,AD` van sin `(OI)`,
+así que aplican a la carpeta —crear— y no se heredan a los ficheros, que reciben solo `(OI)(RX)`.
+Tampoco puede borrarlos: `DC` no está concedido. El riesgo es plantar ficheros y controlar la raíz,
+no manipular los existentes.
+
+### R.4 · El endurecimiento funciona, y el orden importa
+
+Aplicado sobre la carpeta de sondeo:
+
+```text
+icacls <carpeta> /inheritance:r
+  /grant:r *S-1-5-18:(OI)(CI)F        SYSTEM
+  /grant:r *S-1-5-32-544:(OI)(CI)F    administradores
+  /grant:r *S-1-5-32-545:(OI)(CI)RX   usuarios, solo lectura
+```
+
+Resultado inmediato, desde la misma sesión no elevada:
+
+```text
+touch <carpeta>\intruso.txt   ->  Permission denied   ✔
+mkdir <carpeta>\sub           ->  Permission denied   ✔
+```
+
+**Pero no basta.** El propietario conserva `WRITE_DAC` implícito:
+
+```text
+icacls <carpeta> /grant "danimardo:(OI)(CI)F"   ->  correcto
+touch <carpeta>\intruso.txt                     ->  escribe   ✘
+Owner: RYZEN\danimardo
+```
+
+De ahí que ADR-026 exija **`/setowner *S-1-5-32-544` antes** de fijar la ACL. Restablecer permisos
+sin cambiar el propietario deja el agujero abierto y da falsa sensación de estar cerrado.
+
+### R.5 · SID numéricos, no nombres de grupo
+
+En esta máquina el grupo es `Administradores`; en un Windows en inglés, `Administrators`; en
+francés, `Administrateurs`. Un instalador escrito con nombres falla fuera de su idioma. Se usan
+siempre `*S-1-5-18`, `*S-1-5-32-544` y `*S-1-5-32-545`.
+
+### R.6 · Reglas que se derivan
+
+- **La raíz de datos la crea el instalador, con su ACL explícita.** `platform::paths::log_dir()`
+  ya no la crea en compilación de publicación: crear la raíz ad hoc reproduce la ACL heredada
+  débil, que es justo lo que se quiere evitar. Si falta, la instalación está rota y debe notarse.
+- **`/setowner` antes que `/grant`**, siempre, y con `/t /c` para arrastrar lo que hubiera dentro.
+- **La comprobación de la ACL entra en los criterios de US-060**, no en una lista aparte.
+- El usuario sin privilegios conserva **lectura**, deliberadamente: la interfaz muestra informes y
+  el ZIP de diagnóstico se genera ahí, y su contenido ya está anonimizado.
+- **Pendiente de verificación manual**: que lanzar una segunda instancia restaure la ventana de la
+  primera. El código está cableado y compila, pero comprobarlo exige arrancar la aplicación
+  elevada y aceptar el UAC, cosa que ninguna prueba automática de este proyecto puede hacer.
+  Entra como comprobación de humo de US-060.
