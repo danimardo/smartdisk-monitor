@@ -31,6 +31,7 @@ SOURCES: list[tuple[str, str, str | None]] = [
     ("docs/alert-rules.md", "Reglas de alerta", None),
     ("docs/ui-contract.md", "Contrato UI ↔ backend", None),
     ("docs/engineering-conventions.md", "Convenciones de ingeniería", None),
+    ("docs/testing-strategy.md", "Estrategia integral de testing", None),
     ("docs/decisions.md", "Registro de decisiones técnicas", None),
     ("docs/open-questions.md", "Cuestiones abiertas y mediciones", None),
     # --- Reglas de interfaz, vinculantes ------------------------------------
@@ -78,6 +79,7 @@ regeneración.
 | Por qué se decidió algo | Registro de decisiones |
 | Qué se midió y qué sigue sin decidirse | Cuestiones abiertas y mediciones |
 | Cómo se escribe una pantalla | Reglas de interfaz (VINCULANTES) |
+| Qué hay que probar, a qué nivel y cuándo | Estrategia integral de testing |
 
 ## Precedencia
 

@@ -47,6 +47,7 @@ El sistema de diseño aprobado se encuentra en [`Design-system/`](Design-system/
 - [Reglas de alerta](docs/alert-rules.md)
 - [Contrato UI ↔ backend](docs/ui-contract.md)
 - [Convenciones de ingeniería](docs/engineering-conventions.md)
+- [Estrategia de testing](docs/testing-strategy.md)
 - [Cuestiones abiertas](docs/open-questions.md)
 - [Backlog y versiones](docs/roadmap.md)
 - [Decisiones técnicas](docs/decisions.md)

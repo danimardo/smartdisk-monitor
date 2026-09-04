@@ -14,6 +14,7 @@ los documentos normativos, que desarrollan estos principios sin poder relajarlos
 | `docs/alert-rules.md` | Motor de alertas, regla por regla |
 | `docs/ui-contract.md` | Comandos, eventos y errores |
 | `docs/engineering-conventions.md` | Versiones, estructura, linters |
+| `docs/testing-strategy.md` | Niveles de prueba, lotes y checkpoints (§VIII) |
 | `docs/decisions.md` | ADR-001 a ADR-023 |
 | `docs/open-questions.md` | Decisiones adoptadas y mediciones |
 | `Design-system/AGENTS.md` | Reglas de interfaz, vinculantes |
