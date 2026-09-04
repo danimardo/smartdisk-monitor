@@ -100,7 +100,10 @@ aplicación real.
 | `pnpm app:dev` | Aplicación completa en modo desarrollo |
 | `pnpm app:build` | Instalador NSIS con WebView2 sin conexión |
 | `pnpm check` | Tipos y accesibilidad del frontend |
-| `pnpm test` | Pruebas del frontend |
+| `pnpm test` | Lógica del frontend, en Node |
+| `pnpm test:component` | Componentes en un Chromium real |
+| `pnpm test:e2e` | Interfaz completa con Playwright y el IPC simulado |
+| `pnpm test:a11y` | Accesibilidad con axe, seis pantallas por dos temas |
 | `pnpm verify` | Recursos redistribuidos, tokens del diseño e i18n |
 | `pnpm docs:build` | Regenera `historias.md` |
 | `cargo test` / `cargo clippy` | Backend, desde `src-tauri/` |
@@ -2135,6 +2138,9 @@ no se hace una excepción local.
 | TypeScript | 5.x, `strict: true` | sin `any` implícito, sin `@ts-ignore` sin justificar |
 | Tailwind | 3.x | solo utilidades mapeadas desde tokens |
 | SQLite | vía `rusqlite` con `bundled` | evita depender de la DLL del sistema |
+| Vitest | 5.x | dos configuraciones: Node y navegador (ADR-027) |
+| Playwright | 1.x | solo Chromium: es el motor del WebView2 (ADR-028) |
+| `@axe-core/playwright` | 4.x | accesibilidad automática, ambos temas |
 
 Windows mínimo soportado: **Windows 10 1809 (build 17763)** y **Windows Server 2016**, x64. Edge y
 WebView2 llegan en realidad hasta Windows 10 1709, pero por debajo de 1809 las APIs de
@@ -2281,8 +2287,9 @@ sistema de diseño se erosione:
 | Fixtures | salidas reales anonimizadas de ATA, NVMe, USB, RAID y VM | `src-tauri/tests/fixtures/` |
 | Integración | `smartctl` simulado: salidas válidas, timeouts, códigos de salida con bits, JSON corrupto | `src-tauri/tests/` |
 | Migraciones | migrar desde cada versión publicada hasta la actual, con copia previa | `persistence/` |
-| Unitarias TS | `format`, `health`, `accent`, `i18n` | `vitest` |
-| Componentes | estados vacío, cargando, no compatible, error y dato obsoleto de cada componente | `vitest` + testing-library |
+| Unitarias TS | `format`, `health`, `accent`, `i18n` | `pnpm test`, jsdom |
+| Componentes | estados vacío, cargando, no compatible, error y dato obsoleto de cada componente, más lo que solo se ve en un navegador real: contraste sobre material, respaldo sin `backdrop-filter`, foco visible | `pnpm test:component`, Chromium real. Sufijo `*.browser.test.ts` |
+| Interfaz | arranque, chrome, navegación, tema, tipografía, errores de consola | `pnpm test:e2e`, Playwright con IPC propio |
 | Accesibilidad | foco, teclado, contraste AA, `prefers-reduced-motion` | automatizado donde se pueda, lista de comprobación donde no |
 | Visuales | ambos temas, acento del sistema y de respaldo, sin `backdrop-filter`, 1024 × 560 y 1280 × 720, escalado 125/150/200 % | capturas comparadas; `tools/scale-check.html` como banco de pruebas |
 | Manuales | hardware real, sin exigir una marca concreta | documentadas en el informe de Fase 0 |
@@ -2400,22 +2407,49 @@ Verificado antes de escribir esta estrategia. **No se instala nada que ya esté 
 | Análisis estático TS | `eslint` con `typescript-eslint` | En uso, sin errores. Centrado en promesas sin gestionar |
 | Formato | `prettier` | En uso |
 | Análisis estático Rust | `clippy -D warnings`, `rustfmt` | En uso |
-| Unit TS | `vitest` + `@vitest/coverage-v8` | En uso: 160 pruebas, umbral 70 % |
+| Unit TS | `vitest` 5 + `@vitest/coverage-v8` | En uso: 165 pruebas, umbral 70 % |
 | Unit Rust | `cargo test` | En uso: 11 pruebas |
-| Componentes | `@testing-library/svelte` | **Instalado y sin usar: cero tests de componente** |
+| Componentes | Vitest Browser Mode + `vitest-browser-svelte` | En uso: 8 pruebas (ADR-027) |
 | Validación de contrato | `zod` | En uso en la frontera IPC (§XI) |
 | Verificadores propios | 5 scripts en `scripts/` | En uso: recursos, tokens, i18n, fronteras |
-| E2E | — | **No existe** |
-| Visual | — | **No existe** |
+| E2E de interfaz | `@playwright/test` + IPC propio | En uso: 17 pruebas (ADR-028) |
+| Accesibilidad | `@axe-core/playwright` | En uso: 6 pantallas × 2 temas |
+| E2E de aplicación real | `tauri-driver` | **No existe**: necesita el ejecutable empaquetado (US-060) |
+| Visual | — | **No existe**: sin pantallas definitivas no hay línea base que fijar |
 | Mutation | — | **No existe** |
 
-Duración medida: `vitest` 22 s, `cargo test` 2 s. Ese es el presupuesto que hay que preservar.
+#### Líneas base medidas (T-TEST-001)
 
-#### Deuda identificada
+Medidas el 2026-09-04, tras montar la infraestructura. Es el presupuesto que hay que preservar: si
+una suite se sale de aquí, se investiga antes de subir el plazo.
 
-1. **`@testing-library/svelte` instalado sin un solo test.** Se resuelve en el lote L1.
-2. **Ningún test de componente ni E2E**, pese a que el sistema de diseño es vinculante y su
-   incumplimiento es un defecto de producto, no estético.
+| Suite | Comando | Ficheros | Pruebas | Duración |
+|---|---|---|---|---|
+| Lógica, Node | `pnpm test` | 11 | 165 | ~16 s |
+| Componentes, Chromium | `pnpm test:component` | 2 | 8 | ~2 s |
+| Interfaz, Playwright | `pnpm test:e2e` | 2 | 17 | ~38 s |
+| Solo el smoke | `pnpm test:e2e:smoke` | 1 | 5 | ~33 s |
+| Accesibilidad | `pnpm test:a11y` | 1 | 12 | ~37 s |
+| Rust | `cargo test` | — | 11 | <1 s |
+
+Las de Playwright incluyen compilar el frontend y arrancar la vista previa, que es la mayor parte
+del tiempo. Ejecutar más pruebas contra un servidor ya arrancado sale casi gratis.
+
+#### Deuda saldada, y lo que destapó
+
+1. ~~`@testing-library/svelte` instalado sin un solo test~~ **retirado** (ADR-027). Su núcleo vuelve
+   por vía transitiva dentro de `vitest-browser-svelte`, que es el envoltorio oficial: el Browser
+   Mode no sustituye a Testing Library, la reempaqueta.
+2. ~~Ningún test de componente ni E2E~~ **montados**. Encontraron **dos defectos reales** en su
+   primera ejecución, ninguno de los cuales era visible en jsdom ni para `svelte-check`:
+   - **El anillo de foco no aparecía en ningún control.** `:focus-visible` (0,1,0) empataba con las
+     utilidades de Tailwind y perdía por orden de generación. Como la regla hace `outline: none`,
+     los controles quedaban **sin ningún indicador de foco**: WCAG 2.4.7 incumplido en todo el
+     catálogo. Arreglado subiendo la especificidad a `:focus-visible:focus-visible`.
+   - **`StatusDot` emitía `role="img"` con nombre accesible vacío.** Un lector de pantalla anunciaba
+     «imagen» y nada más, en cada disco de la barra lateral. Arreglado: decorativo cuando hay
+     etiqueta visible, con nombre traducido cuando no la hay. De paso, `HealthDonut` tenía su
+     `aria-label` en español a pelo, sin pasar por el diccionario.
 
 ---
 
@@ -2540,8 +2574,12 @@ del orden de ejecución, acceso a `%ProgramData%`.
 
 ### 7. Component testing
 
-**Vitest Browser Mode con proveedor Playwright, en Chromium.** Se retira `@testing-library/svelte`
-si el modo navegador lo hace redundante; no se mantienen dos soluciones equivalentes.
+**Vitest Browser Mode con proveedor Playwright, en Chromium** (ADR-027). `@testing-library/svelte`
+retirado: no se mantienen dos soluciones equivalentes.
+
+El sufijo es **`*.browser.test.ts`**, no `*.svelte.test.ts` como decía la primera versión de este
+documento: ese ya estaba tomado por las pruebas de los módulos `.svelte.ts` con runas
+(`theme.svelte.test.ts`), que corren en Node. El discriminante real es el entorno.
 
 Se prueba un componente de forma aislada cuando sea reutilizable, tenga varios estados, contenga
 comportamiento, o su contrato accesible importe.
@@ -3012,44 +3050,50 @@ Estructura propuesta, respetando la que ya existe:
 Dos configuraciones de Vitest, no una: los entornos son distintos y los tiempos también.
 `pnpm test` debe seguir siendo la suite rápida que se teclea mientras se programa.
 
-| Configuración | Entorno | Qué incluye | Duración |
+| Configuración | Entorno | Qué incluye | Duración medida |
 |---|---|---|---|
-| `vitest.config.ts` | Node | `src/lib/**/*.test.ts` | ~22 s |
-| `vitest.browser.config.ts` | Chromium | `src/lib/**/*.svelte.test.ts` | más lenta |
+| `vitest.config.ts` | jsdom | `src/**/*.test.ts`, excluidas las de navegador | ~16 s |
+| `vitest.browser.config.ts` | Chromium | `src/**/*.browser.test.ts` | ~2 s |
 
 Stryker apunta a la de Node y por tanto nunca abre un navegador, que era el riesgo real: mutar
 código exige lanzar la suite cientos de veces.
 
 ```text
-src/lib/**/*.test.ts        unit, junto al código (ya en uso)
-src/lib/**/*.svelte.test.ts componentes, en navegador
-tests/integration/          frontera IPC, SQLite, colectores
-tests/fixtures/             volcados anonimizados de smartctl, eventos, chkdsk
-e2e/ui/                     Playwright + mockIPC
-e2e/ui/visual.spec.ts       regresión visual
-e2e/ui/a11y.spec.ts         accesibilidad
-e2e/app/                    WebdriverIO + tauri-driver
-src-tauri/src/**            tests en módulo `#[cfg(test)]` (ya en uso)
-src-tauri/tests/            integración de Rust
+src/**/*.test.ts             unit, junto al código                        EXISTE
+src/**/*.browser.test.ts     componentes, en navegador                    EXISTE
+src/**/*.svelte.test.ts      módulos `.svelte.ts` con runas, en Node      EXISTE
+tests/helpers/               ayudantes compartidos (reloj congelado)      EXISTE
+tests/setup-browser.ts       preparación del Browser Mode                 EXISTE
+tests/integration/           frontera IPC, SQLite, colectores             pendiente
+tests/fixtures/              volcados anonimizados de smartctl y chkdsk   pendiente
+e2e/ui/smoke.spec.ts         smoke de interfaz                            EXISTE
+e2e/ui/a11y.spec.ts          accesibilidad con axe                        EXISTE
+e2e/ui/ipc-falso.ts          doble del IPC de Tauri                       EXISTE
+e2e/ui/fixtures/             respuestas validadas contra los esquemas     EXISTE
+e2e/ui/visual.spec.ts        regresión visual                             pendiente
+e2e/app/                     WebdriverIO + tauri-driver                   pendiente
+src-tauri/src/**             tests en módulo `#[cfg(test)]`               EXISTE
+src-tauri/tests/             integración de Rust                          pendiente
 ```
 
-Scripts a añadir, sin romper los existentes:
+**Comandos que existen de verdad.** Los que no están aquí, no existen: no se prometen scripts que no
+se hayan ejecutado.
 
-```text
-test:unit          las pruebas de Node actuales
-test:component     Vitest Browser Mode
-test:integration   frontera IPC y persistencia
-test:e2e           Playwright, plano de interfaz
-test:e2e:smoke     solo el smoke
-test:e2e:ui        modo interactivo de Playwright
-test:e2e:visual    regresión visual
-test:e2e:app       WebdriverIO contra el ejecutable
-test:a11y          accesibilidad
-test:mutation      Stryker sobre el dominio
-test:lote          nivel 2 completo
-```
+| Comando | Qué corre |
+|---|---|
+| `pnpm test` · `pnpm test:unit` | Lógica en Node. Es la suite que se teclea mientras se programa |
+| `pnpm test:watch` | La misma, en observación |
+| `pnpm test:coverage` | La misma, con umbrales del principio VIII |
+| `pnpm test:component` | Componentes en Chromium real |
+| `pnpm test:component:watch` | La misma, en observación |
+| `pnpm test:e2e` | Todo el plano de interfaz |
+| `pnpm test:e2e:smoke` | Solo lo etiquetado `@smoke` |
+| `pnpm test:e2e:ui` | Modo interactivo de Playwright |
+| `pnpm test:a11y` | Solo lo etiquetado `@a11y` |
+| `cargo test` | Rust, desde `src-tauri/` |
 
-**Los comandos reales se documentan al crearlos**, no antes: no se prometen scripts que no existan.
+Pendientes de existir, cuando exista lo que prueban: `test:integration`, `test:e2e:visual`,
+`test:e2e:app`, `test:mutation`, `test:lote`.
 
 ---
 
@@ -3129,40 +3173,44 @@ Una historia termina cuando, además de sus lotes:
 
 Se adaptan; no se crean todas de golpe.
 
+Estado a 2026-09-04. **Hecho** son tareas ejecutadas y verificadas; el resto indica qué las
+desbloquea, porque ninguna se puede hacer hoy sin eso.
+
 ```text
-T-TEST-001  Documentar comandos reales y medir la línea base de cada suite
-T-TEST-002  Definir la selección de pruebas afectadas por tipo de cambio
+HECHO
+T-TEST-001  Comandos reales documentados y línea base medida de cada suite     §3
+T-UNIT-003  Reloj congelable y zona horaria fija de la suite                   §21
+T-COMP-001  Vitest Browser Mode configurado; testing-library retirado          ADR-027
+T-PLAY-001  Playwright contra preview, con IPC propio                          ADR-028
+T-PLAY-003  Smoke de interfaz: arranque, chrome, navegación, tema, fuente
+T-PLAY-005  Errores de consola vigilados, con lista de excepciones junto a la prueba
+T-A11Y-001  axe-core en las seis pantallas y los dos temas
 
-T-UNIT-001  Fixtures anonimizados: smartctl (ATA, NVMe, USB, RAID, VM)
-T-UNIT-002  Fixtures de eventos de Windows y volcados de chkdsk/fsutil
-T-UNIT-003  Reloj inyectable y control de aleatoriedad
-
-T-COMP-001  Configurar Vitest Browser Mode; retirar testing-library si es redundante
-T-COMP-002  Probar los cinco estados obligatorios del catálogo
-T-COMP-003  Verificar contraste y material en ambos temas con getComputedStyle
-
-T-INT-001   smartctl falso: timeouts, códigos con bits, JSON corrupto
+PENDIENTE — esperan a que exista el producto que prueban
+T-COMP-002  Los cinco estados obligatorios del catálogo        con cada componente
+T-COMP-003  Contraste y material con getComputedStyle          con cada componente
+T-UNIT-001  Fixtures de smartctl (ATA, NVMe, USB, RAID, VM)    con el colector, US-010
+T-UNIT-002  Fixtures de eventos y volcados de chkdsk/fsutil    con el lector, US-021
+T-INT-001   smartctl falso: timeouts, bits del código, JSON corrupto
 T-INT-002   SQLite temporal: migraciones, restricciones, retención
-T-INT-003   Contrato Zod ↔ serde con caso de prueba compartido
-
+T-INT-003   Contrato Zod ↔ serde con caso compartido           con el primer DTO real
 T-ACC-001   Trazabilidad criterio → prueba de las historias P0
+T-PLAY-006  E2E de los flujos críticos
+T-A11Y-002  Contraste sobre material y foco no tapado          con las pantallas reales
+T-QUAL-002  Detección de pruebas inestables                    cuando haya suite que oscile
 
-T-PLAY-001  Configurar Playwright contra preview con mockIPC
-T-PLAY-002  Instalar msedgedriver y configurar tauri-driver
-T-PLAY-003  Smoke de interfaz
-T-PLAY-004  Smoke de aplicación real
-T-PLAY-005  Captura de errores de consola con allowlist documentada
-T-PLAY-006  E2E de los flujos críticos con navegador
-
-T-A11Y-001  axe-core en ambos temas
-T-A11Y-002  Verificaciones propias: contraste sobre material, foco no tapado
-T-VIS-001   Doce capturas controladas en Chromium
-
-T-QUAL-001  Cobertura de Rust en CI
-T-QUAL-002  Detección de pruebas inestables
-
+PENDIENTE — necesitan la aplicación empaquetada
+T-PLAY-002  msedgedriver y tauri-driver                        US-060
+T-PLAY-004  Smoke de aplicación real                           US-060
+T-VIS-001   Doce capturas controladas en Chromium              pantallas definitivas
+T-QUAL-001  Cobertura de Rust en CI                            con dominio en Rust
 T-MUT-001   Piloto de Stryker sobre health.ts y línea base
-T-MUT-002   cargo-mutants sobre el dominio cuando exista
+T-MUT-002   cargo-mutants sobre el dominio                     cuando exista el dominio
+
+DESCARTADA
+T-TEST-002  Selección de pruebas afectadas por tipo de cambio. La suite completa tarda
+            menos de un minuto y medio: un selector costaría más de mantener de lo que
+            ahorra, y se equivocaría en silencio. Se reconsidera si pasa de cinco minutos.
 ```
 
 ---
@@ -3187,7 +3235,7 @@ monitor, necesaria para los escalados de 125 %, 150 % y 200 % que exige `AGENTS.
 
 | # | Pregunta | Cuándo se sabrá |
 |---|---|---|
-| 1 | ¿Cuánto tarda de verdad la suite de componentes en navegador? | Al implementar `T-COMP-001` |
+| ~~1~~ | ~~¿Cuánto tarda de verdad la suite de componentes en navegador?~~ **Respondida**: ~2 s con 8 pruebas, y el 70 % es el arranque del navegador, que se paga una vez. Cabe de sobra en el ciclo de trabajo. Se revisa si pasa de 30 s |
 | 2 | ¿Las doce capturas visuales son estables entre ejecuciones del mismo agente de CI? | Al implementar `T-VIS-001` |
 
 Ninguna bloquea. Se miden cuando toque.
@@ -3706,6 +3754,103 @@ instalación está rota y debe notarse, no repararse creando una carpeta con la 
 - Desinstalar conserva `ProgramData` (US-060), así que la ACL endurecida sobrevive a la
   desinstalación y una reinstalación se la vuelve a encontrar. `/setowner` la deja consistente
   igualmente.
+
+### ADR-027 — Vitest 5 con Browser Mode, en dos configuraciones separadas
+
+Estado: aceptada.
+
+#### El problema
+
+El sistema de diseño es vinculante y su incumplimiento es un defecto de producto, no estético. Aun
+así había **25 componentes y cero pruebas de componente**, y `@testing-library/svelte` instalado sin
+un solo uso. Faltaba el nivel entero.
+
+El proyecto estaba en Vitest 2.1.9, donde el Browser Mode es experimental y su configuración
+(`browser.name`) fue **sustituida** en la 3 por `browser.instances` con proveedores en paquetes
+aparte. Montarlo sobre la 2.1.9 era escribir una configuración ya retirada.
+
+#### La decisión
+
+**Vitest 5.0.0**, con `@vitest/browser` + `@vitest/browser-playwright` y `vitest-browser-svelte`.
+Se retira `@testing-library/svelte`. Momento elegido a propósito: 165 pruebas de lógica pura y
+ningún producto encima es lo más barato que va a estar nunca.
+
+**Dos configuraciones, no una** (`docs/testing-strategy.md` §24):
+
+| Configuración | Entorno | Incluye | Medido |
+|---|---|---|---|
+| `vitest.config.ts` | jsdom | `src/**/*.test.ts` menos las de navegador | 165 pruebas, ~16 s |
+| `vitest.browser.config.ts` | Chromium | `src/**/*.browser.test.ts` | 8 pruebas, ~2 s |
+
+`pnpm test` sigue siendo la suite rápida que se teclea mientras se programa, y Stryker apunta solo a
+la de Node: mutar código lanza la suite cientos de veces y abrir un navegador en cada una la haría
+inviable.
+
+**El sufijo es `*.browser.test.ts`, no `*.svelte.test.ts`** como proponía la primera versión de la
+estrategia. Ese sufijo ya estaba tomado por las pruebas de los módulos `.svelte.ts` con runas
+—`theme.svelte.test.ts`, `app.svelte.test.ts`—, que corren en Node. El discriminante real es el
+entorno de ejecución, no el tipo de fichero.
+
+La zona horaria de la suite se fija en `Europe/Madrid`, no en UTC: es la que tiene cambio de hora, y
+ahí es donde aparecen los fallos de retención, de enfriamiento y de correlación con el Visor de
+eventos, que muestra hora local.
+
+#### Alternativas descartadas
+
+- **Quedarse en Vitest 2.1.9** fijando `@vitest/browser@2.1.9` y `vitest-browser-svelte@1.1.0`.
+  Funciona hoy, pero se escribiría con la API ya retirada, para reescribirla al actualizar y ya con
+  producto encima. Y el Browser Mode de la 2 lo marcaba experimental su propio equipo.
+- **Vitest 3.2.7** como salto intermedio. Ecosistema más asentado, pero deja dos mayores de deuda.
+- **jsdom para los componentes.** Es lo que hay que evitar: el contraste sobre material compuesto,
+  el respaldo a `--sdm-solid`, la resolución de variables en tema oscuro y la visibilidad del foco
+  **no son observables en jsdom**. Se comprobó en la práctica: los dos defectos que destapó esta
+  infraestructura habrían pasado en verde con jsdom.
+- **Un proyecto único con `projects`.** Mezclaría los tiempos y obligaría a Stryker a filtrar.
+
+#### Consecuencias
+
+- Cuatro dependencias de desarrollo nuevas y una retirada. Ninguna entra en el binario.
+- `tsconfig.json` redefine `include`: al hacerlo **sustituye** al de SvelteKit y sus rutas pasan a
+  ser relativas a la raíz. Se repite su contenido y se añade `e2e/`. Sin eso, ESLint analiza las
+  pruebas sin tipos y las reglas que los necesitan quedan mudas justo donde más falta hacen.
+- `vitest-browser-svelte` 3.1.0 se publicó el mismo día en que se instaló y salta la política de
+  antigüedad mínima de `pnpm`. Se comprobó a mano contra la 3.0.0: el `dist/` es **byte a byte
+  idéntico** y solo cambia el rango de pares. La excepción queda razonada en `pnpm-workspace.yaml`.
+
+### ADR-028 — Plano de interfaz con Playwright y un IPC propio
+
+Estado: aceptada.
+
+#### El problema
+
+Playwright no puede conducir una ventana de Tauri, pero sí puede conducir la interfaz: es la misma
+aplicación sobre el mismo motor, Chromium. Lo que falta es el backend.
+
+#### La decisión
+
+Playwright contra `pnpm preview` —el build, no `vite dev`: es donde aparecen los problemas que el
+servidor de desarrollo esconde— con un doble de IPC instalado por `addInitScript`.
+
+**No se usa `mockIPC()` de `@tauri-apps/api/mocks`**: esa función se ejecuta en el proceso de Node y
+aquí el doble tiene que existir **dentro de la página**, antes del primer `invoke`. `e2e/ui/ipc-falso.ts`
+hace lo mismo que ella —poblar `window.__TAURI_INTERNALS__`— pero en un script de inicialización, y
+además registra las llamadas para poder afirmar sobre ellas.
+
+Los fixtures se validan contra **los mismos esquemas Zod** que usa la aplicación. No es ceremonia:
+en la primera ejecución rechazaron tres valores inventados (`certain`, `no_smart_support`, `wmi`)
+que no existen en el contrato. Sin esa validación, las pruebas habrían pasado en verde probando una
+forma de datos que no existe.
+
+Solo Chromium. El WebView2 de la aplicación es Chromium; probar en Firefox o WebKit mediría un motor
+que ningún usuario va a ejecutar.
+
+#### Consecuencias
+
+- 17 pruebas de interfaz, ~38 s incluyendo compilación y arranque del servidor de vista previa.
+- La accesibilidad se comprueba con `axe` en las seis pantallas **por ambos temas**, doce
+  combinaciones. Encontró un incumplimiento real en la primera ejecución.
+- El plano de aplicación real (`tauri-driver`) sigue pendiente y es otra cosa: exige el ejecutable
+  empaquetado y terminal elevada. Entra con US-060.
 
 
 ---
@@ -4858,6 +5003,17 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
   texto y no pongas texto directamente sobre `glass-3`. Si necesitas más translucidez en una capa, sube la
   opacidad del material, nunca rebajes el color del texto.
 - Foco visible en todo elemento interactivo (`:focus-visible` global en `tokens.css`; no lo anules).
+  La regla se escribe **con la pseudoclase repetida**, `:focus-visible:focus-visible`, y eso no es
+  un descuido: con una sola (0,1,0) empata en especificidad con cualquier utilidad de Tailwind
+  —`shadow-edge`, `shadow-[...]`— y pierde por orden, porque las utilidades se generan después de
+  `tokens.css`. Se midió: antes de arreglarlo, **ningún** botón mostraba anillo de foco, ni siquiera
+  la variante `ghost`, y como la regla hace `outline: none`, los controles quedaban sin ningún
+  indicador. Si añades otra regla de estado que compita con una utilidad, súbele la especificidad
+  igual. Lo vigila `src/lib/components/Button.browser.test.ts`.
+- **Un `role="img"` sin nombre accesible es peor que no ponerlo.** `StatusDot` emitía
+  `aria-label=""` cuando no recibía etiqueta y un lector de pantalla anunciaba «imagen» y nada más.
+  Regla: si hay etiqueta visible al lado, el gráfico es decorativo y va con `aria-hidden="true"`;
+  si no la hay, lleva su propio nombre traducido. Lo detectó `axe` en `e2e/ui/a11y.spec.ts`.
 - Navegación completa por teclado: pestañas con `role="tablist"`, diálogos con `role="dialog" aria-modal` y foco atrapado.
 - Toda gráfica y todo anillo llevan `role="img"` con `aria-label` que resume el dato, y una lectura textual equivalente cerca.
 - `prefers-reduced-motion` respetado globalmente; no añadas animaciones decorativas.

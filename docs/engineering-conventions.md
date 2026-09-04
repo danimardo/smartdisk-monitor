@@ -19,6 +19,9 @@ no se hace una excepción local.
 | TypeScript | 5.x, `strict: true` | sin `any` implícito, sin `@ts-ignore` sin justificar |
 | Tailwind | 3.x | solo utilidades mapeadas desde tokens |
 | SQLite | vía `rusqlite` con `bundled` | evita depender de la DLL del sistema |
+| Vitest | 5.x | dos configuraciones: Node y navegador (ADR-027) |
+| Playwright | 1.x | solo Chromium: es el motor del WebView2 (ADR-028) |
+| `@axe-core/playwright` | 4.x | accesibilidad automática, ambos temas |
 
 Windows mínimo soportado: **Windows 10 1809 (build 17763)** y **Windows Server 2016**, x64. Edge y
 WebView2 llegan en realidad hasta Windows 10 1709, pero por debajo de 1809 las APIs de
@@ -165,8 +168,9 @@ sistema de diseño se erosione:
 | Fixtures | salidas reales anonimizadas de ATA, NVMe, USB, RAID y VM | `src-tauri/tests/fixtures/` |
 | Integración | `smartctl` simulado: salidas válidas, timeouts, códigos de salida con bits, JSON corrupto | `src-tauri/tests/` |
 | Migraciones | migrar desde cada versión publicada hasta la actual, con copia previa | `persistence/` |
-| Unitarias TS | `format`, `health`, `accent`, `i18n` | `vitest` |
-| Componentes | estados vacío, cargando, no compatible, error y dato obsoleto de cada componente | `vitest` + testing-library |
+| Unitarias TS | `format`, `health`, `accent`, `i18n` | `pnpm test`, jsdom |
+| Componentes | estados vacío, cargando, no compatible, error y dato obsoleto de cada componente, más lo que solo se ve en un navegador real: contraste sobre material, respaldo sin `backdrop-filter`, foco visible | `pnpm test:component`, Chromium real. Sufijo `*.browser.test.ts` |
+| Interfaz | arranque, chrome, navegación, tema, tipografía, errores de consola | `pnpm test:e2e`, Playwright con IPC propio |
 | Accesibilidad | foco, teclado, contraste AA, `prefers-reduced-motion` | automatizado donde se pueda, lista de comprobación donde no |
 | Visuales | ambos temas, acento del sistema y de respaldo, sin `backdrop-filter`, 1024 × 560 y 1280 × 720, escalado 125/150/200 % | capturas comparadas; `tools/scale-check.html` como banco de pruebas |
 | Manuales | hardware real, sin exigir una marca concreta | documentadas en el informe de Fase 0 |

@@ -21,7 +21,15 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    // Zona horaria fija (§21). Sin esto la suite pasa en un equipo español y falla en CI, que va
+    // en UTC — y al revés. Se elige Europe/Madrid, no UTC, precisamente porque tiene cambio de
+    // hora: es donde aparecen los fallos de retención, de cooldown y de correlación con el Visor
+    // de eventos de Windows, que muestra hora local.
+    env: { TZ: "Europe/Madrid" },
     include: ["src/**/*.{test,spec}.{ts,js}"],
+    // Las pruebas de navegador tienen su propia configuración (`vitest.browser.config.ts`).
+    // Sin excluirlas aquí, `pnpm test` las recogería y fallarían por falta de `page`.
+    exclude: ["**/node_modules/**", "**/build/**", "src/**/*.browser.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "html", "lcov"],

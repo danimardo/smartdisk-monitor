@@ -10,5 +10,22 @@
     "sourceMap": true,
     "strict": true,
     "moduleResolution": "bundler"
-  }
+  },
+  // Redefinir `include` **sustituye** al que genera SvelteKit, no lo amplía, y sus rutas van
+  // relativas a `.svelte-kit/`. Aquí se repite su contenido con rutas relativas a la raíz y se
+  // añade `e2e/`: si un fichero no entra en el servicio de proyecto, ESLint lo analiza sin tipos y
+  // todas las reglas que los necesitan quedan mudas justo donde más falta hacen.
+  "include": [
+    "./.svelte-kit/ambient.d.ts",
+    "./.svelte-kit/env.d.ts",
+    "./.svelte-kit/non-ambient.d.ts",
+    "./.svelte-kit/types/**/$types.d.ts",
+    "./vite.config.ts",
+    "./*.config.ts",
+    "./src/**/*.js",
+    "./src/**/*.ts",
+    "./src/**/*.svelte",
+    "./tests/**/*.ts",
+    "./e2e/**/*.ts"
+  ]
 }

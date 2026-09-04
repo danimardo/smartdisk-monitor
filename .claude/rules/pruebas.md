@@ -10,6 +10,26 @@ paths:
 
 Estrategia completa: `docs/testing-strategy.md`. Umbrales de cobertura: constitución §VIII.
 
+## Dónde va cada prueba
+
+| Sufijo o carpeta | Corre en | Comando |
+|---|---|---|
+| `src/**/*.test.ts` | jsdom, Node | `pnpm test` |
+| `src/**/*.svelte.test.ts` | jsdom, Node — módulos `.svelte.ts` con runas, **no** componentes | `pnpm test` |
+| `src/**/*.browser.test.ts` | Chromium real | `pnpm test:component` |
+| `e2e/ui/**` | Chromium con IPC falso | `pnpm test:e2e` |
+| `src-tauri/src/**` con `#[cfg(test)]` | Rust | `cargo test` |
+
+Al navegador van **solo** las comprobaciones que jsdom no puede hacer: contraste sobre el material
+compuesto, respaldo a `--sdm-solid`, resolución de variables en tema oscuro, `prefers-reduced-motion`,
+visibilidad del foco y recorte a 1024 × 560. Lo demás sale más barato en Node.
+
+`render()` de `vitest-browser-svelte` **es asíncrona**: sin `await` la prueba pasa sin haber
+renderizado nada. Lo detecta ESLint, pero conviene saberlo.
+
+Los fixtures de `e2e/ui/fixtures/` se validan contra los esquemas Zod reales. No es ceremonia: en la
+primera ejecución rechazaron tres valores inventados que no existían en el contrato.
+
 - **Elige el nivel más barato** que demuestre el requisito. No se reproduce por interfaz la lógica
   que ya cubre un unit test.
 - **La prueba va antes que el código** —sin excepción— en: parsers de `smartctl`, motor de alertas

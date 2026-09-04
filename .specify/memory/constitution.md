@@ -492,9 +492,12 @@ dentro de Tauri. De ahí se derivan reglas que no son preferencias, sino consecu
 
 #### Permitido, y solo ahí
 
-`.env` existe **únicamente para variables de construcción**, leídas por Node durante el build:
-`vite.config.ts`, `svelte.config.js` y `vitest.config.ts`. Hoy son las `TAURI_*` que inyecta la
-propia herramienta. Ese fichero nunca se empaqueta.
+`.env` existe **únicamente para variables de construcción**, leídas por Node durante el build o al
+ejecutar las pruebas: `vite.config.ts`, `svelte.config.js`, `vitest.config.ts`,
+`vitest.browser.config.ts` y `playwright.config.ts`. Hoy son las `TAURI_*` que inyecta la propia
+herramienta, y `CI`, que decide reintentos y formato de informe. Ninguno de esos ficheros se
+empaqueta, y leer `CI` no es configurar el producto. La lista vinculante está en
+`scripts/verify-boundaries.mjs`, que es quien lo comprueba.
 
 #### La configuración del producto vive en SQLite
 
@@ -573,7 +576,11 @@ o **major** requiere enmienda de esta constitución.
 
 | Herramienta | Versión |
 |---|---|
-| `vitest` | 2.1.9 |
+| `vitest` | 5.0.0 |
+| `@vitest/browser` + `@vitest/browser-playwright` | 5.0.0 |
+| `vitest-browser-svelte` | 3.1.0 |
+| `playwright` + `@playwright/test` | 1.62.1 |
+| `@axe-core/playwright` | 4.13.0 |
 | `svelte-check` | 4.7.6 |
 | `eslint` | 9.39.5 |
 | `prettier` | 3.9.6 |
@@ -624,7 +631,7 @@ después.
 | Formato | `rustfmt` y `prettier` sin diferencias |
 | Análisis estático | `clippy -D warnings`; `eslint` sin errores ni avisos; `svelte-check` con **cero errores y cero avisos** |
 | Tipos del contrato | Los DTO generados desde Rust coinciden con los versionados (**pendiente**, véase abajo) |
-| Pruebas | `cargo test` y `vitest` en verde; cobertura por encima de los mínimos del principio VIII |
+| Pruebas | `cargo test`, `pnpm test`, `pnpm test:component`, `pnpm test:e2e` y `pnpm test:a11y` en verde; cobertura por encima de los mínimos del principio VIII |
 | Sistema de diseño | Cero colores, radios, sombras o tamaños literales; cero `backdrop-filter` a mano |
 | i18n | `es.json` y `en.json` con idénticas claves; interpolaciones coherentes; ninguna clave usada que no exista |
 | Recursos | Hashes de la tipografía y de `smartctl` coinciden con `THIRD_PARTY_NOTICES.md` |
@@ -698,6 +705,7 @@ sola razón, sin necesidad de más argumento.
 | 1.2.0 | 2026-09-04 | Principio XIV (arquitectura idiomática de SvelteKit adaptada a Tauri): carga con `load`, navegación por enlaces, `$derived` antes que `$effect`, y dónde vive la lógica. Ninguna norma anterior se relaja |
 | 1.3.0 | 2026-09-04 | Principio XV (registro de actividad): API única, niveles y su significado, precedencia del nivel, prohibición de datos personales, formato en hora local. Ninguna norma anterior se relaja |
 | 1.3.1 | 2026-09-04 | `tauri-plugin-single-instance` 2.4.4 entra en la pila fija (ADR-025). No se añade, relaja ni reinterpreta ningún principio: solo actualiza la tabla de dependencias de Rust que exige el principio III |
+| 1.4.0 | 2026-09-04 | Infraestructura de pruebas de componente, interfaz y accesibilidad (ADR-027, ADR-028): Vitest sube a 5, entran Browser Mode, Playwright y axe, y sale `@testing-library/svelte`. La puerta de pruebas pasa a exigir las tres suites nuevas, y `playwright.config.ts` y `vitest.browser.config.ts` se suman a los ficheros donde `process.env` es legítimo. Es `minor` por lo que **añade** a la puerta de calidad; ningún principio cambia de contenido ni se relaja |
 
 ### Cumplimiento
 
@@ -714,4 +722,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.3.1 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04
+**Versión**: 1.4.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04

@@ -17,11 +17,15 @@ import { dirname, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Ficheros de configuración que corren en Node al construir: ahí `process.env` es legítimo. */
+/** Ficheros de configuración que corren en Node al construir o al probar: ahí `process.env` es
+ *  legítimo. Ninguno de ellos se empaqueta en la aplicación, que es lo que prohíbe el principio
+ *  XII; leer `CI` para decidir reintentos o formato de informe no es configurar el producto. */
 const BUILD_FILES = new Set([
   "vite.config.ts",
   "svelte.config.js",
   "vitest.config.ts",
+  "vitest.browser.config.ts",
+  "playwright.config.ts",
   "tailwind.config.cjs"
 ]);
 

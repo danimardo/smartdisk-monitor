@@ -507,3 +507,100 @@ instalación está rota y debe notarse, no repararse creando una carpeta con la 
 - Desinstalar conserva `ProgramData` (US-060), así que la ACL endurecida sobrevive a la
   desinstalación y una reinstalación se la vuelve a encontrar. `/setowner` la deja consistente
   igualmente.
+
+## ADR-027 — Vitest 5 con Browser Mode, en dos configuraciones separadas
+
+Estado: aceptada.
+
+### El problema
+
+El sistema de diseño es vinculante y su incumplimiento es un defecto de producto, no estético. Aun
+así había **25 componentes y cero pruebas de componente**, y `@testing-library/svelte` instalado sin
+un solo uso. Faltaba el nivel entero.
+
+El proyecto estaba en Vitest 2.1.9, donde el Browser Mode es experimental y su configuración
+(`browser.name`) fue **sustituida** en la 3 por `browser.instances` con proveedores en paquetes
+aparte. Montarlo sobre la 2.1.9 era escribir una configuración ya retirada.
+
+### La decisión
+
+**Vitest 5.0.0**, con `@vitest/browser` + `@vitest/browser-playwright` y `vitest-browser-svelte`.
+Se retira `@testing-library/svelte`. Momento elegido a propósito: 165 pruebas de lógica pura y
+ningún producto encima es lo más barato que va a estar nunca.
+
+**Dos configuraciones, no una** (`docs/testing-strategy.md` §24):
+
+| Configuración | Entorno | Incluye | Medido |
+|---|---|---|---|
+| `vitest.config.ts` | jsdom | `src/**/*.test.ts` menos las de navegador | 165 pruebas, ~16 s |
+| `vitest.browser.config.ts` | Chromium | `src/**/*.browser.test.ts` | 8 pruebas, ~2 s |
+
+`pnpm test` sigue siendo la suite rápida que se teclea mientras se programa, y Stryker apunta solo a
+la de Node: mutar código lanza la suite cientos de veces y abrir un navegador en cada una la haría
+inviable.
+
+**El sufijo es `*.browser.test.ts`, no `*.svelte.test.ts`** como proponía la primera versión de la
+estrategia. Ese sufijo ya estaba tomado por las pruebas de los módulos `.svelte.ts` con runas
+—`theme.svelte.test.ts`, `app.svelte.test.ts`—, que corren en Node. El discriminante real es el
+entorno de ejecución, no el tipo de fichero.
+
+La zona horaria de la suite se fija en `Europe/Madrid`, no en UTC: es la que tiene cambio de hora, y
+ahí es donde aparecen los fallos de retención, de enfriamiento y de correlación con el Visor de
+eventos, que muestra hora local.
+
+### Alternativas descartadas
+
+- **Quedarse en Vitest 2.1.9** fijando `@vitest/browser@2.1.9` y `vitest-browser-svelte@1.1.0`.
+  Funciona hoy, pero se escribiría con la API ya retirada, para reescribirla al actualizar y ya con
+  producto encima. Y el Browser Mode de la 2 lo marcaba experimental su propio equipo.
+- **Vitest 3.2.7** como salto intermedio. Ecosistema más asentado, pero deja dos mayores de deuda.
+- **jsdom para los componentes.** Es lo que hay que evitar: el contraste sobre material compuesto,
+  el respaldo a `--sdm-solid`, la resolución de variables en tema oscuro y la visibilidad del foco
+  **no son observables en jsdom**. Se comprobó en la práctica: los dos defectos que destapó esta
+  infraestructura habrían pasado en verde con jsdom.
+- **Un proyecto único con `projects`.** Mezclaría los tiempos y obligaría a Stryker a filtrar.
+
+### Consecuencias
+
+- Cuatro dependencias de desarrollo nuevas y una retirada. Ninguna entra en el binario.
+- `tsconfig.json` redefine `include`: al hacerlo **sustituye** al de SvelteKit y sus rutas pasan a
+  ser relativas a la raíz. Se repite su contenido y se añade `e2e/`. Sin eso, ESLint analiza las
+  pruebas sin tipos y las reglas que los necesitan quedan mudas justo donde más falta hacen.
+- `vitest-browser-svelte` 3.1.0 se publicó el mismo día en que se instaló y salta la política de
+  antigüedad mínima de `pnpm`. Se comprobó a mano contra la 3.0.0: el `dist/` es **byte a byte
+  idéntico** y solo cambia el rango de pares. La excepción queda razonada en `pnpm-workspace.yaml`.
+
+## ADR-028 — Plano de interfaz con Playwright y un IPC propio
+
+Estado: aceptada.
+
+### El problema
+
+Playwright no puede conducir una ventana de Tauri, pero sí puede conducir la interfaz: es la misma
+aplicación sobre el mismo motor, Chromium. Lo que falta es el backend.
+
+### La decisión
+
+Playwright contra `pnpm preview` —el build, no `vite dev`: es donde aparecen los problemas que el
+servidor de desarrollo esconde— con un doble de IPC instalado por `addInitScript`.
+
+**No se usa `mockIPC()` de `@tauri-apps/api/mocks`**: esa función se ejecuta en el proceso de Node y
+aquí el doble tiene que existir **dentro de la página**, antes del primer `invoke`. `e2e/ui/ipc-falso.ts`
+hace lo mismo que ella —poblar `window.__TAURI_INTERNALS__`— pero en un script de inicialización, y
+además registra las llamadas para poder afirmar sobre ellas.
+
+Los fixtures se validan contra **los mismos esquemas Zod** que usa la aplicación. No es ceremonia:
+en la primera ejecución rechazaron tres valores inventados (`certain`, `no_smart_support`, `wmi`)
+que no existen en el contrato. Sin esa validación, las pruebas habrían pasado en verde probando una
+forma de datos que no existe.
+
+Solo Chromium. El WebView2 de la aplicación es Chromium; probar en Firefox o WebKit mediría un motor
+que ningún usuario va a ejecutar.
+
+### Consecuencias
+
+- 17 pruebas de interfaz, ~38 s incluyendo compilación y arranque del servidor de vista previa.
+- La accesibilidad se comprueba con `axe` en las seis pantallas **por ambos temas**, doce
+  combinaciones. Encontró un incumplimiento real en la primera ejecución.
+- El plano de aplicación real (`tauri-driver`) sigue pendiente y es otra cosa: exige el ejecutable
+  empaquetado y terminal elevada. Entra con US-060.

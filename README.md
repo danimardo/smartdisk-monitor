@@ -22,7 +22,10 @@ aplicación real.
 | `pnpm app:dev` | Aplicación completa en modo desarrollo |
 | `pnpm app:build` | Instalador NSIS con WebView2 sin conexión |
 | `pnpm check` | Tipos y accesibilidad del frontend |
-| `pnpm test` | Pruebas del frontend |
+| `pnpm test` | Lógica del frontend, en Node |
+| `pnpm test:component` | Componentes en un Chromium real |
+| `pnpm test:e2e` | Interfaz completa con Playwright y el IPC simulado |
+| `pnpm test:a11y` | Accesibilidad con axe, seis pantallas por dos temas |
 | `pnpm verify` | Recursos redistribuidos, tokens del diseño e i18n |
 | `pnpm docs:build` | Regenera `historias.md` |
 | `cargo test` / `cargo clippy` | Backend, desde `src-tauri/` |

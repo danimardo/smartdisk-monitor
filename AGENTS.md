@@ -40,7 +40,10 @@ Gestor de paquetes: **pnpm**. Los comandos de Rust se ejecutan desde `src-tauri/
 | Tipos y accesibilidad | `pnpm check` |
 | Formato y análisis estático | `pnpm lint` |
 | Verificadores propios | `pnpm verify` |
-| Pruebas de Node | `pnpm test` · con cobertura: `pnpm test:coverage` |
+| Pruebas de lógica (Node) | `pnpm test` · con cobertura: `pnpm test:coverage` |
+| Pruebas de componente (Chromium) | `pnpm test:component` |
+| Pruebas de interfaz (Playwright) | `pnpm test:e2e` · solo humo: `pnpm test:e2e:smoke` |
+| Accesibilidad | `pnpm test:a11y` |
 | Pruebas de Rust | `cargo test` |
 | Análisis estático de Rust | `cargo clippy --all-targets -- -D warnings` |
 | Regenerar el consolidado | `pnpm docs:build` |

@@ -22,3 +22,10 @@ desktop.ini
 # Salidas de herramientas
 .playwright-mcp/
 *.log
+
+# Salidas de Playwright: trazas, capturas y vídeos de las ejecuciones fallidas.
+# Son artefactos de diagnóstico, no fuentes; en CI se suben como artefacto del job.
+test-results/
+playwright-report/
+blob-report/
+.playwright/

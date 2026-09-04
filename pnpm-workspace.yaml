@@ -5,3 +5,12 @@ packages:
 # Se aprueba explícitamente: es dependencia directa de Vite, no un paquete opaco.
 allowBuilds:
   esbuild: true
+
+# Excepciones a la antigüedad mínima que exige la política de cadena de suministro.
+# No se añade ninguna por comodidad: cada una lleva por qué se ha comprobado a mano.
+minimumReleaseAgeExclude:
+  # Publicada el 2026-09-04, el mismo día en que se instaló. Se verificó comparándola con la
+  # 3.0.0, que sí pasa la política: el `dist/` publicado es **byte a byte idéntico** y el único
+  # cambio del manifiesto es el rango de pares, de `vitest: ^4.0.0` a `^4.0.0 || ^5.0.0`.
+  # Es una publicación de metadatos, no de código. Todo el paquete son unas 70 líneas y se leyeron.
+  - vitest-browser-svelte@3.1.0
