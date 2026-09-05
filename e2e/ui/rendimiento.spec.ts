@@ -50,7 +50,7 @@ test.describe("rendimiento @rendimiento", () => {
       get_system_accent_color: acento,
       get_devices: { devices: [], excluded: [], sources: [], paused: false, pausedSince: null },
       get_system_events: CINCO_MIL_EVENTOS,
-      get_log_level: { level: "info" }
+      get_log_level: "info"
     });
     await page.goto("/events");
     await expect(page.getByRole("main")).toBeVisible();
@@ -82,7 +82,7 @@ test.describe("rendimiento @rendimiento", () => {
       get_appearance_settings: apariencia,
       get_system_accent_color: acento,
       get_devices: inventario,
-      get_log_level: { level: "info" }
+      get_log_level: "info"
     });
     await page.goto("/");
     await expect(page.getByRole("main")).toBeVisible();

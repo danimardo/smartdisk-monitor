@@ -38,9 +38,7 @@ test.describe("alertas", () => {
     const dialogo = page.getByRole("dialog", { name: es["alerts.archive.confirmTitle"] });
     await expect(dialogo).toBeVisible();
 
-    // `ConfirmDialog.svelte` renderiza "Cancelar" como literal, no vía `t()` — pendiente, ver
-    // el informe de esta tarea; no es defecto introducido aquí, es preexistente al componente.
-    await dialogo.getByRole("button", { name: "Cancelar" }).click();
+    await dialogo.getByRole("button", { name: es["common.cancel"] }).click();
     await expect(dialogo).not.toBeVisible();
 
     expect((await llamadas(page)).map((l) => l.comando)).not.toContain("archive_alert");

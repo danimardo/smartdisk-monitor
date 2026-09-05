@@ -20,7 +20,7 @@ test.describe("pruebas y diagnóstico", () => {
     await expect(dialogo).toBeVisible();
     await expect(dialogo.getByText("chkdsk C: /scan")).toBeVisible();
 
-    await dialogo.getByRole("button", { name: "Cancelar" }).click();
+    await dialogo.getByRole("button", { name: es["common.cancel"] }).click();
     await expect(dialogo).not.toBeVisible();
     expect((await llamadas(page)).map((l) => l.comando)).not.toContain("run_chkdsk_scan");
   });

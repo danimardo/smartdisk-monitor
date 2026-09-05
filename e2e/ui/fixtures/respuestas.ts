@@ -209,6 +209,59 @@ export const testRunActivo = {
   orphanPath: null
 };
 
+/** Vista previa del ZIP de diagnóstico, anonimizada por defecto. */
+export const vistaPreviaDiagnostico = {
+  entries: [
+    { path: "manifest.json", sizeBytes: 128, descriptionKey: "diagnostic.entry.manifest" },
+    { path: "settings.json", sizeBytes: 256, descriptionKey: "diagnostic.entry.settings" },
+    { path: "smart/disk-0.json", sizeBytes: 4096, descriptionKey: "diagnostic.entry.smart" }
+  ],
+  totalBytes: 4480,
+  redactedFields: ["diagnostic.redacted.serialNumber", "diagnostic.redacted.computerName"]
+};
+
+/** Ajustes de fábrica (`docs/open-questions.md` J.32), para la pantalla `/settings`. */
+export const settingsDeFabrica = {
+  schedule: {
+    metricsFastSeconds: 30,
+    smartFullSeconds: 300,
+    eventsSeconds: 30,
+    discoverySeconds: 60
+  },
+  alerts: {
+    tempConfiguredWarnC: 70,
+    tempConfiguredCritC: 80,
+    capacityWarnPercent: 10,
+    capacityCritPercent: 5,
+    capacityAbsoluteFloorMinCapacityBytes: 274_877_906_944,
+    capacityAbsoluteFloorWarnBytes: 21_474_836_480,
+    capacityAbsoluteFloorCritBytes: 10_737_418_240
+  },
+  retention: {
+    rawDays: 7,
+    fiveMinutesDays: 90,
+    hourlyDays: 730,
+    freeSpaceWarnBytes: 1_073_741_824,
+    freeSpaceHaltBytes: 268_435_456
+  },
+  lifecycle: {
+    closeAction: "minimize" as const,
+    closeActionRemembered: false
+  },
+  notifications: {
+    soundEnabled: false
+  },
+  logging: {
+    verbose: false
+  }
+};
+
+export const appInfoDePrueba = {
+  name: "SmartDisk Monitor",
+  version: "0.1.0",
+  author: "Daniel Diez Mardomingo"
+};
+
 /** Comando → respuesta. Lo que no esté aquí devuelve `null`, y la pantalla debe aguantarlo. */
 export const RESPUESTAS: Record<string, unknown> = {
   get_appearance_settings: apariencia,
@@ -220,17 +273,31 @@ export const RESPUESTAS: Record<string, unknown> = {
   get_alert_detail: detalleAlertaActiva,
   get_system_events: paginaEventos,
   get_event_raw_xml: xmlEjemplo,
-  get_log_level: { level: "info" },
+  get_log_level: "info",
   get_test_runs: testRunsVacio,
   start_benchmark: testRunActivo.id,
   run_chkdsk_scan: "run-chkdsk-1",
   run_smart_short_test: "run-autotest-1",
-  cancel_test: null
+  cancel_test: null,
+  export_report: "C:\\destino\\de\\prueba\\informe.csv",
+  preview_diagnostic_zip: vistaPreviaDiagnostico,
+  create_diagnostic_zip: "C:\\destino\\de\\prueba\\diagnostico.zip",
+  get_settings: settingsDeFabrica,
+  reset_settings: settingsDeFabrica,
+  set_setting: null,
+  set_log_level: null,
+  open_log_folder: null,
+  delete_all_data: null,
+  get_app_info: appInfoDePrueba,
+  // El diálogo nativo de guardado (ADR-031): el harness simula que el usuario ya eligió un
+  // destino, sin abrir ningún selector real.
+  "plugin:dialog|save": "C:\\destino\\de\\prueba\\elegido.tmp"
 };
 
 /** Falla en cuanto un fixture deja de cumplir el contrato, no cuando una pantalla se rompe. */
 export function validar(): void {
   S.appearanceSettings.parse(apariencia);
+  S.settings.parse(settingsDeFabrica);
   S.windowsAccent.parse(acento);
   S.deviceListResponse.parse(inventario);
   S.deviceDetail.parse(detalleDisco0);
@@ -240,4 +307,6 @@ export function validar(): void {
   S.systemEventPage.parse(paginaEventos);
   S.testRun.array().parse(testRunsVacio);
   S.testRun.parse(testRunActivo);
+  S.diagnosticPreview.parse(vistaPreviaDiagnostico);
+  S.appInfo.parse(appInfoDePrueba);
 }
