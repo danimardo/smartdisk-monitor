@@ -9,20 +9,23 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { page } from "$app/state";
-  import { AppShell, Sidebar, Toolbar } from "$lib/components";
+  import { AppShell, ConfirmDialog, Sidebar, Toolbar } from "$lib/components";
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
   import { trayState } from "$lib/design/health";
   import { formatAge } from "$lib/design/format";
   import {
+    getAppInfo,
     getAppearanceSettings,
+    getLogLevel,
     pauseMonitoring,
     refreshNow,
     resumeMonitoring,
     subscribe,
     toAppError
   } from "$lib/api";
+  import { setLogLevel as setLoggerLevel } from "$lib/logger";
   import { app } from "$lib/stores/app.svelte";
   import type { AppError } from "$lib/design/types";
 
@@ -83,6 +86,35 @@
 
   const screenTitle = $derived(t(SECTIONS.find((s) => s.id === activeSection)?.key ?? "nav.dashboard"));
 
+  /* ---------------------------------------------------------------------------- acerca de (US-061) */
+
+  let aboutOpen = $state(false);
+  let appInfo = $state<{ name: string; version: string; author: string } | null>(null);
+  let aboutError = $state<AppError | null>(null);
+
+  async function abrirAcercaDe() {
+    aboutOpen = true;
+    if (appInfo) return;
+    try {
+      appInfo = await getAppInfo();
+      aboutError = null;
+    } catch (cause) {
+      aboutError = toAppError(cause);
+    }
+  }
+
+  /** "Información diagnóstica no sensible" (US-061): nombre, versión y autor, nada del equipo del
+   *  usuario ni de sus discos. */
+  async function copiarInformacion() {
+    if (!appInfo) return;
+    const texto = `${appInfo.name} ${appInfo.version}\n${appInfo.author}`;
+    try {
+      await navigator.clipboard?.writeText(texto);
+    } catch {
+      // Igual que `CodeOutput`: si el portapapeles rechaza la escritura, no se finge éxito.
+    }
+  }
+
   onMount(() => {
     let unsubscribe: (() => void) | undefined;
 
@@ -95,6 +127,11 @@
         theme.init(appearance.theme);
         i18n.init(appearance.language, appearance.systemLocale);
         if (appearance.useSystemAccent) await applySystemAccent();
+
+        // El backend ya resolvió la precedencia completa del nivel de registro (constitución §XV:
+        // --log-level > settings > info); el frontend solo adopta ese valor efectivo, nunca decide
+        // el suyo propio.
+        setLoggerLevel(await getLogLevel());
 
         // 2. El inventario lo trae el `load` de cada pantalla (constitución §XIV). Aquí solo se
         //    escucha: nada de sondeo (ADR-015).
@@ -157,7 +194,7 @@
     </div>
   </div>
 {:else}
-  <AppShell>
+  <AppShell transitionKey={page.url.pathname}>
     {#snippet sidebar()}
       <Sidebar
         {sections}
@@ -178,6 +215,7 @@
         {freshness}
         primaryLabel={t("common.refresh")}
         onprimary={() => refreshNow("all").catch((c) => (startupError = toAppError(c)))}
+        onabout={abrirAcercaDe}
       />
     {/snippet}
 
@@ -190,3 +228,19 @@
     {/if}
   </AppShell>
 {/if}
+
+<ConfirmDialog
+  open={aboutOpen}
+  title={appInfo ? `${appInfo.name} ${appInfo.version}` : t("about.title")}
+  body={appInfo
+    ? t("about.body", { author: appInfo.author })
+    : aboutError
+      ? t(aboutError.messageKey, aboutError.messageVars)
+      : t("common.loading")}
+  confirmLabel={t("about.cta.copy")}
+  onconfirm={() => {
+    void copiarInformacion();
+    aboutOpen = false;
+  }}
+  oncancel={() => (aboutOpen = false)}
+/>

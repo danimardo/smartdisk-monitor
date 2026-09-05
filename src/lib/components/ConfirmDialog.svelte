@@ -2,6 +2,7 @@
   /** Confirmación obligatoria antes de cualquier operación que escriba datos o genere carga (spec §12).
    *  Diálogo de material sobre velo desenfocado; declara qué hará, dónde, el impacto y el comando literal. */
   import Button from "./Button.svelte";
+  import { t } from "$lib/i18n";
 
   let {
     open = false,
@@ -9,17 +10,27 @@
     body = "",
     command = "",
     impact = "",
-    confirmLabel = "Continuar",
+    confirmLabel = "",
     destructive = false,
     onconfirm = undefined,
     oncancel = undefined
   } = $props();
+
+  let panel = $state<HTMLDivElement | undefined>();
+
+  /** El foco tiene que entrar al abrir: sin esto, `Escape` (atado al velo) nunca llega a
+   *  disparar, porque el foco se queda en el botón que abrió el diálogo, fuera del árbol del
+   *  velo, y un `keydown` no baja desde ahí (`docs/known-issues.md` #2, corregido). */
+  $effect(() => {
+    if (open) panel?.focus();
+  });
 </script>
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- El velo solo captura el clic fuera del diálogo; el cierre por teclado lo cubre el `onkeydown`
-       de Escape de esta misma capa. Ver docs/known-issues.md #2 -->
+       de Escape de esta misma capa, alcanzable porque el foco entra al panel al abrir.
+       Ver docs/known-issues.md #2 -->
   <div
     class="fixed inset-0 z-50 grid place-items-center p-8 backdrop-blur-[3px]"
     style="background: var(--sdm-scrim)"
@@ -28,6 +39,7 @@
     onkeydown={(e) => e.key === "Escape" && oncancel?.()}
   >
     <div
+      bind:this={panel}
       class="sdm-material-overlay flex w-full max-w-lg flex-col gap-4 rounded-window p-6"
       style="animation: sdm-dialog var(--sdm-duration-overlay) var(--sdm-ease)"
       role="dialog"
@@ -54,8 +66,10 @@
       {/if}
 
       <div class="flex justify-end gap-2">
-        <Button variant="ghost" onclick={oncancel}>Cancelar</Button>
-        <Button variant={destructive ? "danger" : "primary"} onclick={onconfirm}>{confirmLabel}</Button>
+        <Button variant="ghost" onclick={oncancel}>{t("common.cancel")}</Button>
+        <Button variant={destructive ? "danger" : "primary"} onclick={onconfirm}
+          >{confirmLabel || t("common.continue")}</Button
+        >
       </div>
     </div>
   </div>

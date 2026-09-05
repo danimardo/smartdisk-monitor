@@ -23,6 +23,7 @@
     formatTemperature,
     formatThroughput
   } from "$lib/design/format";
+  import { classifyAgainstThresholds, temperatureThresholds } from "$lib/design/health";
   import { i18n, t } from "$lib/i18n";
   import type { AppError } from "$lib/design/types";
   import type { MetricSeries } from "$lib/api";
@@ -30,6 +31,23 @@
 
   let { data }: { data: PageData } = $props();
   const disk = $derived(data.disk);
+  const settings = $derived(data.settings);
+
+  /** Umbrales efectivos de temperatura de este disco (docs/open-questions.md J.46): el límite del
+   *  fabricante manda si `smartctl` lo declaró, el configurado en ajustes es el respaldo. Se
+   *  reutilizan tal cual para colorear la cifra grande y para las zonas de fondo del gráfico, así
+   *  las dos lecturas del mismo dato en la misma pantalla nunca pueden discrepar entre sí. */
+  const tempThresholds = $derived(
+    temperatureThresholds(
+      disk.vendorTempLimitC,
+      disk.vendorTempCriticalC,
+      settings.alerts.tempConfiguredWarnC,
+      settings.alerts.tempConfiguredCritC
+    )
+  );
+  const tempState = $derived(
+    classifyAgainstThresholds(disk.temperatureC, tempThresholds.warn, tempThresholds.crit)
+  );
 
   type Rango = "24h" | "7d" | "30d" | "custom";
   let rango = $state<Rango>("24h");
@@ -129,13 +147,14 @@
 <div class="flex flex-col gap-5">
   <div class="flex items-center gap-3">
     <StatusPill state={disk.state} label={t(`health.${disk.state}`)} />
-    <h1 class="m-0 text-lg font-semibold">{disk.alias ?? disk.model}</h1>
+    <h1 class="sdm-selectable m-0 text-lg font-semibold">{disk.alias ?? disk.model}</h1>
   </div>
 
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
     <MetricCard
       label={t("disk.temperature")}
       value={disk.temperatureC !== null ? formatTemperature(disk.temperatureC) : null}
+      state={tempState}
     />
     <MetricCard
       label={t("disk.activity")}
@@ -184,6 +203,10 @@
         unit="°C"
         min={0}
         max={100}
+        warnThreshold={tempThresholds.warn}
+        warnLabel={t("chart.tempWarnLabel", { value: formatTemperature(tempThresholds.warn) })}
+        critThreshold={tempThresholds.crit}
+        critLabel={t("chart.tempCritLabel", { value: formatTemperature(tempThresholds.crit) })}
         {resolutionLabel}
       />
     {:else if serieLoading}

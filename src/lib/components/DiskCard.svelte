@@ -34,8 +34,8 @@
     <Card padding="sm">
       <div class="flex items-start gap-3">
         <div class="flex min-w-0 flex-col gap-0.5">
-          <span class="truncate text-base font-semibold">{disk.alias ?? disk.model}</span>
-          <span class="truncate text-xs text-fg-dim">{disk.model} · {disk.deviceType}</span>
+          <span class="sdm-selectable truncate text-base font-semibold">{disk.alias ?? disk.model}</span>
+          <span class="sdm-selectable truncate text-xs text-fg-dim">{disk.model} · {disk.deviceType}</span>
         </div>
         <div class="flex-1"></div>
         <StatusPill state={disk.state} {label} />

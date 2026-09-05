@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { capacityState, deviceState, trayState, worstState } from "./health";
+import {
+  capacityState,
+  classifyAgainstThresholds,
+  deviceState,
+  temperatureThresholds,
+  trayState,
+  worstState
+} from "./health";
 
 /** Estas pruebas fijan decisiones de producto, no detalles de implementación. Cada una
  *  corresponde a una entrada de `docs/open-questions.md`: si alguna falla, es que se ha cambiado
@@ -86,6 +93,37 @@ describe("trayState — prioridad del icono de bandeja (§B.5)", () => {
 
   it("un recopilador caído degrada el icono", () => {
     expect(trayState({ paused: false, collectorFailure: true, monitoredStates: ["ok"] })).toBe("unknown");
+  });
+});
+
+describe("temperatureThresholds — el límite del fabricante manda si existe (§alert-rules temp.*)", () => {
+  it("sin ningún límite del fabricante, usa los configurados", () => {
+    expect(temperatureThresholds(null, null, 70, 80)).toEqual({ warn: 70, crit: 80 });
+  });
+
+  it("con ambos límites del fabricante, los usa en vez de los configurados", () => {
+    expect(temperatureThresholds(55, 65, 70, 80)).toEqual({ warn: 55, crit: 65 });
+  });
+
+  it("un límite parcial del fabricante solo sustituye el suyo, el otro sigue siendo el configurado", () => {
+    expect(temperatureThresholds(55, null, 70, 80)).toEqual({ warn: 55, crit: 80 });
+    expect(temperatureThresholds(null, 65, 70, 80)).toEqual({ warn: 70, crit: 65 });
+  });
+});
+
+describe("classifyAgainstThresholds — mismos operadores que el motor de alertas", () => {
+  it("justo en el umbral de aviso (estrictamente mayor) todavía no avisa", () => {
+    expect(classifyAgainstThresholds(70, 70, 80)).toBe("ok");
+    expect(classifyAgainstThresholds(70.1, 70, 80)).toBe("warn");
+  });
+
+  it("justo en el umbral crítico (mayor o igual) ya es crítico", () => {
+    expect(classifyAgainstThresholds(80, 70, 80)).toBe("crit");
+    expect(classifyAgainstThresholds(79.9, 70, 80)).toBe("warn");
+  });
+
+  it("un valor ausente es desconocido, nunca ok", () => {
+    expect(classifyAgainstThresholds(null, 70, 80)).toBe("unknown");
   });
 });
 

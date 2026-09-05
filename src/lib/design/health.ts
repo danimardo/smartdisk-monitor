@@ -68,6 +68,31 @@ export function trayState(input: {
   return worstState(input.monitoredStates);
 }
 
+/** Umbrales efectivos de temperatura para un disco (`docs/alert-rules.md`,
+ *  `temp.above_vendor_limit`/`_critical` y `temp.above_configured_warn`/`_crit`): el límite del
+ *  fabricante manda si existe; a falta de él, el configurado en `settings.alerts` es el respaldo. */
+export function temperatureThresholds(
+  vendorLimitC: number | null | undefined,
+  vendorCriticalC: number | null | undefined,
+  configuredWarnC: number,
+  configuredCritC: number
+): { warn: number; crit: number } {
+  return { warn: vendorLimitC ?? configuredWarnC, crit: vendorCriticalC ?? configuredCritC };
+}
+
+/** Estado de salud de una lectura frente a un par de umbrales aviso/crítico. Mismo criterio de
+ *  operadores que `alert-rules.md`: el aviso es estrictamente por encima, el crítico llega igual. */
+export function classifyAgainstThresholds(
+  value: number | null,
+  warn: number,
+  crit: number
+): HealthState {
+  if (value === null) return "unknown";
+  if (value >= crit) return "crit";
+  if (value > warn) return "warn";
+  return "ok";
+}
+
 /** Por debajo de esta capacidad, el suelo absoluto de espacio libre no se aplica: en un volumen
  *  pequeño, 20 GB libres pueden ser un tercio del disco y marcarlo en rojo sería ruido puro.
  *  Configurable en `settings` (`alerts.capacity.absoluteFloorMinCapacityBytes`). */

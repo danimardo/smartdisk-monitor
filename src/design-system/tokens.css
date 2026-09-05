@@ -274,6 +274,32 @@ a:hover {
   letter-spacing: var(--sdm-tracking-tight);
 }
 
+/* ---- Comportamiento de aplicación nativa (docs/open-questions.md J.45) ----
+   Tauri renderiza con un motor web, pero la aplicación debe sentirse como un programa de
+   escritorio: sin selección de texto arrastrando el ratón por toda la pantalla. Desactivar
+   `user-select` basta para que tampoco aparezca el cursor de texto sobre una etiqueta o un botón
+   (el navegador solo lo muestra sobre contenido seleccionable), sin tocar `cursor` y sin arriesgar
+   el cursor de mano de enlaces y botones. Se reactiva solo donde tiene sentido copiar: cifras
+   (`.sdm-num`), contenido técnico o monoespaciado (`.font-mono`, `code`, `pre`), lo marcado
+   explícitamente (`.sdm-selectable`) y los campos de formulario, que gestionan su propia
+   selección. */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sdm-num,
+.font-mono,
+code,
+pre,
+.sdm-selectable,
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

@@ -7,7 +7,11 @@
   import { t } from "$lib/i18n";
   import type { AlertGroup } from "$lib/design/types";
 
-  let { alert = null as AlertGroup | null, selected = false, onselect } = $props();
+  let {
+    alert = null as AlertGroup | null,
+    selected = false,
+    onselect = undefined as ((id: string) => void) | undefined
+  } = $props();
 
   /** El backend no manda texto de interfaz (ADR-030): título, resumen, severidad y estado se
    *  resuelven aquí a partir de `ruleKey`/`severity`/`status`, que sí son datos estables. */

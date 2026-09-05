@@ -4,6 +4,7 @@
    *  Es material de chrome: translúcida, sin sombra propia, con filo superior. */
   import Button from "./Button.svelte";
   import StatusPill from "./StatusPill.svelte";
+  import { t } from "$lib/i18n";
   import type { HealthState } from "$lib/design/types";
 
   let {
@@ -30,12 +31,12 @@
   </div>
   <div class="flex-1"></div>
   {@render controls?.()}
+  <button
+    class="grid size-control-md place-items-center rounded-pill border border-hairline bg-glass-2 text-xs font-semibold text-fg-dim shadow-edge"
+    aria-label={t("nav.about")}
+    onclick={onabout}>?</button
+  >
   <StatusPill state={globalState} label={globalLabel} />
   {#if freshness}<span class="text-2xs text-fg-faint">{freshness}</span>{/if}
   <Button variant="primary" onclick={onprimary}>{primaryLabel}</Button>
-  <button
-    class="grid size-control-md place-items-center rounded-pill border border-hairline bg-glass-2 text-xs font-semibold text-fg-dim shadow-edge"
-    aria-label="Acerca de"
-    onclick={onabout}>?</button
-  >
 </header>

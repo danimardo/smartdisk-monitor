@@ -7,7 +7,9 @@
    *  - un hueco de datos se dibuja como hueco (banda gris), nunca como 0 ni interpolado;
    *  - el dominio del eje es el intervalo **pedido** (`from`/`to`), no el de los datos recibidos:
    *    si se piden 7 días y solo hay 2, los 5 restantes se ven vacíos;
-   *  - el umbral del fabricante se pinta como línea discontinua ámbar;
+   *  - `warnThreshold`/`critThreshold` (docs/open-questions.md J.46) se pintan como dos zonas de
+   *    fondo (no solo una línea): así se ve de un vistazo si un valor está en zona segura, de
+   *    aviso o crítica, sin tener que leer la cifra y compararla mentalmente contra un límite;
    *  - el eje X va en hora local y todo texto pasa por i18n.
    */
   import { formatDateTime, formatTime } from "$lib/design/format";
@@ -26,8 +28,12 @@
     /** Cadencia esperada entre muestras (ms). Una separación mayor que 1,5× se dibuja como hueco.
      *  Si se omite, se infiere de la mediana de las separaciones observadas. */
     expectedIntervalMs = null as number | null,
-    threshold = null as number | null,
-    thresholdLabel = "",
+    /** Umbral de aviso/crítico, en el mismo dominio que `points`. Sin ninguno de los dos, el
+     *  gráfico no pinta ninguna zona (métricas sin un "bueno/malo" conocido, p. ej. actividad %). */
+    warnThreshold = null as number | null,
+    warnLabel = "",
+    critThreshold = null as number | null,
+    critLabel = "",
     height = 220,
     unit = "",
     /** Resolución servida por el backend; se muestra al usuario para que sepa que está viendo
@@ -45,6 +51,14 @@
 
   const scaleX = (time: number) => ((time - t0) / span) * (width - PAD_R * 2) + PAD_R;
   const scaleY = (v: number) => height - ((v - min) / (max - min || 1)) * height;
+  /** Recortada al lienzo: un umbral fuera del dominio pedido (`min`/`max`) no debe dibujar una
+   *  zona invertida ni salirse del SVG. */
+  const scaleYClamped = (v: number) => Math.max(0, Math.min(height, scaleY(v)));
+
+  /** Zonas de fondo aviso/crítico, ordenadas de abajo (segura) hacia arriba (peor): el crítico es
+   *  siempre la banda más alta (valor más alto) y no se superpone a la de aviso. */
+  const warnZoneY = $derived(warnThreshold !== null ? scaleYClamped(warnThreshold) : null);
+  const critZoneY = $derived(critThreshold !== null ? scaleYClamped(critThreshold) : null);
 
   /** Cadencia de referencia: la mediana de las separaciones reales, salvo que la indique el llamante. */
   const step = $derived.by(() => {
@@ -173,17 +187,41 @@
       <line x1="0" y1={height * g} x2={width} y2={height * g} stroke="var(--sdm-hairline)" stroke-width="1" />
     {/each}
 
+    {#if critZoneY !== null}
+      <rect x="0" y="0" {width} height={critZoneY} fill="var(--sdm-crit-soft)" />
+    {/if}
+    {#if warnZoneY !== null}
+      <rect
+        x="0"
+        y={critZoneY ?? 0}
+        {width}
+        height={Math.max(0, warnZoneY - (critZoneY ?? 0))}
+        fill="var(--sdm-warn-soft)"
+      />
+    {/if}
+
     {#each gaps as gap}
       <rect x={gap.x} y="0" width={gap.w} {height} fill="var(--sdm-unknown)" opacity="0.14" />
     {/each}
 
-    {#if threshold !== null}
+    {#if warnThreshold !== null}
       <line
         x1="0"
-        y1={scaleY(threshold)}
+        y1={scaleYClamped(warnThreshold)}
         x2={width}
-        y2={scaleY(threshold)}
+        y2={scaleYClamped(warnThreshold)}
         stroke="var(--sdm-warn)"
+        stroke-width="1.5"
+        stroke-dasharray="6 6"
+      />
+    {/if}
+    {#if critThreshold !== null}
+      <line
+        x1="0"
+        y1={scaleYClamped(critThreshold)}
+        x2={width}
+        y2={scaleYClamped(critThreshold)}
+        stroke="var(--sdm-crit)"
         stroke-width="1.5"
         stroke-dasharray="6 6"
       />
@@ -240,7 +278,12 @@
       </span>
     {/if}
 
-    {#if thresholdLabel}<span class="text-warn">{thresholdLabel}</span>{/if}
+    {#if warnLabel || critLabel}
+      <span class="flex gap-3">
+        {#if warnLabel}<span class="text-warn">{warnLabel}</span>{/if}
+        {#if critLabel}<span class="text-crit">{critLabel}</span>{/if}
+      </span>
+    {/if}
     <span>{formatDateTime(new Date(t1).toISOString())}</span>
   </figcaption>
 </figure>

@@ -1,8 +1,13 @@
 <script lang="ts">
   /** Armazón de la ventana: Sidebar fija + Toolbar fija + región de contenido con scroll propio.
    *  Úsalo como raíz de la app; ninguna pantalla monta su propio chrome.
-   *  El contenido pasa por debajo del chrome translúcido: no le pongas fondo opaco. */
-  let { sidebar, toolbar, children } = $props();
+   *  El contenido pasa por debajo del chrome translúcido: no le pongas fondo opaco.
+   *
+   *  `transitionKey` distingue un cambio de pantalla real (`docs/ui-design.md`: "Movimiento:
+   *  duration-base con ease-sdm en... cambio de pantalla") de un simple cambio de parámetro dentro
+   *  de la misma pantalla (un filtro, una página): solo cuando cambia se remonta el contenido y se
+   *  repite la animación de entrada. Sin él, cada pantalla aparecía de golpe, sin transición. */
+  let { sidebar, toolbar, children, transitionKey = "" } = $props();
 </script>
 
 <div
@@ -13,9 +18,27 @@
     {@render toolbar?.()}
     <!-- Única región con scroll: la ventana nunca recorta contenido en silencio. -->
     <main class="min-h-0 flex-1 overflow-auto">
-      <div class="box-border flex min-h-full flex-col gap-5 p-6">
-        {@render children?.()}
-      </div>
+      {#key transitionKey}
+        <div
+          class="box-border flex min-h-full flex-col gap-5 p-6"
+          style="animation: sdm-page-in var(--sdm-duration-base) var(--sdm-ease)"
+        >
+          {@render children?.()}
+        </div>
+      {/key}
     </main>
   </div>
 </div>
+
+<style>
+  @keyframes sdm-page-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+</style>
