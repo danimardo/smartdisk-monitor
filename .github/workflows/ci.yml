@@ -52,6 +52,14 @@ jobs:
       - name: Formato
         run: pnpm exec prettier --check .
 
+      - name: Generar los tipos de SvelteKit
+        # `tsconfig.json` extiende `./.svelte-kit/tsconfig.json`, que no existe hasta que algo
+        # ejecuta `svelte-kit sync` (o `vite build`/`vite dev`). Sin este paso, ESLint no encuentra
+        # ni `./$types` ni el resto de tipos generados y los trata como `any`/`error`, lo que
+        # arrastra en cascada docenas de falsos "unsafe" en todo el árbol — nunca se detectó en
+        # local porque el directorio ya existía de una ejecución anterior de `pnpm dev`/`pnpm check`.
+        run: pnpm exec svelte-kit sync
+
       - name: ESLint
         # No solapa con svelte-check (§XIII): aporta lo que aquel no ve, sobre todo promesas sin
         # gestionar, que en una aplicación de larga ejecución no fallan al momento sino que se
