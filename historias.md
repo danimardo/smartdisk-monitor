@@ -81,13 +81,60 @@ añade en vez de resolverlo en el código.
 
 Fichero de origen: `README.md`
 
-Aplicación local de supervisión de discos para Windows, desarrollada con Tauri 2, Rust, Svelte, TypeScript y Tailwind CSS.
+**SmartDisk Monitor** vigila la salud de los discos de un equipo Windows: temperatura, desgaste,
+errores, actividad, capacidad y los eventos del sistema relacionados con almacenamiento, todo en
+una sola pantalla y con historial. Es una aplicación local y de un solo usuario — no hay servidor
+central, cuentas ni telemetría — pensada para quien administra su propio equipo y quiere enterarse
+de un disco que empieza a fallar antes de perder datos, no después.
 
-Estado actual: **esqueleto de Fase 0 en marcha**. La especificación está cerrada y el proyecto
-compila y arranca; los comandos del backend devuelven `not_implemented` hasta que se implemente cada
-recopilador.
+Responde a las preguntas que uno se hace cuando algo empieza a ir mal:
 
-### Puesta en marcha
+- ¿Qué discos y volúmenes hay en este equipo, y cómo están ahora mismo?
+- ¿Cómo ha evolucionado la temperatura o el desgaste en las últimas horas o días?
+- ¿Ha pasado algo raro, cuándo, y con qué frecuencia se repite?
+- ¿Este disco aguanta bien la carga, o se degrada?
+- ¿Qué le enseño a quien me ayude a diagnosticarlo, sin tener que compartir todo el disco?
+
+### Funcionalidades
+
+- **Inventario automático** de discos físicos, particiones y volúmenes, con selección de cuáles
+  monitorizar.
+- **Salud SMART/NVMe** vía `smartctl` y las fuentes nativas de Windows: temperatura, desgaste,
+  errores, horas de encendido y demás contadores del fabricante, con degradación elegante (gris, no
+  alerta) cuando el hardware no expone SMART — RAID, USB, máquinas virtuales.
+- **Panel general y detalle por disco**, con gráficas de la serie temporal y zonas de aviso/crítico
+  sobre el propio gráfico: se ve de un vistazo si un valor es bueno o peligroso, no solo la cifra.
+- **Actividad, velocidad y latencia** en tiempo real mediante los contadores de rendimiento de
+  Windows.
+- **Alertas locales**, agrupadas y con histéresis para no repetir aviso por cada muestra, visibles
+  desde la aplicación y desde el icono de la bandeja del sistema.
+- **Captura y correlación de eventos** relevantes del registro de eventos de Windows con el disco al
+  que corresponden.
+- **Historial local en SQLite**, con retención configurable y sin ningún dato saliendo del equipo.
+- **Pruebas manuales bajo demanda**: benchmark de lectura/escritura, `chkdsk /scan` y autotest SMART
+  corto, cuando el dispositivo lo soporte.
+- **Exportación e informes**: CSV, JSON y HTML imprimible, más un paquete ZIP de diagnóstico
+  anonimizado por defecto — para compartir un incidente sin compartir números de serie.
+- **Español e inglés**, tema claro/oscuro/automático según el sistema.
+
+Fuera de alcance a propósito (por ahora): servicio en segundo plano sin sesión iniciada, consola
+remota, cuentas o roles, alertas por correo/mensajería, actualizaciones automáticas y telemetría.
+El detalle completo está en [`docs/product-specification.md`](docs/product-specification.md).
+
+### Descargar
+
+Instalador para Windows x64 en la [página de Releases](https://github.com/danimardo/smartdisk-monitor/releases).
+
+Requiere Windows 10 (1809+), Windows 11 o Windows Server 2016+ con Experiencia de escritorio, y el
+**WebView2 Runtime** (el instalador lo resuelve sin conexión si falta). Se ejecuta siempre con
+privilegios de administrador: es lo que necesita para leer SMART de los discos físicos.
+
+El instalador **no va firmado** — Windows SmartScreen mostrará "Windows protegió tu PC"/"editor no
+reconocido" la primera vez que se ejecute. Es un aviso esperado, no un fallo: para continuar, "Más
+información" → "Ejecutar de todas formas". Conseguir un certificado de firma de código es trabajo
+pendiente, ya recogido en [`docs/roadmap.md`](docs/roadmap.md).
+
+### Desarrollo
 
 ```sh
 pnpm install          # requiere Node 20+ y pnpm
@@ -153,9 +200,9 @@ de componentes en `src/lib/components/` y los bocetos aprobados en [`design/`](d
 
 - Producto: SmartDisk Monitor
 - Autor: Daniel Diez Mardomingo
-- Repositorio previsto: https://github.com/danimardo/smartdisk-monitor
+- Repositorio: https://github.com/danimardo/smartdisk-monitor
 - Licencia del código propio: MIT
-- Plataforma inicial: Windows x64
+- Plataforma: Windows x64
 
 ### Instalación y desinstalación
 
@@ -168,7 +215,8 @@ aplicación para todos los usuarios. La desinstalación **conserva** el historia
 - `logs\`: registro de actividad (`smartdisk.log.<fecha>`).
 
 Esto es deliberado: una desinstalación accidental o para reinstalar una versión más reciente no
-debe borrar meses de historial. La carpeta la crea el instalador con una ACL propia (ADR-026, `Get-Acl`/`icacls` — lectura abierta, escritura restringida a administradores), así que solo una
+debe borrar meses de historial. La carpeta la crea el instalador con una ACL propia (ADR-026,
+`Get-Acl`/`icacls` — lectura abierta, escritura restringida a administradores), así que solo una
 cuenta con privilegios de administrador puede borrarla a mano.
 
 **Para limpiar todo sin desinstalar** —vía normal, con confirmación explícita y sin tocar el
