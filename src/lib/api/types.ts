@@ -1,100 +1,35 @@
 /** Tipos del contrato UI ↔ backend (`docs/ui-contract.md`).
  *
- *  **Esto es provisional.** Estos tipos se escriben a mano solo mientras no exista el backend; en
- *  cuanto haya comandos de verdad se generan desde Rust con `ts-rs` y CI comprueba que el fichero
- *  generado coincide con el versionado (`open-questions.md` G.3). Escribirlos dos veces a mano es
- *  exactamente el problema que ese punto pretende evitar.
+ *  Los que ya tienen un comando Rust real detrás se generan con `ts-rs` en `./generated/` y se
+ *  reexportan aquí (`open-questions.md` G.3): `cargo test` los regenera, y una diferencia con lo
+ *  versionado es una señal de que el contrato cambió sin actualizar este fichero. **No se declaran
+ *  a mano en paralelo** — es justo lo que ese punto existe para evitar.
+ *
+ *  Lo que todavía no tiene comando conectado sigue a mano más abajo, con la misma advertencia:
+ *  en cuanto su comando exista, se genera y se reexporta igual que los de arriba.
  *
  *  El vocabulario compartido con los componentes vive en `$lib/design/types`, no se duplica aquí.
  */
 
-import type {
-  AlertGroup,
-  AlertStatus,
-  AppError,
-  DiskSummary,
-  MetricSource,
-  Provenance
-} from "$lib/design/types";
+import type { AlertGroup, AlertStatus } from "$lib/design/types";
 
-export type Resolution = "raw" | "five_minutes" | "hourly";
+export type { AppError } from "./generated/AppError";
+export type { AppearanceSettings } from "./generated/AppearanceSettings";
+export type { AppInfo } from "./generated/AppInfo";
+export type { DeviceListResponse } from "./generated/DeviceListResponse";
+export type { SourceHealth } from "./generated/SourceHealth";
+export type { WindowsAccent } from "./generated/WindowsAccent";
+export type { DeviceCapability } from "./generated/DeviceCapability";
+export type { SmartCounter } from "./generated/SmartCounter";
+export type { DeviceDetail } from "./generated/DeviceDetail";
+export type { IdentityConfidence } from "./generated/IdentityConfidence";
+export type { Resolution } from "./generated/Resolution";
+/** El intervalo pedido, devuelto tal cual: el eje lo cubre entero aunque falten datos. */
+export type { MetricSeriesWire as MetricSeries } from "./generated/MetricSeriesWire";
+export type { PuntoSerieWire } from "./generated/PuntoSerieWire";
+
 export type MappingConfidence = "exact" | "inferred" | "unknown";
-export type IdentityConfidence = "serial" | "fingerprint";
 export type SourceStatus = "ok" | "partial" | "unsupported" | "timeout" | "error";
-
-export interface SourceHealth {
-  source: MetricSource;
-  status: SourceStatus;
-  lastSuccessAt: string | null;
-  lastAttemptAt: string | null;
-  error?: AppError | null;
-}
-
-export interface AppearanceSettings {
-  theme: "light" | "dark" | "system";
-  language: "es" | "en" | null;
-  /** BCP-47 de Windows. Se usa este, no `navigator.language`. */
-  systemLocale: string;
-  useSystemAccent: boolean;
-}
-
-export interface WindowsAccent {
-  /** #RRGGBB. El registro lo guarda en ABGR: la conversión es del backend. */
-  hex: string;
-  /** Tonos de `AccentPalette`, del más claro al más oscuro. */
-  palette?: string[];
-}
-
-export interface DeviceListResponse {
-  devices: DiskSummary[];
-  /** Desactivados por el usuario. US-011 exige mostrarlos aparte, no ocultarlos. */
-  excluded: DiskSummary[];
-  sources: SourceHealth[];
-  paused: boolean;
-  pausedSince: string | null;
-}
-
-export interface DeviceCapability {
-  key: "smart" | "nvme_log" | "self_test_short" | "chkdsk_scan" | "temperature";
-  available: boolean;
-  reasonKey: string | null;
-}
-
-export interface SmartCounter {
-  metricKey: string;
-  value: number | null;
-  unit: string | null;
-  delta: number | null;
-  deltaIsMeaningful: boolean;
-  provenance: Provenance;
-}
-
-export interface DeviceDetail extends DiskSummary {
-  fingerprint: string;
-  identityConfidence: IdentityConfidence;
-  serialNumber: string | null;
-  firmware: string | null;
-  busType: string | null;
-  capabilities: DeviceCapability[];
-  counters: SmartCounter[];
-  firstSeenAt: string;
-  lastSeenAt: string;
-  removedAt: string | null;
-}
-
-export interface MetricSeries {
-  metricKey: string;
-  unit: string;
-  resolution: Resolution;
-  downsampled: boolean;
-  /** El intervalo pedido, devuelto tal cual: el eje lo cubre entero aunque falten datos. */
-  fromUtc: string;
-  toUtc: string;
-  expectedIntervalMs: number;
-  points: { t: number; v: number | null }[];
-  vendorLimit: number | null;
-  vendorCritical: number | null;
-}
 
 export interface SystemEvent {
   id: string;

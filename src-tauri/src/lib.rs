@@ -4,10 +4,20 @@
 //! arrancar una ventana. La aplicación se ejecuta siempre elevada (ADR-004) y vive en la bandeja
 //! del sistema mientras está activa.
 
+use tauri::Manager;
+
+pub mod alerts;
+pub mod collectors;
 pub mod commands;
+pub mod domain;
 pub mod error;
 pub mod logging;
+pub mod persistence;
 pub mod platform;
+pub mod reporting;
+#[cfg(test)]
+pub mod test_util;
+pub mod tests;
 
 /// Lista cerrada de comandos invocables desde la interfaz. Nada fuera de aquí es alcanzable:
 /// no hay shell genérica ni `fs` abierto (ADR-004, `docs/ui-contract.md` §5).
@@ -33,6 +43,7 @@ pub fn run() {
             );
             platform::ventana::restaurar_ventana_principal(app);
         }))
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             // apariencia y ajustes
             commands::get_appearance_settings,
@@ -76,9 +87,35 @@ pub fn run() {
             commands::get_log_level,
         ])
         .setup(|app| {
+            // La base se abre aquí, no en cada comando: una sola conexión compartida y las
+            // migraciones ya aplicadas antes de que la interfaz pueda pedir nada.
+            let estado = persistence::db::AppState::open(&platform::paths::data_dir())
+                .expect("no se pudo abrir la base de datos ni aplicar sus migraciones");
+            app.manage(estado);
+
             // La ventana nace oculta y se muestra cuando el frontend ha pintado: así no se ve un
             // rectángulo blanco antes de que se aplique el tema.
             platform::ventana::restaurar_ventana_principal(app.handle());
+
+            // El icono de la bandeja vive mientras la aplicación vive (FR-012): se construye una
+            // sola vez aquí y se recalcula desde los comandos que pueden cambiar su color.
+            platform::bandeja::instalar(app.handle())?;
+
+            // Cerrar con la X no termina la aplicación: la sigue monitorizando en la bandeja
+            // (`docs/product-specification.md` §3). La pregunta "minimizar o salir" con opción de
+            // recordar queda pendiente de un diálogo propio (`docs/open-questions.md` J.19); de
+            // momento minimiza siempre, que es el lado seguro de esa pregunta sin responder.
+            if let Some(ventana) = app.get_webview_window(platform::ventana::VENTANA_PRINCIPAL) {
+                let ventana_a_ocultar = ventana.clone();
+                ventana.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        if let Err(e) = ventana_a_ocultar.hide() {
+                            tracing::warn!(error = %e, "no se pudo minimizar la ventana a la bandeja");
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

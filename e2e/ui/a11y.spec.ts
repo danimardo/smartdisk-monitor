@@ -14,7 +14,7 @@ import { instalarIpcFalso } from "./ipc-falso";
  *  hay acceso a `getComputedStyle` del elemento concreto.
  */
 
-const PANTALLAS = ["/", "/alerts", "/events", "/tests", "/reports", "/settings"];
+const PANTALLAS = ["/", "/alerts", "/disks/disk-0", "/events", "/tests", "/reports", "/settings"];
 
 async function fijarTema(page: Page, tema: "light" | "dark") {
   await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), tema);

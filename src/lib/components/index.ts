@@ -9,6 +9,9 @@ export { default as Switch } from "./Switch.svelte";
 export { default as Select } from "./Select.svelte";
 export { default as TextField } from "./TextField.svelte";
 export { default as RadioGroup } from "./RadioGroup.svelte";
+export { default as DateRangePicker } from "./DateRangePicker.svelte";
+export { default as FilterBar } from "./FilterBar.svelte";
+export { default as VirtualList } from "./VirtualList.svelte";
 
 export { default as StatusPill } from "./StatusPill.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";

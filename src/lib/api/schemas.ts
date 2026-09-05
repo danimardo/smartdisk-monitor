@@ -68,7 +68,9 @@ export const volumeSummary = z.object({
   driveLetters: z.array(z.string()),
   capacityBytes: nullableNumber,
   freeBytes: nullableNumber,
-  mappingConfidence
+  mappingConfidence,
+  /** `chkdsk /scan` solo existe en NTFS: la decisión la toma el backend, no se repite aquí. */
+  chkdskAvailable: z.boolean()
 });
 
 export const diskSummary = z.object({
@@ -153,12 +155,12 @@ export const metricSeries = z.object({
 
 export const alertGroup = z.object({
   id: z.string(),
+  // Sin title/summary: el backend no manda texto de interfaz (ADR-030). El componente resuelve
+  // t(`alert.rule.${ruleKey}.title`) / `.summary` a partir de esta clave.
   ruleKey: z.string(),
   deduplicationKey: z.string(),
   severity,
   status: alertStatus,
-  title: z.string(),
-  summary: z.string(),
   count: z.number().int().nonnegative(),
   firstOccurredAt: isoUtc,
   lastOccurredAt: isoUtc,

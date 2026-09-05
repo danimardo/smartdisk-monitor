@@ -4,17 +4,17 @@
   import StatusPill from "./StatusPill.svelte";
   import { severityToHealth } from "$lib/design/health";
   import { formatTime } from "$lib/design/format";
+  import { t } from "$lib/i18n";
   import type { AlertGroup } from "$lib/design/types";
 
   let { alert = null as AlertGroup | null, selected = false, onselect } = $props();
 
-  const sevLabel: Record<string, string> = { info: "Informativa", warn: "Advertencia", crit: "Crítica" };
-  const statusLabel: Record<string, string> = {
-    active: "activa",
-    acknowledged: "reconocida",
-    resolved: "resuelta",
-    archived: "archivada"
-  };
+  /** El backend no manda texto de interfaz (ADR-030): título, resumen, severidad y estado se
+   *  resuelven aquí a partir de `ruleKey`/`severity`/`status`, que sí son datos estables. */
+  const titulo = $derived(alert ? t(`alert.rule.${alert.ruleKey}.title`) : "");
+  const resumen = $derived(alert ? t(`alert.rule.${alert.ruleKey}.summary`) : "");
+  const etiquetaSeveridad = $derived(alert ? t(`health.${severityToHealth[alert.severity]}`) : "");
+  const etiquetaEstado = $derived(alert ? t(`alert.status.${alert.status}`) : "");
 </script>
 
 {#if alert}
@@ -25,13 +25,13 @@
     onclick={() => onselect?.(alert.id)}
   >
     <div class="flex items-center gap-3">
-      <StatusPill state={severityToHealth[alert.severity]} label={sevLabel[alert.severity]} />
-      <span class="flex-1 truncate text-sm font-semibold">{alert.title}</span>
+      <StatusPill state={severityToHealth[alert.severity]} label={etiquetaSeveridad} />
+      <span class="flex-1 truncate text-sm font-semibold">{titulo}</span>
       <span class="sdm-num text-xs font-semibold text-fg-dim">×{alert.count}</span>
     </div>
-    <p class="m-0 text-xs text-fg-dim">{alert.summary}</p>
+    <p class="m-0 text-xs text-fg-dim">{resumen}</p>
     <span class="text-2xs text-fg-faint">
-      {alert.target} · {statusLabel[alert.status]} · última {formatTime(alert.lastOccurredAt)}
+      {alert.target} · {etiquetaEstado} · última {formatTime(alert.lastOccurredAt)}
     </span>
   </button>
 {/if}

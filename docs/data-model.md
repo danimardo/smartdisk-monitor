@@ -100,6 +100,11 @@
 - Claves tipadas y versionadas.
 - Preferencias globales, de disco y de volumen.
 - Idioma, tema, frecuencias, retención, cierre y umbrales.
+- `storage.free_space_warn_bytes` / `storage.free_space_halt_bytes`: umbrales de espacio libre del
+  volumen donde reside el historial. Al cruzar el de aviso se notifica; al cruzar el de parada se
+  detiene la escritura de historial sin afectar a la monitorización ni a las alertas en vivo. Valor
+  por defecto 1 GB / 256 MB, no medido (`open-questions.md` J.13).
+- `logging.verbose`: booleano, modo detallado de registro de actividad (US-071).
 
 ### `event_cursors`
 
@@ -112,6 +117,14 @@
 ### `schema_migrations`
 
 - Versión, fecha y checksum de cada migración aplicada.
+
+### `metric_aggregates`
+
+- `device_id` o `volume_id`, misma restricción de exactamente uno que `metric_samples`.
+- `metric_key`, `bucket_start_utc`, `bucket_end_utc`, `resolution` (`five_minutes` o `hourly`).
+- `value_min`, `value_max`, `value_avg`, `value_first`, `value_last`, `sample_count`, `unit`.
+- El incremento de un contador acumulativo dentro del bucket es `value_last - value_first`; no
+  lleva columna propia (`open-questions.md` J.14).
 
 ## 3. Métricas normalizadas iniciales
 
@@ -144,7 +157,12 @@ Los campos no disponibles se omiten; no se almacenan como cero.
 ## 4. Retención
 
 - Un trabajo diario compacta muestras antiguas dentro de una transacción.
-- La agregación conserva mínimo, máximo, promedio, primera y última lectura, además de incrementos de contadores.
+- La agregación conserva mínimo, máximo, promedio, primera y última lectura, además de incrementos
+  de contadores, en `metric_aggregates` (§2).
+- **Tres periodos, uno por resolución** (US-071, `open-questions.md` J.14): pasado
+  `retention.raw_days` (7 por defecto) las muestras `raw` se compactan a `five_minutes`; pasado
+  `retention.five_minutes_days` (90) se compactan a `hourly`; pasado `retention.hourly_days` (730)
+  se purgan. Valores de partida, no medidos.
 - Antes de una migración se crea una copia consistente de SQLite.
 - Se conservan las tres copias de migración más recientes.
 - Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas no se borran automáticamente.

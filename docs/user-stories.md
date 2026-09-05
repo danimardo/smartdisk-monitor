@@ -304,6 +304,8 @@ Criterios de aceptación:
 - La sustitución es consistente dentro del paquete.
 - El usuario puede incluir identificadores expresamente.
 - Antes de guardar se muestra un resumen del contenido.
+- El paquete incluye el registro de actividad, sujeto a la misma anonimización que el resto del
+  contenido (FR-029c).
 
 ## Épica G. Instalación y mantenimiento
 
@@ -378,6 +380,9 @@ Criterios de aceptación:
 - Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas nunca se borran por
   retención, y la interfaz lo dice.
 - La compactación se ejecuta sin bloquear la interfaz.
+- Existe un interruptor de **modo detallado** de registro para reproducir un fallo con más
+  información, y una acción que abre la carpeta donde reside el registro de actividad. No hay
+  visor de registro dentro de la aplicación (spec 001-monitor-discos-windows, FR-029a/b).
 
 ### US-072 — Configurar el arranque, el cierre y la apariencia (P1)
 

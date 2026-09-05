@@ -2,6 +2,8 @@
 //! dominio no dependa del sistema operativo (`docs/engineering-conventions.md` §2).
 
 pub mod accent;
+pub mod bandeja;
 pub mod locale;
 pub mod paths;
+pub mod rotulos;
 pub mod ventana;

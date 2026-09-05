@@ -799,6 +799,8 @@ Criterios de aceptación:
 - La sustitución es consistente dentro del paquete.
 - El usuario puede incluir identificadores expresamente.
 - Antes de guardar se muestra un resumen del contenido.
+- El paquete incluye el registro de actividad, sujeto a la misma anonimización que el resto del
+  contenido (FR-029c).
 
 ### Épica G. Instalación y mantenimiento
 
@@ -873,6 +875,9 @@ Criterios de aceptación:
 - Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas nunca se borran por
   retención, y la interfaz lo dice.
 - La compactación se ejecuta sin bloquear la interfaz.
+- Existe un interruptor de **modo detallado** de registro para reproducir un fallo con más
+  información, y una acción que abre la carpeta donde reside el registro de actividad. No hay
+  visor de registro dentro de la aplicación (spec 001-monitor-discos-windows, FR-029a/b).
 
 #### US-072 — Configurar el arranque, el cierre y la apariencia (P1)
 
@@ -1409,6 +1414,11 @@ Fichero de origen: `docs/data-model.md`
 - Claves tipadas y versionadas.
 - Preferencias globales, de disco y de volumen.
 - Idioma, tema, frecuencias, retención, cierre y umbrales.
+- `storage.free_space_warn_bytes` / `storage.free_space_halt_bytes`: umbrales de espacio libre del
+  volumen donde reside el historial. Al cruzar el de aviso se notifica; al cruzar el de parada se
+  detiene la escritura de historial sin afectar a la monitorización ni a las alertas en vivo. Valor
+  por defecto 1 GB / 256 MB, no medido (`open-questions.md` J.13).
+- `logging.verbose`: booleano, modo detallado de registro de actividad (US-071).
 
 #### `event_cursors`
 
@@ -1421,6 +1431,14 @@ Fichero de origen: `docs/data-model.md`
 #### `schema_migrations`
 
 - Versión, fecha y checksum de cada migración aplicada.
+
+#### `metric_aggregates`
+
+- `device_id` o `volume_id`, misma restricción de exactamente uno que `metric_samples`.
+- `metric_key`, `bucket_start_utc`, `bucket_end_utc`, `resolution` (`five_minutes` o `hourly`).
+- `value_min`, `value_max`, `value_avg`, `value_first`, `value_last`, `sample_count`, `unit`.
+- El incremento de un contador acumulativo dentro del bucket es `value_last - value_first`; no
+  lleva columna propia (`open-questions.md` J.14).
 
 ### 3. Métricas normalizadas iniciales
 
@@ -1453,7 +1471,12 @@ Los campos no disponibles se omiten; no se almacenan como cero.
 ### 4. Retención
 
 - Un trabajo diario compacta muestras antiguas dentro de una transacción.
-- La agregación conserva mínimo, máximo, promedio, primera y última lectura, además de incrementos de contadores.
+- La agregación conserva mínimo, máximo, promedio, primera y última lectura, además de incrementos
+  de contadores, en `metric_aggregates` (§2).
+- **Tres periodos, uno por resolución** (US-071, `open-questions.md` J.14): pasado
+  `retention.raw_days` (7 por defecto) las muestras `raw` se compactan a `five_minutes`; pasado
+  `retention.five_minutes_days` (90) se compactan a `hourly`; pasado `retention.hourly_days` (730)
+  se purgan. Valores de partida, no medidos.
 - Antes de una migración se crea una copia consistente de SQLite.
 - Se conservan las tres copias de migración más recientes.
 - Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas no se borran automáticamente.
@@ -1787,14 +1810,18 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `smartctl.exit_status` | código de salida con bits de error | sí |
 | `smartctl.unsupported` | el dispositivo no expone SMART | no |
 | `device.not_found` | el `device_id` ya no existe | no |
-| `test.busy` | ya hay una prueba en ese disco | no |
+| `volume.not_found` | el `volume_id` ya no existe | no |
+| `test.busy` | ya hay una prueba en ese disco (mismo disco físico subyacente, no solo el mismo id) | no |
 | `test.unsupported` | el dispositivo no admite esa prueba | no |
 | `test.insufficient_space` | no cabe el archivo con la reserva | no |
+| `test.io_failed` | fallo de E/S al preparar o ejecutar la prueba (crear la carpeta, lanzar el proceso auxiliar…) | sí |
 | `db.locked` | SQLite ocupado más allá del tiempo de espera | sí |
 | `db.migration_failed` | migración fallida; se ha restaurado la copia previa | no |
 | `path.invalid` | ruta fuera de las carpetas permitidas | no |
 | `export.write_failed` | no se pudo escribir el destino | sí |
 | `settings.out_of_range` | valor fuera de los límites de `open-questions.md` D.1 | no |
+| `db.query_failed` | fallo de SQLite que no es un bloqueo (`db.locked`, más arriba, es el que sí lo es) | no |
+| `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
 
 ---
 
@@ -1860,6 +1887,7 @@ interface DeviceListResponse {
   sources: SourceHealth[];        // estado de cada recopilador
   paused: boolean;
   pausedSince: string | null;
+  historyWriteHalted: boolean;    // FR-020a/b: volumen del historial bajo el umbral de parada
 }
 
 invoke<DeviceDetail>("get_device_detail", { deviceId: string })
@@ -2080,6 +2108,21 @@ invoke<void>("delete_all_data", { confirmationPhrase: string })   // US-073
 `delete_all_data` exige que el usuario escriba una frase de confirmación, no solo que pulse un
 botón: es irreversible y borra el historial completo.
 
+#### 3.9 Registro de actividad
+
+```ts
+invoke<LogLevel>("get_log_level")
+invoke<void>("set_log_level", { verbose: boolean })   // US-071, FR-029a
+invoke<void>("open_log_folder")                       // US-071, FR-029b
+```
+
+`open_log_folder` abre **una sola ruta conocida** —la carpeta de registro resuelta por
+`platform::paths`—, sin recibirla como argumento desde la interfaz: un parámetro de ruta abriría
+una segunda vía de acceso al sistema de ficheros, que es justo lo que el principio IX prohíbe.
+
+`log_from_ui` no es de este bloque: es el envoltorio interno que usa `$lib` para escribir en la
+única API de registro (constitución §XV); no lo invoca ninguna pantalla directamente.
+
 ---
 
 ### 4. Eventos emitidos por el backend
@@ -2089,7 +2132,7 @@ descartar mensajes fuera de orden.
 
 | Evento | Carga útil | Cuándo |
 |---|---|---|
-| `metrics:updated` | `{ emittedAt, devices: DiskSummary[], sources: SourceHealth[] }` | al cerrar cada ciclo de recopilación |
+| `metrics:updated` | `{ emittedAt, devices: DiskSummary[], sources: SourceHealth[], historyWriteHalted: boolean }` | al cerrar cada ciclo de recopilación |
 | `alerts:changed` | `{ emittedAt, changed: AlertGroup[], removed: string[] }` | alta, cambio de severidad o de estado, resolución |
 | `inventory:changed` | `{ emittedAt, added: DiskSummary[], removed: string[], updated: DiskSummary[] }` | alta o retirada de disco o volumen |
 | `test:progress` | `{ emittedAt, testRun: TestRun }` | mientras una prueba avanza |
@@ -3932,6 +3975,52 @@ de `src/`. Un principio que solo vive en un documento dura hasta el primer día 
 - `AGENTS.md` recupera el párrafo que gastaba en avisar de la colisión de nombres.
 - Ningún valor de token, umbral ni regla visual cambia. Es reorganización, no rediseño.
 
+### ADR-030 — El backend no manda texto de alerta; solo `ruleKey`, y el frontend lo resuelve por i18n
+
+Estado: aceptada.
+
+#### El problema
+
+Al conectar el motor de alertas (Historia 2, spec `001-monitor-discos-windows`) con los comandos
+reales, el contrato existente de `AlertGroup` (`src/lib/design/types.ts`) exigía `title` y
+`summary` como **cadenas ya resueltas**, y `AlertCard.svelte` las pintaba directamente. El
+componente además tenía literales en español escritos a mano (`"Informativa"`, `"reconocida"`…),
+en violación de la regla de cero-literales-de-interfaz.
+
+Rellenar `title`/`summary` desde Rust exigía generar texto en español directamente en el backend
+—el propio principio VI lo prohíbe— o cambiar el contrato para mandar una clave que el frontend
+resuelva. Es un cambio de contrato, y por tanto exige esta decisión antes de programarlo
+(`AGENTS.md`, límites duros).
+
+#### La decisión
+
+El backend deja de mandar `title` y `summary`. `get_alert_groups` y `get_alert_detail` mandan
+`ruleKey` (ya lo hacían) y nada más de texto libre; `AlertCard.svelte` resuelve el título y el
+resumen con `t(\`alert.rule.${ruleKey}.title\`)` / `.summary`, una clave por cada `rule_key` del
+catálogo implementado (`docs/alert-rules.md` §2, subconjunto de `open-questions.md` J.16). El
+estado (`activa`/`reconocida`/…) también deja de estar hardcodeado: nuevas claves
+`alert.status.*`.
+
+`target` se conserva como campo del backend: no es texto de interfaz traducible, es el alias o
+modelo del disco (dato del usuario, no una frase de la aplicación), igual que `disk.alias ??
+disk.model` en el resto de la interfaz.
+
+De paso se corrige un desajuste de cable independiente: `AlertSeverity` serializaba
+`"warning"`/`"critical"`, pero el esquema Zod de `severity` (compartido con el vocabulario general
+de `Severity`) espera `"warn"`/`"crit"`. Se corrige la serialización de cable de `AlertSeverity`
+sin tocar el almacenamiento en SQLite (`alert_groups.severity` sigue guardando `warning`/`critical`,
+que es lo que exige el `CHECK` de la migración): son dos representaciones distintas del mismo dato,
+como ya ocurre con `DeviceType`.
+
+#### Consecuencias
+
+- `src/lib/design/types.ts`: `AlertGroup` pierde `title` y `summary`.
+- `src/lib/api/schemas.ts`: el esquema `alertGroup` pierde esos dos campos.
+- `AlertCard.svelte` deja de tener literales de interfaz; sus dos diccionarios ganan las claves
+  `alert.rule.<rule_key>.title/summary` (una por regla implementada) y `alert.status.*`.
+- Ningún componente que ya estuviera consumiendo `title`/`summary` queda roto: el único consumidor
+  era este mismo componente, corregido en el mismo cambio.
+
 
 ---
 
@@ -4251,6 +4340,23 @@ asunción del programador.
 | J.10 | Eventos en la navegación | Sección propia en la `Sidebar`, con filtro preaplicado al entrar desde el detalle de un disco |
 | J.11 | Plurales en i18n | Función `tp()` con `Intl.PluralRules`; claves `<clave>.one` / `<clave>.other` |
 | J.12 | Persistencia de tema e idioma | `theme.set()` e `i18n.set()` devuelven la clave a guardar, pero **no** persisten: el llamante debe invocar `set_setting`. Es fácil de olvidar; conviene un envoltorio que lo haga |
+| J.16 | Qué reglas de `alert-rules.md` §2 entran en el primer motor de alertas | Solo las que evalúan datos de `smartctl` ya persistidos (§3, sin colector de eventos/capacidad/estado de recopilador): `smart.health.failed`, `nvme.critical_warning`, `smart.media_errors`, `smart.error_log`, `smart.spare_below_threshold`, `smart.wear_high`, `temp.above_configured_warn/crit` (8 reglas; ampliada desde la lista original al conectar el motor con datos reales — T051 — porque `error_log_entries_total` ya lo produce el parser y `motor::evaluar_error_log` ya estaba probado, sin motivo real para dejarlo fuera). Quedan explícitamente fuera —no implementadas a medias, no simuladas— las que dependen de: registro de eventos (`events.*`, `device.removed_unexpected`, `inventory.duplicate_id`: Historia 4), capacidad de volumen (`capacity.*`: Historia 3), límite del fabricante (`temp.above_vendor_limit/critical`: requiere parsear umbrales de atributo SMART, no implementado), fallo de consulta (`smart.unreadable`) y estado del recopilador (`collector.stalled`): ambos necesitan el seguimiento de estado por fuente de T020/T021, que sigue pendiente. Provisional hasta que existan esos colectores (spec 001-monitor-discos-windows, T046) |
+| J.17 | Cómo se resuelven `smart.media_errors` y `smart.error_log`, que según `alert-rules.md` resuelven "sin aumento durante 24 h" | **No implementado.** Esa resolución es temporal (tiempo transcurrido sin incremento), no de N ciclos consecutivos sobre el valor como el resto de la histéresis de `motor.rs`, y requeriría persistir cuándo fue el último incremento por grupo — no existe ese seguimiento. Ambas reglas quedan **activas hasta archivarse a mano** una vez creadas, igual que `smart.wear_high` (que sí documenta ese comportamiento como definitivo; estas dos no deberían quedarse así para siempre). Pendiente de una vía real: bien un campo temporal nuevo en `alert_groups`, bien un barrido periódico que compare `last_occurrence_at_utc` contra la ventana de 24 h (spec 001-monitor-discos-windows, T051) |
+| J.18 | Dónde se conecta la evaluación del motor con los datos reales | En `alerts::evaluar_smart(conn, device_id, ahora_utc)`, llamado desde `commands::refresh_smart` justo tras `persist_smart_reading` para cada dispositivo — un fallo al evaluar alertas se registra y no interrumpe el resto del ciclo (mismo criterio SC-008 que ya aplicaba a la propia lectura SMART). Sin esta llamada el motor nunca produce ningún `alert_group` en la aplicación real, por probado que esté en aislamiento; se descubrió al construir la bandeja del sistema (T052), cuando no había ninguna alerta real que mostrarle (spec 001-monitor-discos-windows, T051) |
+| J.19 | Cuándo se recalcula el color del icono de la bandeja, y qué hace el botón de cierre | El color (`domain::salud::tray_state`, espejo exacto de `trayState()` en `health.ts`) se recalcula en los puntos de sincronización existentes: arranque, `refresh_now`, las seis acciones sobre alertas y pausar/reanudar. **No** hay un ciclo real cada 30 s: el planificador en segundo plano (T020), la emisión de eventos (T021) y la reanudación automática al arrancar (T022) siguen sin implementar, así que el icono puede quedarse desactualizado entre sincronizaciones hasta que existan. El icono en sí se genera en memoria (RGBA) con los mismos `--sdm-{ok,warn,crit,unknown}` de tema claro, sin fichero `.ico` nuevo — `docs/decisions.md` (línea 102) ya señala systray como pantalla sin revisión visual. El botón de cierre (`X`) minimiza siempre a la bandeja, sin preguntar: la especificación (§3) pide "pregunta si debe minimizarse o salir y permite recordar la decisión", pero ese diálogo (con su propio componente, claves i18n y revisión de `ui-design.md` §8) no se ha construido; minimizar sin preguntar es el lado seguro de esa pregunta sin responder — nunca detiene la monitorización por sorpresa (spec 001-monitor-discos-windows, T052) |
+| J.20 | Con qué se implementó el toast nativo (T053), y cómo se decide cuándo notificar | **`tauri-plugin-notification` 2.0.0** (oficial del equipo de Tauri, mismo criterio que `tauri-plugin-single-instance`; usa WinRT en Windows). Se llama solo desde Rust (`NotificationExt`), nunca desde el webview, así que no necesita permiso de capacidades. Ajustado `rust-version` de `src-tauri/Cargo.toml` de `1.77` a `1.77.2` porque es el mínimo que declara el propio plugin. La decisión de notificar vive en `alerts::notificaciones` (no en `agrupacion`, que lo deja explícito en su cabecera): un episodio nuevo, una recaída o un escalado **siempre** notifican; una ocurrencia repetida respeta el cooldown por regla de `alert-rules.md` §2 (de "ninguno" en `smart.health.failed` a "7 días" en `smart.wear_high`); un grupo silenciado (`muted_until`) nunca notifica, silencio y color son cosas distintas (`ciclo.rs`). El cooldown se guarda en `AppState.notified_at` (id de grupo → instante), **en memoria, sin persistir** — igual que `paused`: perderlo al reiniciar puede como mucho volver a notificar algo ya visto, nunca dejar de notificar algo nuevo. **R1 sigue sin medirse**: si el toast llega de verdad bajo `requireAdministrator` con el identificador de aplicación registrado solo puede comprobarse al empaquetar (`research.md` R1); la alternativa ya decidida (ventana propia con `Toast`) no se ha construido, porque no tiene sentido hasta que R1 se mida y falle (spec 001-monitor-discos-windows, T053) |
+| J.21 | Por qué la cronología de un grupo recién creado aparecía vacía | Bug real, no una regla nueva: `repo_alertas::create_group` solo escribía en `alert_groups`, nunca en `alert_occurrences`; `reopen_as_new_cycle` (recaída) tampoco. La primera ocurrencia de cada episodio —y la primera del ciclo nuevo tras una recaída— no tenían fila propia. Corregido: ambas funciones insertan ahora su fila en la misma transacción, y `reopen_as_new_cycle` gana un parámetro `value_real` para poder escribirla. `get_alert_detail_impl` pasó de fabricar una única ocurrencia sintética a partir del grupo a consultar `repo_alertas::list_occurrences` de verdad. Encontrado al construir la pantalla de alertas (T054), al intentar mostrar una cronología que no tenía nada real que mostrar (spec 001-monitor-discos-windows, T054) |
+| J.22 | Cómo se implementó el colector de capacidad de volumen (T059), y por qué `DiskSummary.volumes` estaba siempre vacío | **Bug preexistente encontrado, no de esta tarea**: `VolumeSummary.drive_letters`/`DiskSummary.volumes` estaban declarados en el DTO pero nada los rellenaba nunca — `enrich_with_smart_data` fijaba `volumes: vec![]` a secas. Corregido con `build_volume_summaries()`, que lee `repo_inventario::volumes_for_device` + `get_volume` sin condicionarlo a que el disco tenga SMART (un disco sin SMART puede tener volúmenes). El colector en sí (`collectors::capacidad`) hace un único `Get-Partition \| Get-Volume` por PowerShell —mismo patrón que `windows_storage.rs`— porque `Get-Partition` ya sabe el `DiskNumber`, evitando correlacionar dos consultas por letra de unidad (frágil: la letra puede faltar). El enlace disco↔volumen usa esa misma numeración efímera de Windows, capturada en la misma pasada de `reconciliar_inventario` en que ya se conoce para los discos: confianza `Exact` si coincide con un dispositivo reconciliado, `Unknown` si no. Un volumen sin `UniqueId` se omite en vez de usar la letra como clave, que es justo lo inestable (spec 001-monitor-discos-windows, T059) |
+| J.23 | Cómo se implementó el colector de contadores de rendimiento (T058), y un hallazgo medido sobre Windows real | Enlace FFI directo a `pdh.dll` (mismo criterio que `platform::locale.rs` con `kernel32`: sin añadir el crate `windows` completo por cinco funciones estables). **Medido en un Windows real en español**: los nombres de objeto y contador de PDH están **localizados** (`PhysicalDisk` = "Disco físico", `% Idle Time` = "% de tiempo inactivo"); `PdhAddCounterW`/`PdhExpandWildCardPathW` con una ruta en inglés fallan con `PDH_CSTATUS_NO_OBJECT` fuera de un Windows en inglés — se comprobó primero con `Get-Counter` (falla con el nombre inglés, funciona con el español) y confirmó el diagnóstico. Solución: **`PdhAddEnglishCounterW`**, que traduce el nombre **y** resuelve el comodín de instancia (`\PhysicalDisk(0 *)\...`) en la misma llamada, sin paso de expansión aparte — probado end-to-end contra dos discos físicos reales de esta máquina, con valores de actividad y latencia coherentes con su carga real en el momento de la medición. Una tasa (bytes/s, sec/operación) exige dos muestras separadas en el tiempo: se recoge dos veces con 1 s de espera entre medias, una sola vez para las cinco fuentes (no cinco esperas), y se cierra la consulta —autónoma, no persistente entre ciclos, porque el planificador en segundo plano (T020) todavía no existe para mantenerla abierta entre ciclos de 30 s reales; mismo hueco que documentan J.18/J.19 (spec 001-monitor-discos-windows, T058) |
+| J.24 | Qué hash calcula `system_events.dedup_hash` (T067) | No especificado en ningún documento más allá de "hash de deduplicación" (`data-model.md` §2). La identidad real de un evento ya es `UNIQUE(channel, record_id)`, así que este campo no decide duplicados por sí solo. Se calcula como `sha256(provider \| event_id \| occurred_at_utc \| message)`: una huella de contenido pensada para el trabajo futuro de correlación por ventana temporal de `alert-rules.md` §3.5 (un mismo suceso físico produce varios eventos correlacionados en 60 s), no usada todavía por ningún módulo de esta sesión. Provisional hasta que la correlación por ventana (§3.5) se implemente y decida si necesita este campo o algo distinto |
+| J.25 | Confianza de la correlación evento→disco por número de disco (T069) según de dónde salga el número | `docs/alert-rules.md` §3.6 exige resolver contra el inventario, nunca por coincidencia textual pura, pero no distingue confianza entre las formas de identificador que "conviven" en un mismo mensaje. Decisión: **`exact`** cuando el número de disco sale de una ruta de dispositivo estructurada (`\Device\HarddiskN\...`, generada por el propio sistema en el XML crudo del evento) y coincide con un disco del inventario; **`inferred`** cuando sale del texto humano ya formateado ("disco N"/"disk N"), porque ese texto está traducido y depende de la plantilla de mensaje del proveedor, una capa menos directa que la ruta de dispositivo. `\Device\HarddiskVolumeNN` y los nombres PDO (`\Device\0003d2a5`) quedan sin resolver (`unknown`): el colector de capacidad (T059) no captura ese identificador por volumen todavía, y añadirlo es trabajo del propio colector, no de la correlación. El número que sigue a `DR` en `\Device\HarddiskN\DRxx` **nunca** se confunde con el número de disco (`alert-rules.md` §3.6, advertencia explícita) (spec 001-monitor-discos-windows, T069) |
+| J.26 | Medición de R3 (T074): 20 discos y 5.000 eventos frente al umbral de 50 ms de SC-007/SC-009 | **Medido con el plano de interfaz** (Playwright + IPC propio + `PerformanceObserver` de "long tasks", que solo informa de tareas ≥50 ms). Hallazgo real durante la medición: la **primera navegación** de la prueba produce 70-120 ms de tarea larga **incluso con 0 o 2 discos** — coste fijo de evaluar el paquete en un Chromium recién arrancado, no relacionado con la cantidad de datos. Confundir ese coste con el de renderizar 20 discos habría hecho fallar la prueba por una razón ajena a SC-007 (que habla de seguir respondiendo *durante* el trabajo, no del arranque en sí). Corregido separando ambos: cada prueba dejar pasar la carga inicial y **luego** reinicia el observador, midiendo solo la interacción real — desplazar los 5.000 eventos con `VirtualList`, o recibir 20 discos en caliente vía un `metrics:updated` simulado (`ipc-falso.ts` ganó `emitirEvento()` para poder disparar ese evento desde la prueba). Ambos escenarios pasan limpios, cero tareas largas. De camino se virtualizó también el panel general (T064 ya había virtualizado la lista de eventos): la rejilla `DiskCard` pasó de pintar todas las tarjetas de una vez a virtualizarse **por fila** con el mismo `VirtualList` genérico, agrupando tantas tarjetas por fila como columnas quepan en el ancho disponible — la primera medición (antes de aislar el coste fijo de navegación) señaló la rejilla sin virtualizar como sospechosa, y aunque el diagnóstico final mostró que el problema real estaba en la metodología de medición y no en la rejilla, la virtualización quedó aplicada por ser una mejora real y ya verificada, no se revirtió (spec 001-monitor-discos-windows, T074) |
+| J.27 | Nombre de la "carpeta controlada" del benchmark (T077), no especificado en ningún documento | `<raíz del volumen>\SmartDisk Monitor Benchmark\`: en la raíz del volumen que se está probando, no en `%ProgramData%` —tiene que vivir en el mismo volumen para medir su E/S real, no la del disco del sistema—, con el mismo nombre visible que ya usa la carpeta de datos (`platform::paths::data_dir()`). El nombre de archivo dentro de esa carpeta lleva un sufijo aleatorio (`benchmark-<aleatorio>.tmp`); "nunca se sobrescribe un archivo existente" (product-specification.md §6) se comprueba activamente antes de crear el archivo, no se asume por la aleatoriedad del nombre (spec 001-monitor-discos-windows, T077) |
+| J.28 | Forma exacta del JSON de estado del autotest SMART corto (T081), **sin verificar contra hardware real** | A diferencia de todo lo demás de esta sesión (SMART, PDH, wevtapi, chkdsk, benchmark: todo probado contra el sistema real de esta máquina), este dato concreto **no se ha verificado**: un autotest corto real tarda minutos en el disco y el usuario pidió expresamente no ejecutarlo. `tests::autotest::parse_estado_json` asume la forma documentada de `ata_smart_data.self_test.status.{value,string,passed}` y `.polling_minutes.short` que expone `smartctl -a -j`, construida a partir de conocimiento general de su formato JSON, no de una captura propia. Antes de dar el autotest por terminado hay que lanzar uno real (cuando el usuario lo autorice) y comparar el JSON verdadero con lo que este parser espera — el mismo trato que ya se dio a `smartctl_parser.rs` con sus fixtures reales (spec 001-monitor-discos-windows, T081) |
+| J.15 | Cómo distinguir "sin compatibilidad SMART" de "aún sin leer" en `get_device_detail` | Ausencia de `smartctl_path` (T025: `Get-PhysicalDisk.DeviceId` no numérico, típico de volúmenes RAID lógicos) se trata como `unsupported`; presencia de `smartctl_path` sin ninguna muestra `metric_samples.source = smartctl` se trata como `not-yet-sampled`. Deliberadamente **no** se interpreta el `exit_status` de `smartctl` como señal de soporte: sus bits documentan fallos de sintaxis/apertura/hallazgos SMART, no "este bus no expone SMART", y esa lectura no se ha podido verificar contra hardware real (`open-questions.md` I.5). Provisional hasta medir (spec 001-monitor-discos-windows, T038) |
+| J.13 | Umbrales de espacio libre para detener la escritura de historial | 1 GB para el aviso y 256 MB para la parada, sobre el volumen donde reside el historial (`storage.free_space_warn_bytes` / `storage.free_space_halt_bytes`, spec 001-monitor-discos-windows). Valores de partida razonables para Windows, **no medidos**; confirmar al implementar la retención (T001, T017-T018) |
+| J.14 | Cómo se representa la agregación de `metric_samples` | `docs/data-model.md` §4 exige conservar mínimo, máximo, promedio, primera y última lectura, pero el esquema solo tenía una columna de valor por fila. Se añade la tabla `metric_aggregates` (migración 0002) con `value_min/max/avg/first/last`, `bucket_start_utc`/`bucket_end_utc` y `resolution`. Los "tres periodos de retención" de US-071 son las tres resoluciones ya definidas (`raw`, `five_minutes`, `hourly`): `retention.raw_days` (7), `retention.five_minutes_days` (90), `retention.hourly_days` (730); pasado el tercero se purga. `value_last - value_first` da el incremento del bucket para contadores acumulativos, sin columna aparte. Valores por defecto, **no medidos** (spec 001-monitor-discos-windows, T015) |
+| J.29 | Cómo conectar los cinco comandos de pruebas (T083): identificadores, exclusión mutua, umbral térmico y columnas sin sitio propio en `test_runs` | **Identificador de `test_run` y sufijo aleatorio del archivo del benchmark** (J.27): `format!("{:x}", OffsetDateTime::now_utc().unix_timestamp_nanos())` — nanosegundos UTC en hexadecimal, sin añadir una dependencia de aleatoriedad (mismo criterio que el LCG de T079); la unicidad real la sigue dando `rutas::confirmar_no_sobrescribe`, no la improbabilidad de colisión. **Exclusión mutua** (`test.busy`, ya previsto en `ui-contract.md` §1: "ya hay una prueba en ese disco"): se aplica por disco físico subyacente vía `device_volume_links`, no solo por el id exacto recibido — antes de arrancar cualquier prueba se comprueba que ni el objetivo ni ningún otro volumen/dispositivo del mismo disco tenga ya un `test_run` en `pending`/`running`/`cancelling`. Esto cubre a la vez la regla genérica del contrato y la regla explícita de `product-specification.md` §6 ("el autotest no se permite simultáneamente con el benchmark de la aplicación"), sin tabla de exclusión aparte. **Umbral térmico "configurado"** de `tests::guardia::limite_critico_efectivo` cuando el fabricante no lo declara (hoy siempre: `vendor_temp_critical_c` no está implementado, J.15/J.16): se reutiliza el mismo valor que ya usa el motor de alertas para `temp.above_configured_crit`, **80 °C** (`alert-rules.md`, `alerts::motor::evaluar_temperatura_configurada_crit`) — mismo concepto normativo, no un valor nuevo. **Columnas sin sitio propio**: `test_runs` (migración 0001) no tiene columna para `command`, `output` ni `outputEncoding` (`ui-contract.md` §3.6); se guardan dentro de `parameters_json` (el comando, fijado al crear la fila) y `result_summary_json` (salida y codificación, solo se conocen al terminar) en vez de abrir una migración nueva. `orphanPath` reutiliza la columna `temp_path` ya existente: mientras la prueba corre, o si el archivo no se pudo borrar al terminar, queda con la ruta; se limpia a `NULL` en cuanto el borrado tiene éxito. `volume.not_found` se añade a la tabla de códigos de `ui-contract.md` §1 en paralelo a `device.not_found`, que hasta ahora solo cubría `device_id`. **Límite conocido, no simulado**: `RazonParada::Space` (T079) solo es alcanzable como rechazo previo (`test.insufficient_space`) antes de crear la fila — `tests::benchmark::ejecutar` no comprueba espacio libre durante la ejecución (T079 solo implementó cancelación y guardia térmica), así que un agotamiento de espacio a mitad de prueba no se detecta hoy (spec 001-monitor-discos-windows, T083) |
 
 ---
 
@@ -5896,6 +6002,9 @@ export { default as Switch } from "./Switch.svelte";
 export { default as Select } from "./Select.svelte";
 export { default as TextField } from "./TextField.svelte";
 export { default as RadioGroup } from "./RadioGroup.svelte";
+export { default as DateRangePicker } from "./DateRangePicker.svelte";
+export { default as FilterBar } from "./FilterBar.svelte";
+export { default as VirtualList } from "./VirtualList.svelte";
 
 export { default as StatusPill } from "./StatusPill.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";
@@ -6006,17 +6115,18 @@ export interface VolumeSummary {
   capacityBytes: number | null;
   freeBytes: number | null;
   mappingConfidence: "exact" | "inferred" | "unknown";
+  /** `chkdsk /scan` solo existe en NTFS: lo decide el backend, no se repite el criterio aquí. */
+  chkdskAvailable: boolean;
 }
 
 export interface AlertGroup {
   id: string;
+  /** El backend no manda texto de interfaz (ADR-030): el título y el resumen se resuelven en el
+   *  componente con `t(\`alert.rule.${ruleKey}.title\`)` / `.summary`, una clave por regla. */
   ruleKey: string;
   deduplicationKey: string;
   severity: Severity;
   status: AlertStatus;
-  title: string;
-  /** Frase corta en lenguaje humano; el detalle técnico va aparte. */
-  summary: string;
   count: number;
   firstOccurredAt: string;
   lastOccurredAt: string;
@@ -6656,6 +6766,10 @@ Fichero de origen: `src/lib/i18n/es.json`
   "common.notImplemented": "Esta pantalla todavía no está implementada.",
   "nav.events": "Eventos",
   "startup.failed": "No se pudo iniciar la supervisión",
+  "error.deviceNotFound": "Este disco ya no existe en el inventario.",
+  "error.storageCollectorFailed": "No se pudo leer el inventario de almacenamiento de Windows.",
+  "error.dbLocked": "La base de datos está ocupada; se puede reintentar.",
+  "error.dbQueryFailed": "No se pudo completar la operación con el historial guardado.",
   "error.unexpected": "Ha ocurrido un error inesperado al hablar con el servicio de supervisión.",
   "dashboard.noDevices": "No hay discos monitorizados",
   "dashboard.noDevicesHint": "Comprueba que la aplicación se está ejecutando con privilegios de administrador.",
@@ -6670,7 +6784,131 @@ Fichero de origen: `src/lib/i18n/es.json`
   "nav.monitoring": "Supervisión",
   "disk.noVolumes": "Sin volúmenes montados",
   "error.screenFailed": "No se pudo mostrar esta pantalla",
-  "donut.label": "Reparto de estados de los discos monitorizados"
+  "donut.label": "Reparto de estados de los discos monitorizados",
+  "alert.status.active": "activa",
+  "alert.status.acknowledged": "reconocida",
+  "alert.status.resolved": "resuelta",
+  "alert.status.archived": "archivada",
+  "alert.rule.smart.health.failed.title": "Autoevaluación SMART fallida",
+  "alert.rule.smart.health.failed.summary": "El disco ha fallado su propia autoevaluación de salud.",
+  "alert.rule.nvme.critical_warning.title": "Aviso crítico del propio disco NVMe",
+  "alert.rule.nvme.critical_warning.summary": "El disco ha activado uno o más indicadores de aviso crítico.",
+  "alert.rule.smart.media_errors.title": "Nuevos errores de medio",
+  "alert.rule.smart.media_errors.summary": "El contador de errores de medio ha aumentado respecto a la lectura anterior.",
+  "alert.rule.smart.spare_below_threshold.title": "Reserva de repuesto agotándose",
+  "alert.rule.smart.spare_below_threshold.summary": "La reserva de bloques de repuesto ha caído por debajo de su umbral.",
+  "alert.rule.smart.wear_high.title": "Desgaste elevado",
+  "alert.rule.smart.wear_high.summary": "El disco ha superado el 90 % de su vida útil estimada.",
+  "alert.rule.temp.above_configured_warn.title": "Temperatura por encima de lo esperado",
+  "alert.rule.temp.above_configured_warn.summary": "La temperatura lleva varios ciclos por encima de 70 °C.",
+  "alert.rule.temp.above_configured_crit.title": "Temperatura crítica",
+  "alert.rule.temp.above_configured_crit.summary": "La temperatura ha alcanzado 80 °C o más.",
+  "alert.fact.ruleKey": "Regla",
+  "alert.fact.lastValue": "Último valor",
+  "tray.open": "Abrir SmartDisk Monitor",
+  "tray.exit": "Salir",
+  "alert.rule.smart.error_log.title": "Errores registrados en el disco",
+  "alert.rule.smart.error_log.summary": "El registro de errores del disco ha aumentado.",
+  "alerts.filter.active": "Activas",
+  "alerts.filter.resolved": "Resueltas",
+  "alerts.filter.archived": "Archivadas",
+  "alerts.filter.all": "Todas",
+  "alerts.empty.title": "Sin alertas",
+  "alerts.empty.body": "No hay alertas que coincidan con este filtro.",
+  "alerts.detail.empty": "Selecciona una alerta de la lista para ver su detalle.",
+  "alerts.actions.acknowledge": "Reconocer",
+  "alerts.actions.mute": "Silenciar",
+  "alerts.actions.unmute": "Reanudar notificaciones",
+  "alerts.actions.archive": "Archivar",
+  "alerts.mute.duration": "Duración del silencio",
+  "alerts.mute.15": "15 minutos",
+  "alerts.mute.60": "1 hora",
+  "alerts.mute.480": "8 horas",
+  "alerts.mute.indefinite": "Indefinido",
+  "alerts.mute.untilDate": "Silenciada hasta {value}",
+  "alerts.mute.untilIndefinite": "Silenciada indefinidamente",
+  "alerts.timeline.title": "Cronología",
+  "alerts.timeline.entry": "Ciclo {cycle} — {when}",
+  "alerts.archive.confirmTitle": "¿Archivar esta alerta?",
+  "alerts.archive.confirmBody": "Se retira de la vista principal. El historial y la cronología se conservan.",
+  "alerts.archive.confirmImpact": "No se puede deshacer desde la interfaz: quedará fuera de las pestañas Activas y Resueltas.",
+  "dateRange.from": "Desde",
+  "dateRange.to": "Hasta",
+  "disk.counters": "Contadores",
+  "smart.counter.health_passed": "Autoevaluación superada",
+  "smart.counter.critical_warning": "Aviso crítico (bits)",
+  "smart.counter.media_errors_total": "Errores de medio",
+  "smart.counter.error_log_entries_total": "Entradas en el registro de errores",
+  "smart.counter.available_spare_percent": "Reserva de repuesto disponible",
+  "smart.counter.available_spare_threshold_percent": "Umbral de reserva de repuesto",
+  "smart.counter.power_cycles": "Ciclos de encendido",
+  "smart.counter.unsafe_shutdowns": "Apagados no seguros",
+  "smart.counter.read_bytes_per_second": "Lectura por segundo",
+  "smart.counter.write_bytes_per_second": "Escritura por segundo",
+  "smart.counter.read_latency_ms": "Latencia de lectura",
+  "smart.counter.write_latency_ms": "Latencia de escritura",
+  "events.empty.title": "Sin eventos",
+  "events.empty.body": "No hay eventos que coincidan con este filtro.",
+  "events.filter.level": "Nivel",
+  "events.filter.provider": "Proveedor",
+  "events.detail.title": "Detalle del evento",
+  "events.detail.rawXml": "XML original",
+  "events.detail.systemText": "Texto original del sistema",
+  "events.detail.empty": "Selecciona un evento de la lista para ver su detalle.",
+  "events.loadMore": "Cargar más",
+  "tests.picker.device": "Disco",
+  "tests.picker.volume": "Volumen",
+  "tests.cta.configure": "Configurar y ejecutar",
+  "tests.chip.available": "Disponible",
+  "tests.chip.running": "En curso",
+  "tests.chip.unsupported": "No compatible",
+  "tests.chkdskUnsupportedReason": "Este volumen no es NTFS: chkdsk /scan solo existe para ese sistema de archivos.",
+  "tests.cards.benchmark.title": "Lectura y escritura",
+  "tests.cards.benchmark.desc": "Crea un archivo temporal nuevo, escribe, sincroniza, lee y verifica el patrón. Nunca sobrescribe archivos existentes.",
+  "tests.cards.chkdsk.title": "Escaneo del sistema de archivos",
+  "tests.cards.chkdsk.desc": "Ejecuta chkdsk /scan en línea sobre un volumen NTFS compatible y conserva la salida completa. Sin opciones de reparación.",
+  "tests.cards.autotest.title": "Autotest SMART corto",
+  "tests.cards.autotest.desc": "Solicita al firmware su autotest corto. Solo se ofrece si el dispositivo declara compatibilidad; no puede coincidir con el benchmark.",
+  "tests.confirm.benchmark.title": "Probar lectura y escritura",
+  "tests.confirm.benchmark.body": "Se creará un archivo temporal de 1 GiB en el volumen elegido, en bloques de 1 MiB y acceso secuencial. Se elimina automáticamente al terminar o cancelar.",
+  "tests.confirm.benchmark.impact": "El rendimiento del equipo, la temperatura del disco y sus escrituras pueden verse afectados mientras dure la prueba.",
+  "tests.confirm.benchmark.confirmLabel": "Iniciar prueba",
+  "tests.confirm.chkdsk.title": "Ejecutar chkdsk /scan en {letter}:",
+  "tests.confirm.chkdsk.body": "Se comprobará el sistema de archivos en línea. No se programa ninguna reparación fuera de línea y no se modifica ningún archivo.",
+  "tests.confirm.chkdsk.impact": "El análisis puede tardar varios minutos y aumentar temporalmente la actividad del disco.",
+  "tests.confirm.chkdsk.confirmLabel": "Ejecutar análisis",
+  "tests.confirm.autotest.title": "Ejecutar autotest SMART corto",
+  "tests.confirm.autotest.body": "El firmware ejecutará su autotest corto, que puede degradar temporalmente el rendimiento. No puede solicitarse a la vez que un benchmark sobre el mismo disco.",
+  "tests.confirm.autotest.impact": "El resultado puede tardar varios minutos en estar disponible.",
+  "tests.confirm.autotest.confirmLabel": "Iniciar autotest",
+  "tests.active.title": "Prueba en curso",
+  "tests.active.cancel": "Cancelar",
+  "tests.active.progress": "{percent} %",
+  "tests.active.indeterminate": "En curso",
+  "tests.active.warning": "La prueba se detiene sola si el disco alcanza el límite térmico crítico o si el espacio libre baja de la reserva de seguridad. Mientras dure, el rendimiento del equipo puede bajar.",
+  "tests.metrics.write": "Escritura",
+  "tests.metrics.read": "Lectura",
+  "tests.metrics.latency": "Latencia media",
+  "tests.metrics.temperature": "Temperatura",
+  "tests.history.title": "Historial de pruebas",
+  "tests.history.empty": "Todavía no se ha ejecutado ninguna prueba.",
+  "tests.history.inProgress": "{percent} % completado",
+  "tests.history.inProgressIndeterminate": "En curso",
+  "tests.type.benchmark": "Lectura/escritura",
+  "tests.type.chkdsk": "chkdsk /scan",
+  "tests.type.autotest": "Autotest corto",
+  "tests.status.pending": "Pendiente",
+  "tests.status.running": "En curso",
+  "tests.status.cancelling": "Cancelando",
+  "tests.status.completed": "Completada",
+  "tests.status.failed": "Fallida",
+  "tests.status.cancelled": "Cancelada",
+  "tests.status.interrupted": "Interrumpida",
+  "tests.stoppedReason.completed": "Sin incidencias",
+  "tests.stoppedReason.cancelled": "Cancelada por el usuario",
+  "tests.stoppedReason.thermal": "Detenida en el límite térmico",
+  "tests.stoppedReason.space": "Detenida por falta de espacio",
+  "tests.stoppedReason.error": "Detenida por un error"
 }
 ```
 
@@ -6765,6 +7003,10 @@ Fichero de origen: `src/lib/i18n/en.json`
   "common.notImplemented": "This screen is not implemented yet.",
   "nav.events": "Events",
   "startup.failed": "Monitoring could not start",
+  "error.deviceNotFound": "This disk no longer exists in the inventory.",
+  "error.storageCollectorFailed": "The Windows storage inventory could not be read.",
+  "error.dbLocked": "The database is busy; retrying may work.",
+  "error.dbQueryFailed": "The operation against the saved history could not be completed.",
   "error.unexpected": "An unexpected error occurred while talking to the monitoring service.",
   "dashboard.noDevices": "No monitored disks",
   "dashboard.noDevicesHint": "Check that the application is running with administrator privileges.",
@@ -6779,7 +7021,131 @@ Fichero de origen: `src/lib/i18n/en.json`
   "nav.monitoring": "Monitoring",
   "disk.noVolumes": "No mounted volumes",
   "error.screenFailed": "This screen could not be shown",
-  "donut.label": "Breakdown of monitored disk states"
+  "donut.label": "Breakdown of monitored disk states",
+  "alert.status.active": "active",
+  "alert.status.acknowledged": "acknowledged",
+  "alert.status.resolved": "resolved",
+  "alert.status.archived": "archived",
+  "alert.rule.smart.health.failed.title": "Failed SMART self-assessment",
+  "alert.rule.smart.health.failed.summary": "The disk has failed its own health self-assessment.",
+  "alert.rule.nvme.critical_warning.title": "Critical warning from the NVMe disk itself",
+  "alert.rule.nvme.critical_warning.summary": "The disk has raised one or more critical warning flags.",
+  "alert.rule.smart.media_errors.title": "New media errors",
+  "alert.rule.smart.media_errors.summary": "The media error count has increased since the previous reading.",
+  "alert.rule.smart.spare_below_threshold.title": "Spare capacity running low",
+  "alert.rule.smart.spare_below_threshold.summary": "The spare block reserve has dropped below its threshold.",
+  "alert.rule.smart.wear_high.title": "High wear",
+  "alert.rule.smart.wear_high.summary": "The disk has exceeded 90% of its estimated usable life.",
+  "alert.rule.temp.above_configured_warn.title": "Temperature above expected",
+  "alert.rule.temp.above_configured_warn.summary": "Temperature has stayed above 70 °C for several cycles.",
+  "alert.rule.temp.above_configured_crit.title": "Critical temperature",
+  "alert.rule.temp.above_configured_crit.summary": "Temperature has reached 80 °C or higher.",
+  "alert.fact.ruleKey": "Rule",
+  "alert.fact.lastValue": "Last value",
+  "tray.open": "Open SmartDisk Monitor",
+  "tray.exit": "Exit",
+  "alert.rule.smart.error_log.title": "Errors logged on the disk",
+  "alert.rule.smart.error_log.summary": "The disk's error log count has increased.",
+  "alerts.filter.active": "Active",
+  "alerts.filter.resolved": "Resolved",
+  "alerts.filter.archived": "Archived",
+  "alerts.filter.all": "All",
+  "alerts.empty.title": "No alerts",
+  "alerts.empty.body": "No alerts match this filter.",
+  "alerts.detail.empty": "Select an alert from the list to see its detail.",
+  "alerts.actions.acknowledge": "Acknowledge",
+  "alerts.actions.mute": "Mute",
+  "alerts.actions.unmute": "Resume notifications",
+  "alerts.actions.archive": "Archive",
+  "alerts.mute.duration": "Mute duration",
+  "alerts.mute.15": "15 minutes",
+  "alerts.mute.60": "1 hour",
+  "alerts.mute.480": "8 hours",
+  "alerts.mute.indefinite": "Indefinite",
+  "alerts.mute.untilDate": "Muted until {value}",
+  "alerts.mute.untilIndefinite": "Muted indefinitely",
+  "alerts.timeline.title": "Timeline",
+  "alerts.timeline.entry": "Cycle {cycle} — {when}",
+  "alerts.archive.confirmTitle": "Archive this alert?",
+  "alerts.archive.confirmBody": "It's removed from the main view. History and timeline are kept.",
+  "alerts.archive.confirmImpact": "Can't be undone from the interface: it will drop out of the Active and Resolved tabs.",
+  "dateRange.from": "From",
+  "dateRange.to": "To",
+  "disk.counters": "Counters",
+  "smart.counter.health_passed": "Self-assessment passed",
+  "smart.counter.critical_warning": "Critical warning (bits)",
+  "smart.counter.media_errors_total": "Media errors",
+  "smart.counter.error_log_entries_total": "Error log entries",
+  "smart.counter.available_spare_percent": "Available spare",
+  "smart.counter.available_spare_threshold_percent": "Available spare threshold",
+  "smart.counter.power_cycles": "Power cycles",
+  "smart.counter.unsafe_shutdowns": "Unsafe shutdowns",
+  "smart.counter.read_bytes_per_second": "Read per second",
+  "smart.counter.write_bytes_per_second": "Write per second",
+  "smart.counter.read_latency_ms": "Read latency",
+  "smart.counter.write_latency_ms": "Write latency",
+  "events.empty.title": "No events",
+  "events.empty.body": "No events match this filter.",
+  "events.filter.level": "Level",
+  "events.filter.provider": "Provider",
+  "events.detail.title": "Event detail",
+  "events.detail.rawXml": "Raw XML",
+  "events.detail.systemText": "Original system text",
+  "events.detail.empty": "Select an event from the list to see its detail.",
+  "events.loadMore": "Load more",
+  "tests.picker.device": "Disk",
+  "tests.picker.volume": "Volume",
+  "tests.cta.configure": "Configure and run",
+  "tests.chip.available": "Available",
+  "tests.chip.running": "Running",
+  "tests.chip.unsupported": "Not supported",
+  "tests.chkdskUnsupportedReason": "This volume isn't NTFS: chkdsk /scan only exists for that file system.",
+  "tests.cards.benchmark.title": "Read and write",
+  "tests.cards.benchmark.desc": "Creates a new temporary file, writes, syncs, reads and verifies the pattern. Never overwrites an existing file.",
+  "tests.cards.chkdsk.title": "File system scan",
+  "tests.cards.chkdsk.desc": "Runs chkdsk /scan online on a compatible NTFS volume and keeps the full output. No repair options.",
+  "tests.cards.autotest.title": "Short SMART self-test",
+  "tests.cards.autotest.desc": "Asks the firmware to run its short self-test. Only offered if the device declares support; it can't coincide with the benchmark.",
+  "tests.confirm.benchmark.title": "Test read and write",
+  "tests.confirm.benchmark.body": "A 1 GiB temporary file will be created on the chosen volume, in 1 MiB blocks with sequential access. It's removed automatically when it finishes or is cancelled.",
+  "tests.confirm.benchmark.impact": "The computer's performance, the disk's temperature and its writes may be affected while the test runs.",
+  "tests.confirm.benchmark.confirmLabel": "Start test",
+  "tests.confirm.chkdsk.title": "Run chkdsk /scan on {letter}:",
+  "tests.confirm.chkdsk.body": "The file system will be checked online. No offline repair is scheduled and no file is modified.",
+  "tests.confirm.chkdsk.impact": "The scan can take several minutes and temporarily increase disk activity.",
+  "tests.confirm.chkdsk.confirmLabel": "Run scan",
+  "tests.confirm.autotest.title": "Run short SMART self-test",
+  "tests.confirm.autotest.body": "The firmware will run its short self-test, which may temporarily degrade performance. It can't be requested at the same time as a benchmark on the same disk.",
+  "tests.confirm.autotest.impact": "The result may take several minutes to become available.",
+  "tests.confirm.autotest.confirmLabel": "Start self-test",
+  "tests.active.title": "Test in progress",
+  "tests.active.cancel": "Cancel",
+  "tests.active.progress": "{percent}%",
+  "tests.active.indeterminate": "In progress",
+  "tests.active.warning": "The test stops on its own if the disk reaches the critical thermal limit or if free space drops below the safety reserve. Computer performance may drop while it runs.",
+  "tests.metrics.write": "Write",
+  "tests.metrics.read": "Read",
+  "tests.metrics.latency": "Average latency",
+  "tests.metrics.temperature": "Temperature",
+  "tests.history.title": "Test history",
+  "tests.history.empty": "No test has run yet.",
+  "tests.history.inProgress": "{percent}% complete",
+  "tests.history.inProgressIndeterminate": "In progress",
+  "tests.type.benchmark": "Read/write",
+  "tests.type.chkdsk": "chkdsk /scan",
+  "tests.type.autotest": "Short self-test",
+  "tests.status.pending": "Pending",
+  "tests.status.running": "Running",
+  "tests.status.cancelling": "Cancelling",
+  "tests.status.completed": "Completed",
+  "tests.status.failed": "Failed",
+  "tests.status.cancelled": "Cancelled",
+  "tests.status.interrupted": "Interrupted",
+  "tests.stoppedReason.completed": "No issues",
+  "tests.stoppedReason.cancelled": "Cancelled by the user",
+  "tests.stoppedReason.thermal": "Stopped at the thermal limit",
+  "tests.stoppedReason.space": "Stopped for lack of space",
+  "tests.stoppedReason.error": "Stopped due to an error"
 }
 ```
 

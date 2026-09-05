@@ -674,3 +674,49 @@ de `src/`. Un principio que solo vive en un documento dura hasta el primer día 
   el mapa de rutas y las órdenes duras de interfaz. Ninguno duplica la norma: apuntan a ella.
 - `AGENTS.md` recupera el párrafo que gastaba en avisar de la colisión de nombres.
 - Ningún valor de token, umbral ni regla visual cambia. Es reorganización, no rediseño.
+
+## ADR-030 — El backend no manda texto de alerta; solo `ruleKey`, y el frontend lo resuelve por i18n
+
+Estado: aceptada.
+
+### El problema
+
+Al conectar el motor de alertas (Historia 2, spec `001-monitor-discos-windows`) con los comandos
+reales, el contrato existente de `AlertGroup` (`src/lib/design/types.ts`) exigía `title` y
+`summary` como **cadenas ya resueltas**, y `AlertCard.svelte` las pintaba directamente. El
+componente además tenía literales en español escritos a mano (`"Informativa"`, `"reconocida"`…),
+en violación de la regla de cero-literales-de-interfaz.
+
+Rellenar `title`/`summary` desde Rust exigía generar texto en español directamente en el backend
+—el propio principio VI lo prohíbe— o cambiar el contrato para mandar una clave que el frontend
+resuelva. Es un cambio de contrato, y por tanto exige esta decisión antes de programarlo
+(`AGENTS.md`, límites duros).
+
+### La decisión
+
+El backend deja de mandar `title` y `summary`. `get_alert_groups` y `get_alert_detail` mandan
+`ruleKey` (ya lo hacían) y nada más de texto libre; `AlertCard.svelte` resuelve el título y el
+resumen con `t(\`alert.rule.${ruleKey}.title\`)` / `.summary`, una clave por cada `rule_key` del
+catálogo implementado (`docs/alert-rules.md` §2, subconjunto de `open-questions.md` J.16). El
+estado (`activa`/`reconocida`/…) también deja de estar hardcodeado: nuevas claves
+`alert.status.*`.
+
+`target` se conserva como campo del backend: no es texto de interfaz traducible, es el alias o
+modelo del disco (dato del usuario, no una frase de la aplicación), igual que `disk.alias ??
+disk.model` en el resto de la interfaz.
+
+De paso se corrige un desajuste de cable independiente: `AlertSeverity` serializaba
+`"warning"`/`"critical"`, pero el esquema Zod de `severity` (compartido con el vocabulario general
+de `Severity`) espera `"warn"`/`"crit"`. Se corrige la serialización de cable de `AlertSeverity`
+sin tocar el almacenamiento en SQLite (`alert_groups.severity` sigue guardando `warning`/`critical`,
+que es lo que exige el `CHECK` de la migración): son dos representaciones distintas del mismo dato,
+como ya ocurre con `DeviceType`.
+
+### Consecuencias
+
+- `src/lib/design/types.ts`: `AlertGroup` pierde `title` y `summary`.
+- `src/lib/api/schemas.ts`: el esquema `alertGroup` pierde esos dos campos.
+- `AlertCard.svelte` deja de tener literales de interfaz; sus dos diccionarios ganan las claves
+  `alert.rule.<rule_key>.title/summary` (una por regla implementada) y `alert.status.*`.
+- Ningún componente que ya estuviera consumiendo `title`/`summary` queda roto: el único consumidor
+  era este mismo componente, corregido en el mismo cambio.

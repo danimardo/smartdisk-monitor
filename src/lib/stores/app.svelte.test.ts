@@ -24,8 +24,6 @@ const alert = (id: string, over: Partial<AlertGroup> = {}): AlertGroup => ({
   deduplicationKey: `k-${id}`,
   severity: "warn",
   status: "active",
-  title: "Temperatura alta",
-  summary: "El disco supera el límite del fabricante",
   count: 1,
   firstOccurredAt: "2026-09-04T10:00:00Z",
   lastOccurredAt: "2026-09-04T10:00:00Z",

@@ -24,3 +24,8 @@ src/design-system
 # Documentación: el formato de las tablas es deliberado y prettier las reflow
 docs
 *.md
+
+# DTO generados por ts-rs (T029, open-questions.md G.3): `cargo test` los regenera sin pasar por
+# Prettier, así que reformatearlos aquí solo crearía una diferencia falsa en la siguiente
+# regeneración. `eslint.config.js` los ignora por el mismo motivo.
+src/lib/api/generated

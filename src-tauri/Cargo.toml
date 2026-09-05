@@ -5,7 +5,9 @@ description = "Supervisión local de discos para Windows"
 authors = ["Daniel Diez Mardomingo"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.77"
+# `tauri-plugin-notification` 2.0.0 declara 1.77.2 como mínimo (README del plugin); el proyecto
+# alinea aquí su promesa de compatibilidad con esa dependencia real, no con un 1.77 redondeado.
+rust-version = "1.77.2"
 
 [lib]
 # Tauri 2 usa una biblioteca + un binario fino: así el dominio se puede testear sin arrancar la app.
@@ -35,6 +37,11 @@ thiserror = "2"
 # pero la segunda instancia moriría en silencio y el usuario creería que la app no arranca.
 tauri-plugin-single-instance = "2.4"
 
+# Notificación nativa (T053, `docs/open-questions.md` I.2/R1). Oficial del equipo de Tauri, mismo
+# criterio que `tauri-plugin-single-instance`: en Windows usa toast de WinRT. Se invoca solo desde
+# Rust (`NotificationExt`), nunca desde el webview, así que no exige permiso de capacidades.
+tauri-plugin-notification = "2.0.0"
+
 # Registro de actividad (constitución §XV, ADR-024). `tracing` en vez de `log` por los spans:
 # permiten seguir una recopilación o un benchmark completo con su contexto, sin repetir el
 # identificador en cada llamada.
@@ -42,6 +49,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 tracing-appender = "0.2"
 time = { version = "0.3", features = ["formatting", "local-offset", "macros"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+sha2 = "0.10.9"
+ts-rs = "10.1.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"

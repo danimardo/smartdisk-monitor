@@ -47,14 +47,18 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `smartctl.exit_status` | código de salida con bits de error | sí |
 | `smartctl.unsupported` | el dispositivo no expone SMART | no |
 | `device.not_found` | el `device_id` ya no existe | no |
-| `test.busy` | ya hay una prueba en ese disco | no |
+| `volume.not_found` | el `volume_id` ya no existe | no |
+| `test.busy` | ya hay una prueba en ese disco (mismo disco físico subyacente, no solo el mismo id) | no |
 | `test.unsupported` | el dispositivo no admite esa prueba | no |
 | `test.insufficient_space` | no cabe el archivo con la reserva | no |
+| `test.io_failed` | fallo de E/S al preparar o ejecutar la prueba (crear la carpeta, lanzar el proceso auxiliar…) | sí |
 | `db.locked` | SQLite ocupado más allá del tiempo de espera | sí |
 | `db.migration_failed` | migración fallida; se ha restaurado la copia previa | no |
 | `path.invalid` | ruta fuera de las carpetas permitidas | no |
 | `export.write_failed` | no se pudo escribir el destino | sí |
 | `settings.out_of_range` | valor fuera de los límites de `open-questions.md` D.1 | no |
+| `db.query_failed` | fallo de SQLite que no es un bloqueo (`db.locked`, más arriba, es el que sí lo es) | no |
+| `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
 
 ---
 
@@ -120,6 +124,7 @@ interface DeviceListResponse {
   sources: SourceHealth[];        // estado de cada recopilador
   paused: boolean;
   pausedSince: string | null;
+  historyWriteHalted: boolean;    // FR-020a/b: volumen del historial bajo el umbral de parada
 }
 
 invoke<DeviceDetail>("get_device_detail", { deviceId: string })
@@ -340,6 +345,21 @@ invoke<void>("delete_all_data", { confirmationPhrase: string })   // US-073
 `delete_all_data` exige que el usuario escriba una frase de confirmación, no solo que pulse un
 botón: es irreversible y borra el historial completo.
 
+### 3.9 Registro de actividad
+
+```ts
+invoke<LogLevel>("get_log_level")
+invoke<void>("set_log_level", { verbose: boolean })   // US-071, FR-029a
+invoke<void>("open_log_folder")                       // US-071, FR-029b
+```
+
+`open_log_folder` abre **una sola ruta conocida** —la carpeta de registro resuelta por
+`platform::paths`—, sin recibirla como argumento desde la interfaz: un parámetro de ruta abriría
+una segunda vía de acceso al sistema de ficheros, que es justo lo que el principio IX prohíbe.
+
+`log_from_ui` no es de este bloque: es el envoltorio interno que usa `$lib` para escribir en la
+única API de registro (constitución §XV); no lo invoca ninguna pantalla directamente.
+
 ---
 
 ## 4. Eventos emitidos por el backend
@@ -349,7 +369,7 @@ descartar mensajes fuera de orden.
 
 | Evento | Carga útil | Cuándo |
 |---|---|---|
-| `metrics:updated` | `{ emittedAt, devices: DiskSummary[], sources: SourceHealth[] }` | al cerrar cada ciclo de recopilación |
+| `metrics:updated` | `{ emittedAt, devices: DiskSummary[], sources: SourceHealth[], historyWriteHalted: boolean }` | al cerrar cada ciclo de recopilación |
 | `alerts:changed` | `{ emittedAt, changed: AlertGroup[], removed: string[] }` | alta, cambio de severidad o de estado, resolución |
 | `inventory:changed` | `{ emittedAt, added: DiskSummary[], removed: string[], updated: DiskSummary[] }` | alta o retirada de disco o volumen |
 | `test:progress` | `{ emittedAt, testRun: TestRun }` | mientras una prueba avanza |

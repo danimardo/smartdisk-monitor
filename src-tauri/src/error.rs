@@ -8,22 +8,54 @@
 use std::collections::BTreeMap;
 
 use serde::Serialize;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize)]
+use crate::domain::tipos::MetricSource;
+
+/// Un valor de interpolación i18n: texto o número (`src/lib/design/types.ts` `AppError.messageVars`
+/// admite ambos, por ejemplo para un recuento). `#[serde(untagged)]` produce `string | number` en
+/// TypeScript sin envoltorio de variante.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(untagged)]
+#[ts(export, export_to = "../../src/lib/api/generated/")]
+pub enum MessageVar {
+    Text(String),
+    // i32, no i64: ts-rs traduce enteros de 64 bits a `bigint`, y el contrato quiere `number`
+    // (`src/lib/api/schemas.ts`). Ninguna interpolación i18n necesita más rango que esto.
+    Number(i32),
+}
+
+impl From<&str> for MessageVar {
+    fn from(v: &str) -> Self {
+        MessageVar::Text(v.to_owned())
+    }
+}
+
+impl From<i32> for MessageVar {
+    fn from(v: i32) -> Self {
+        MessageVar::Number(v)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/api/generated/")]
 pub struct AppError {
     /// Identificador estable, apto para ramificar en la UI: "smartctl.timeout", "db.locked"…
     pub code: String,
     /// Clave i18n de la explicación en lenguaje humano.
     pub message_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_vars: Option<BTreeMap<String, String>>,
+    #[ts(optional)]
+    pub message_vars: Option<BTreeMap<String, MessageVar>>,
     /// Texto técnico literal: stderr, código de salida, mensaje de SQLite. Nunca traducido.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional = nullable)]
     pub detail: Option<String>,
     /// Qué fuente falló, cuando aplique: permite degradar una tarjeta y no la aplicación entera.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
+    #[ts(optional = nullable)]
+    pub source: Option<MetricSource>,
     /// `true` si repetir la misma acción tiene sentido (timeout, bloqueo temporal).
     pub retryable: bool,
 }
@@ -50,8 +82,8 @@ impl AppError {
         self
     }
 
-    pub fn from_source(mut self, source: &str) -> Self {
-        self.source = Some(source.to_owned());
+    pub fn from_source(mut self, source: MetricSource) -> Self {
+        self.source = Some(source);
         self
     }
 

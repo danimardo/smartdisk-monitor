@@ -9,11 +9,13 @@
 //! son los tonos que el usuario ya está viendo en el resto del sistema.
 
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::error::{AppError, AppResult};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/api/generated/")]
 pub struct WindowsAccent {
     /// `#RRGGBB` ya convertido desde el ABGR del registro.
     pub hex: String,

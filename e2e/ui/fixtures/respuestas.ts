@@ -41,7 +41,8 @@ export const inventario = {
           driveLetters: ["C:"],
           capacityBytes: 2_000_398_934_016,
           freeBytes: 1_204_000_000_000,
-          mappingConfidence: "exact"
+          mappingConfidence: "exact",
+          chkdskAvailable: true
         }
       ]
     },
@@ -69,13 +70,162 @@ export const inventario = {
   pausedSince: null
 };
 
+/** Un grupo de alerta activo, con desgaste alto: ninguna acción de ciclo de vida lo cambia solo
+ *  (`smart.wear_high` no se resuelve sola, se archiva a mano). Sirve para probar la lista, el
+ *  detalle y el filtro sin depender de la histéresis del motor. */
+export const alertaActiva = {
+  id: "alert-wear",
+  ruleKey: "smart.wear_high",
+  deduplicationKey: "smart.wear_high|device:disk-0",
+  severity: "warn",
+  status: "active",
+  count: 3,
+  firstOccurredAt: AHORA,
+  lastOccurredAt: AHORA,
+  target: "Samsung SSD 990 PRO 2TB",
+  mutedUntil: null,
+  cycle: 1
+};
+
+export const alertas = [alertaActiva];
+
+export const detalleAlertaActiva = {
+  ...alertaActiva,
+  facts: [
+    { labelKey: "alert.fact.ruleKey", value: "smart.wear_high" },
+    { labelKey: "alert.fact.lastValue", value: "92" }
+  ],
+  occurrences: [{ occurredAt: AHORA, cycle: 1, value: 92, eventId: null, context: null }],
+  relatedEvents: []
+};
+
+/** Detalle del primer disco del inventario, con un par de contadores reales — cubre las dos
+ *  unidades más comunes (temperatura y porcentaje) sin listar los treinta y tantos posibles. */
+export const detalleDisco0 = {
+  ...inventario.devices[0],
+  fingerprint: "huella-disk-0",
+  identityConfidence: "fingerprint",
+  serialNumber: "S6B2NS0T123456",
+  firmware: "GXA7801Q",
+  busType: "NVMe",
+  capabilities: [
+    { key: "smart", available: true, reasonKey: null },
+    { key: "self_test_short", available: true, reasonKey: null },
+    { key: "chkdsk_scan", available: true, reasonKey: null }
+  ],
+  counters: [
+    {
+      metricKey: "temperature_celsius",
+      value: 41,
+      unit: "celsius",
+      delta: null,
+      deltaIsMeaningful: false,
+      provenance: { source: "smartctl", quality: "exact", readAt: AHORA }
+    },
+    {
+      metricKey: "power_cycles",
+      value: 812,
+      unit: "count",
+      delta: null,
+      deltaIsMeaningful: false,
+      provenance: { source: "smartctl", quality: "exact", readAt: AHORA }
+    }
+  ],
+  firstSeenAt: AHORA,
+  lastSeenAt: AHORA,
+  removedAt: null
+};
+
+/** Serie de temperatura con un hueco explícito, para probar que la gráfica lo distingue de un
+ *  valor real (`docs/open-questions.md` E.1). */
+export const serieTemperatura = {
+  metricKey: "temperature_celsius",
+  unit: "celsius",
+  resolution: "raw",
+  downsampled: false,
+  fromUtc: "2026-09-04T08:00:00Z",
+  toUtc: AHORA,
+  expectedIntervalMs: 30_000,
+  points: [
+    { t: new Date("2026-09-04T08:00:00Z").getTime(), v: 40 },
+    { t: new Date("2026-09-04T09:00:00Z").getTime(), v: null },
+    { t: new Date(AHORA).getTime(), v: 41 }
+  ],
+  vendorLimit: null,
+  vendorCritical: null
+};
+
+/** Un evento con asociación exacta y otro con inferida, para probar que `EventRow` etiqueta la
+ *  inferencia y nunca la presenta como certeza (`docs/alert-rules.md` §3.6). */
+export const eventos = [
+  {
+    id: "1",
+    occurredAt: AHORA,
+    provider: "Microsoft-Windows-Ntfs",
+    eventId: 98,
+    level: "info",
+    message: "Volumen C: es correcto. No se requiere ninguna acción.",
+    deviceId: "disk-0",
+    volumeId: null,
+    mappingConfidence: "exact",
+    hasRawXml: true
+  },
+  {
+    id: "2",
+    occurredAt: AHORA,
+    provider: "disk",
+    eventId: 157,
+    level: "error",
+    message: "El disco 1 se ha extraído de forma imprevista del sistema.",
+    deviceId: "disk-0",
+    volumeId: null,
+    mappingConfidence: "inferred",
+    hasRawXml: true
+  }
+];
+
+export const paginaEventos = { events: eventos, nextCursor: null, total: 2 };
+export const xmlEjemplo = "<Event><System><Provider Name='disk'/></System></Event>";
+
+/** Historial vacío: la pantalla de pruebas debe aguantarlo sin lista ni tarjeta activa. */
+export const testRunsVacio: unknown[] = [];
+
+/** Un benchmark en curso, para probar la tarjeta de progreso y el evento `test:progress` sin
+ *  esperar a que una prueba real termine. */
+export const testRunActivo = {
+  id: "run-benchmark-1",
+  type: "benchmark",
+  deviceId: null,
+  volumeId: "vol-c",
+  status: "running",
+  startedAt: AHORA,
+  finishedAt: null,
+  progressPercent: 40,
+  command: null,
+  parameters: { sizeBytes: 1_073_741_824, blockSizeBytes: 1_048_576, mode: "sequential", passes: 1 },
+  result: null,
+  output: null,
+  outputEncoding: null,
+  orphanPath: null
+};
+
 /** Comando → respuesta. Lo que no esté aquí devuelve `null`, y la pantalla debe aguantarlo. */
 export const RESPUESTAS: Record<string, unknown> = {
   get_appearance_settings: apariencia,
   get_system_accent_color: acento,
   get_devices: inventario,
-  get_alert_groups: { groups: [], total: 0 },
-  get_log_level: { level: "info" }
+  get_device_detail: detalleDisco0,
+  get_metric_series: serieTemperatura,
+  get_alert_groups: alertas,
+  get_alert_detail: detalleAlertaActiva,
+  get_system_events: paginaEventos,
+  get_event_raw_xml: xmlEjemplo,
+  get_log_level: { level: "info" },
+  get_test_runs: testRunsVacio,
+  start_benchmark: testRunActivo.id,
+  run_chkdsk_scan: "run-chkdsk-1",
+  run_smart_short_test: "run-autotest-1",
+  cancel_test: null
 };
 
 /** Falla en cuanto un fixture deja de cumplir el contrato, no cuando una pantalla se rompe. */
@@ -83,4 +233,11 @@ export function validar(): void {
   S.appearanceSettings.parse(apariencia);
   S.windowsAccent.parse(acento);
   S.deviceListResponse.parse(inventario);
+  S.deviceDetail.parse(detalleDisco0);
+  S.metricSeries.parse(serieTemperatura);
+  S.alertGroup.array().parse(alertas);
+  S.alertDetail.parse(detalleAlertaActiva);
+  S.systemEventPage.parse(paginaEventos);
+  S.testRun.array().parse(testRunsVacio);
+  S.testRun.parse(testRunActivo);
 }

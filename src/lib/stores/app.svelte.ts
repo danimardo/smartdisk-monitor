@@ -16,6 +16,9 @@ class AppState {
   pausedSince = $state<string | null>(null);
   /** null mientras no se ha cargado nada todavía: no es lo mismo que "no hay discos". */
   loadedAt = $state<string | null>(null);
+  /** Igual que `loadedAt`, pero para la pantalla de alertas: se carga por separado porque no toda
+   *  navegación pasa antes por el panel general. */
+  alertsLoadedAt = $state<string | null>(null);
 
   /** Reemplaza por identificador. Los eventos traen el objeto completo, no un parche. */
   upsertDevices(incoming: DiskSummary[]) {

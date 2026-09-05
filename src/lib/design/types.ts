@@ -80,17 +80,18 @@ export interface VolumeSummary {
   capacityBytes: number | null;
   freeBytes: number | null;
   mappingConfidence: "exact" | "inferred" | "unknown";
+  /** `chkdsk /scan` solo existe en NTFS: lo decide el backend, no se repite el criterio aquí. */
+  chkdskAvailable: boolean;
 }
 
 export interface AlertGroup {
   id: string;
+  /** El backend no manda texto de interfaz (ADR-030): el título y el resumen se resuelven en el
+   *  componente con `t(\`alert.rule.${ruleKey}.title\`)` / `.summary`, una clave por regla. */
   ruleKey: string;
   deduplicationKey: string;
   severity: Severity;
   status: AlertStatus;
-  title: string;
-  /** Frase corta en lenguaje humano; el detalle técnico va aparte. */
-  summary: string;
   count: number;
   firstOccurredAt: string;
   lastOccurredAt: string;

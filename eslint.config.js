@@ -128,7 +128,9 @@ export default ts.config(
       "coverage/",
       "node_modules/",
       "design/",
-      "historias.md"
+      "historias.md",
+      // DTO generados por ts-rs (T029, open-questions.md G.3): no se editan a mano ni se lintan.
+      "src/lib/api/generated/"
     ]
   }
 );

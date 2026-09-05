@@ -3,6 +3,7 @@
    *  inferida se etiqueta explícitamente — nunca se presenta como certeza. */
   import StatusPill from "./StatusPill.svelte";
   import { formatTime } from "$lib/design/format";
+  import { t } from "$lib/i18n";
   import type { HealthState } from "$lib/design/types";
 
   let {
@@ -11,24 +12,29 @@
     provider = "",
     eventId = 0,
     occurredAt = "",
-    mappingConfidence = "exact" as "exact" | "inferred" | "unknown"
+    mappingConfidence = "exact" as "exact" | "inferred" | "unknown",
+    onselect = undefined as (() => void) | undefined
   } = $props();
 
-  const map: Record<string, { state: HealthState; label: string }> = {
-    error: { state: "crit", label: "Error" },
-    warning: { state: "warn", label: "Aviso" },
-    info: { state: "unknown", label: "Info" }
+  const estadoPorNivel: Record<string, HealthState> = {
+    error: "crit",
+    warning: "warn",
+    info: "unknown"
   };
+  const etiquetaNivel = $derived(t(`events.level.${level}`));
 </script>
 
-<div class="flex items-center gap-3 border-t border-hairline py-2">
-  <StatusPill state={map[level].state} label={map[level].label} />
+<button
+  class="flex w-full items-center gap-3 border-t border-hairline py-2 text-left"
+  onclick={() => onselect?.()}
+>
+  <StatusPill state={estadoPorNivel[level]} label={etiquetaNivel} />
   <span class="flex-1 truncate text-sm">{message}</span>
   {#if mappingConfidence !== "exact"}
     <span class="rounded-pill bg-unknown-soft px-2 py-0.5 text-2xs font-semibold text-unknown"
-      >asociación inferida</span
+      >{t("events.inferredMapping")}</span
     >
   {/if}
   <span class="text-xs text-fg-dim">{provider} · {eventId}</span>
   <span class="w-14 text-right text-xs text-fg-faint">{formatTime(occurredAt)}</span>
-</div>
+</button>

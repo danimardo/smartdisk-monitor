@@ -569,10 +569,14 @@ o **major** requiere enmienda de esta constitución.
 | `tauri` | 2.11.5 |
 | `tauri-build` | 2.6.3 |
 | `tauri-plugin-single-instance` | 2.4.4 |
+| `tauri-plugin-notification` | 2.4.0 |
 | `serde` | 1.0.229 |
 | `serde_json` | 1.0.151 |
 | `thiserror` | 2.0.20 |
 | `windows-registry` | 0.6.1 |
+| `rusqlite` | 0.40.2, `bundled` |
+| `sha2` | 0.10.9 |
+| `ts-rs` | 10.1.0 |
 | `tracing` + `tracing-subscriber` + `tracing-appender` | 0.1 / 0.3 / 0.2 |
 | `time` | 0.3 |
 
@@ -634,7 +638,7 @@ después.
 |---|---|
 | Formato | `rustfmt` y `prettier` sin diferencias |
 | Análisis estático | `clippy -D warnings`; `eslint` sin errores ni avisos; `svelte-check` con **cero errores y cero avisos** |
-| Tipos del contrato | Los DTO generados desde Rust coinciden con los versionados (**pendiente**, véase abajo) |
+| Tipos del contrato | Los DTO generados desde Rust con `ts-rs` coinciden con los versionados en `src/lib/api/generated/`; `cargo test` los regenera y una diferencia es un fallo de la puerta |
 | Pruebas | `cargo test`, `pnpm test`, `pnpm test:component`, `pnpm test:e2e` y `pnpm test:a11y` en verde; cobertura por encima de los mínimos del principio VIII |
 | Sistema de diseño | Cero colores, radios, sombras o tamaños literales; cero `backdrop-filter` a mano |
 | i18n | `es.json` y `en.json` con idénticas claves; interpolaciones coherentes; ninguna clave usada que no exista |
@@ -646,12 +650,10 @@ después.
 | Silencios justificados | Todo `svelte-ignore` o `eslint-disable` enlaza a una entrada de `docs/known-issues.md` |
 | Registro | Ningún `console.*` ni `println!` en el código de la aplicación |
 
-**Puerta pendiente de activar.** La generación de DTO con `ts-rs` no está en vigor porque los
-comandos del esqueleto aún devuelven marcadores, no estructuras tipadas. Se activa —y pasa a
-bloquear— **en cuanto el primer comando devuelva un DTO real**, que será el inventario de la
-versión 0.1. Hasta entonces, los tipos de `src/lib/api/types.ts` se mantienen a mano y la revisión
-comprueba a ojo que coinciden con `docs/ui-contract.md`. Declararlo aquí evita que se olvide: una
-puerta que no existe no se echa de menos sola.
+**Puerta activa.** `ts-rs` genera los DTO en `src/lib/api/generated/` desde los comandos de
+inventario (T029-T030, spec `001-monitor-discos-windows`). `cargo test` los regenera; una
+diferencia entre lo generado y lo versionado bloquea la integración. `src/lib/api/types.ts`
+reexporta los tipos con comando real y mantiene a mano solo los que aún no lo tienen.
 
 ### Por cada pantalla (revisión humana, `AGENTS.md` §8)
 
@@ -709,8 +711,10 @@ sola razón, sin necesidad de más argumento.
 | 1.2.0 | 2026-09-04 | Principio XIV (arquitectura idiomática de SvelteKit adaptada a Tauri): carga con `load`, navegación por enlaces, `$derived` antes que `$effect`, y dónde vive la lógica. Ninguna norma anterior se relaja |
 | 1.3.0 | 2026-09-04 | Principio XV (registro de actividad): API única, niveles y su significado, precedencia del nivel, prohibición de datos personales, formato en hora local. Ninguna norma anterior se relaja |
 | 1.3.1 | 2026-09-04 | `tauri-plugin-single-instance` 2.4.4 entra en la pila fija (ADR-025). No se añade, relaja ni reinterpreta ningún principio: solo actualiza la tabla de dependencias de Rust que exige el principio III |
-| 1.5.0 | 2026-09-04 | Una sola copia del sistema de diseño (ADR-029): la norma de interfaz pasa a `docs/ui-design.md`, absorbe el antiguo `HANDOFF.md` y gana un §0 con el mapa de rutas; el principio VI añade la prohibición de una segunda copia, que `pnpm verify:tokens` comprueba. Es `minor` porque **añade** una regla y corrige rutas; ningún principio cambia de contenido ni se relaja |
 | 1.4.0 | 2026-09-04 | Infraestructura de pruebas de componente, interfaz y accesibilidad (ADR-027, ADR-028): Vitest sube a 5, entran Browser Mode, Playwright y axe, y sale `@testing-library/svelte`. La puerta de pruebas pasa a exigir las tres suites nuevas, y `playwright.config.ts` y `vitest.browser.config.ts` se suman a los ficheros donde `process.env` es legítimo. Es `minor` por lo que **añade** a la puerta de calidad; ningún principio cambia de contenido ni se relaja |
+| 1.5.0 | 2026-09-04 | Una sola copia del sistema de diseño (ADR-029): la norma de interfaz pasa a `docs/ui-design.md`, absorbe el antiguo `HANDOFF.md` y gana un §0 con el mapa de rutas; el principio VI añade la prohibición de una segunda copia, que `pnpm verify:tokens` comprueba. Es `minor` porque **añade** una regla y corrige rutas; ningún principio cambia de contenido ni se relaja |
+| 1.5.1 | 2026-09-05 | `sha2` 0.10.9 y `ts-rs` 10.1.0 entran en la pila fija; la puerta de tipos del contrato pasa de pendiente a activa (spec `001-monitor-discos-windows`, T029-T030). No se añade, relaja ni reinterpreta ningún principio: actualiza la tabla de dependencias que exige el principio III y cumple lo que el principio VIII ya preveía |
+| 1.5.2 | 2026-09-05 | `tauri-plugin-notification` 2.4.0 entra en la pila fija (T053, notificaciones nativas de alertas). No se añade, relaja ni reinterpreta ningún principio: solo actualiza la tabla de dependencias que exige el principio III |
 
 ### Cumplimiento
 
@@ -727,4 +731,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.5.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-04
+**Versión**: 1.5.2 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-05

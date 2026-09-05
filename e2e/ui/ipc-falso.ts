@@ -54,7 +54,24 @@ export async function instalarIpcFalso(page: Page, respuestas: Record<string, un
     w.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
       unregisterListener: (_e: string, id: number) => callbacks.delete(id)
     };
+
+    // Expuesto para que `emitirEvento()` (lado Playwright) pueda simular un evento del backend
+    // sin reimplementar el registro de oyentes.
+    w.__emitirEvento__ = (event: string, payload: unknown) => {
+      for (const id of oyentes.get(event) ?? []) callbacks.get(id)?.({ event, id, payload });
+    };
   }, respuestas);
+}
+
+/** Simula que el backend emite `event` con `payload`, para las mismas suscripciones que instaló
+ *  `subscribe()` del layout raíz. Sirve para medir el coste de una actualización en caliente
+ *  (SC-007), no solo el de la carga inicial. */
+export function emitirEvento(page: Page, event: string, payload: unknown): Promise<void> {
+  return page.evaluate(
+    ([e, p]) =>
+      (window as unknown as { __emitirEvento__: (e: string, p: unknown) => void }).__emitirEvento__(e, p),
+    [event, payload] as [string, unknown]
+  );
 }
 
 /** Comandos que la aplicación ha invocado, en orden. */
