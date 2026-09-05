@@ -4,9 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 
+const saveMock = vi.fn();
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: (...args: unknown[]) => saveMock(...args) }));
+
 const api = await import("./client");
 const {
   acknowledgeAlert,
+  chooseSavePath,
   getDevices,
   muteAlert,
   refreshNow,
@@ -159,6 +163,8 @@ describe("la superficie completa del contrato", () => {
     getAppearanceSettings: "get_appearance_settings",
     getSystemAccentColor: "get_system_accent_color",
     setSetting: "set_setting",
+    getSettings: "get_settings",
+    resetSettings: "reset_settings",
     getDevices: "get_devices",
     getDeviceDetail: "get_device_detail",
     setDeviceMonitoring: "set_device_monitoring",
@@ -184,7 +190,10 @@ describe("la superficie completa del contrato", () => {
     pauseMonitoring: "pause_monitoring",
     resumeMonitoring: "resume_monitoring",
     getAppInfo: "get_app_info",
-    deleteAllData: "delete_all_data"
+    deleteAllData: "delete_all_data",
+    getLogLevel: "get_log_level",
+    setLogLevel: "set_log_level",
+    openLogFolder: "open_log_folder"
   };
 
   beforeEach(() => {
@@ -218,11 +227,46 @@ describe("la superficie completa del contrato", () => {
   });
 
   it("no hay funciones exportadas fuera del contrato", () => {
+    // `chooseSavePath` no está en `CONTRATO`: envuelve el diálogo nativo de guardado
+    // (`@tauri-apps/plugin-dialog`, ADR-031), no uno de los comandos Tauri registrados en
+    // `commands/mod.rs` — no tiene entrada en `docs/ui-contract.md` §3 porque no es un comando
+    // propio, es un permiso de plugin (`dialog:allow-save` en `capabilities/default.json`).
     const exportadas = Object.entries(api)
       .filter(([, v]) => typeof v === "function")
       .map(([k]) => k)
-      .filter((k) => k !== "toAppError");
+      .filter((k) => k !== "toAppError" && k !== "chooseSavePath");
     const noContempladas = exportadas.filter((k) => !(k in CONTRATO));
     expect(noContempladas, "hay comandos sin declarar en el contrato").toEqual([]);
+  });
+});
+
+describe("chooseSavePath", () => {
+  beforeEach(() => saveMock.mockReset());
+
+  it("pasa el nombre y las extensiones del filtro al diálogo nativo", async () => {
+    saveMock.mockResolvedValueOnce("C:\\destino\\informe.csv");
+    const ruta = await chooseSavePath({
+      defaultFileName: "informe.csv",
+      filterName: "CSV",
+      extensions: ["csv"]
+    });
+    expect(ruta).toBe("C:\\destino\\informe.csv");
+    expect(saveMock).toHaveBeenCalledWith({
+      defaultPath: "informe.csv",
+      filters: [{ name: "CSV", extensions: ["csv"] }]
+    });
+  });
+
+  it("un diálogo cancelado devuelve null, no un error", async () => {
+    saveMock.mockResolvedValueOnce(null);
+    const ruta = await chooseSavePath({ defaultFileName: "x.csv", filterName: "CSV", extensions: ["csv"] });
+    expect(ruta).toBeNull();
+  });
+
+  it("un fallo del diálogo se normaliza a AppError, igual que un invoke fallido", async () => {
+    saveMock.mockRejectedValueOnce(new Error("el usuario no tiene permiso"));
+    await expect(
+      chooseSavePath({ defaultFileName: "x.csv", filterName: "CSV", extensions: ["csv"] })
+    ).rejects.toMatchObject({ code: "ipc.unexpected" });
   });
 });

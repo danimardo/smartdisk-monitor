@@ -6,6 +6,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import { z, type ZodType } from "zod";
 import * as S from "./schemas";
 import type { AppError, DiskSummary } from "$lib/design/types";
@@ -90,6 +91,13 @@ export const getSystemAccentColor = () => call("get_system_accent_color", S.wind
 
 /** Guarda una clave tipada de `settings`. El backend valida el rango: si no cabe, `AppError`. */
 export const setSetting = (key: string, value: unknown) => callVoid("set_setting", { key, value });
+
+export const getSettings = () => call("get_settings", S.settings);
+
+/** Vuelve a los valores de fábrica de un ámbito. `"all"` incluye ciclo de vida, notificaciones y
+ *  registro, que no tienen ámbito propio; nunca toca la apariencia. */
+export const resetSettings = (scope: "all" | "alerts" | "schedule" | "retention") =>
+  call("reset_settings", S.settings, { scope });
 
 /* ---------------------------------------------------------------- inventario */
 
@@ -176,6 +184,23 @@ export const previewDiagnosticZip = (includeIdentifiers: boolean) =>
 export const createDiagnosticZip = (includeIdentifiers: boolean, destinationPath: string) =>
   call("create_diagnostic_zip", z.string(), { includeIdentifiers, destinationPath });
 
+/** Diálogo nativo de guardado (ADR-031): la interfaz nunca construye una ruta, la pide siempre al
+ *  sistema. `null` significa que el usuario canceló el diálogo, no un error. */
+export const chooseSavePath = async (params: {
+  defaultFileName: string;
+  filterName: string;
+  extensions: string[];
+}): Promise<string | null> => {
+  try {
+    return await save({
+      defaultPath: params.defaultFileName,
+      filters: [{ name: params.filterName, extensions: params.extensions }]
+    });
+  } catch (cause) {
+    throw toAppError(cause);
+  }
+};
+
 /* ------------------------------------------------------------ ciclo de vida */
 
 export const pauseMonitoring = () => callVoid("pause_monitoring");
@@ -185,5 +210,20 @@ export const getAppInfo = () => call("get_app_info", S.appInfo);
 /** Irreversible: exige que el usuario escriba la frase de confirmación (US-073). */
 export const deleteAllData = (confirmationPhrase: string) =>
   callVoid("delete_all_data", { confirmationPhrase });
+
+/* ------------------------------------------------------------------ registro */
+
+/** Mismos seis niveles que `$lib/logger`'s `LEVELS`, escritos aquí a mano porque ese módulo no
+ *  puede depender de Zod (constitución §XV: cuarenta líneas sin dependencias externas). */
+export const getLogLevel = () =>
+  call("get_log_level", z.enum(["trace", "debug", "info", "warn", "error", "silent"]));
+
+/** Persiste `logging.verbose` **y** lo aplica en caliente en el mismo comando (T098): no hace
+ *  falta reiniciar para que el modo detallado surta efecto. */
+export const setLogLevel = (verbose: boolean) => callVoid("set_log_level", { verbose });
+
+/** Abre el explorador de archivos en la carpeta de registro. Sin parámetro de ruta: es **una
+ *  sola ruta conocida** que decide el backend, nunca una que construya la interfaz (principio IX). */
+export const openLogFolder = () => callVoid("open_log_folder");
 
 export type { DiskSummary };

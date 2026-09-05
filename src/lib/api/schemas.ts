@@ -245,6 +245,42 @@ export const appearanceSettings = z.object({
   useSystemAccent: z.boolean()
 });
 
+/** `docs/ui-contract.md` §3.1, `docs/open-questions.md` J.32. */
+export const settings = z.object({
+  schedule: z.object({
+    metricsFastSeconds: z.number().int(),
+    smartFullSeconds: z.number().int(),
+    eventsSeconds: z.number().int(),
+    discoverySeconds: z.number().int()
+  }),
+  alerts: z.object({
+    tempConfiguredWarnC: z.number(),
+    tempConfiguredCritC: z.number(),
+    capacityWarnPercent: z.number(),
+    capacityCritPercent: z.number(),
+    capacityAbsoluteFloorMinCapacityBytes: z.number().int(),
+    capacityAbsoluteFloorWarnBytes: z.number().int(),
+    capacityAbsoluteFloorCritBytes: z.number().int()
+  }),
+  retention: z.object({
+    rawDays: z.number().int(),
+    fiveMinutesDays: z.number().int(),
+    hourlyDays: z.number().int(),
+    freeSpaceWarnBytes: z.number().int(),
+    freeSpaceHaltBytes: z.number().int()
+  }),
+  lifecycle: z.object({
+    closeAction: z.enum(["minimize", "exit"]),
+    closeActionRemembered: z.boolean()
+  }),
+  notifications: z.object({
+    soundEnabled: z.boolean()
+  }),
+  logging: z.object({
+    verbose: z.boolean()
+  })
+});
+
 export const windowsAccent = z.object({
   hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, "se esperaba #RRGGBB"),
   palette: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).optional()
@@ -320,6 +356,7 @@ export type SystemEventShape = z.infer<typeof systemEvent>;
 export type SystemEventPageShape = z.infer<typeof systemEventPage>;
 export type TestRunShape = z.infer<typeof testRun>;
 export type AppearanceSettingsShape = z.infer<typeof appearanceSettings>;
+export type SettingsShape = z.infer<typeof settings>;
 export type WindowsAccentShape = z.infer<typeof windowsAccent>;
 export type EventName = keyof typeof eventSchemas;
 export type EventPayload<K extends EventName> = z.infer<(typeof eventSchemas)[K]>;
