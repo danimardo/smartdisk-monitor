@@ -59,6 +59,8 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `settings.out_of_range` | valor fuera de los límites de `open-questions.md` D.1 | no |
 | `db.query_failed` | fallo de SQLite que no es un bloqueo (`db.locked`, más arriba, es el que sí lo es) | no |
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
+| `app.log_reload_failed` | no se pudo aplicar en caliente el nuevo nivel de registro | sí |
+| `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
 
 ---
 
@@ -109,10 +111,51 @@ interface WindowsAccent {
 invoke<Settings>("get_settings")
 invoke<void>("set_setting", { key: string, value: unknown })   // valida rango; AppError si no cabe
 invoke<Settings>("reset_settings", { scope: "all" | "alerts" | "schedule" | "retention" })
+
+interface Settings {
+  schedule: {
+    metricsFastSeconds: number;   // 30 s de fábrica, 10-300 (D.1)
+    smartFullSeconds: number;     // 300 s de fábrica, 60-3600
+    eventsSeconds: number;        // 30 s de fábrica, 15-300
+    discoverySeconds: number;     // 60 s de fábrica, 30-600
+  };
+  alerts: {
+    tempConfiguredWarnC: number;  // 70 de fábrica, 40-95 — solo se aplica sin límite del fabricante
+    tempConfiguredCritC: number;  // 80 de fábrica, entre tempConfiguredWarnC y 100
+    capacityWarnPercent: number;  // 10 de fábrica, 1-50 (C.1/ADR-019)
+    capacityCritPercent: number;  // 5 de fábrica, 1-50, menor que capacityWarnPercent
+    capacityAbsoluteFloorMinCapacityBytes: number;  // 256 GiB de fábrica: a partir de aquí también cuenta el suelo absoluto
+    capacityAbsoluteFloorWarnBytes: number;         // 20 GiB de fábrica
+    capacityAbsoluteFloorCritBytes: number;         // 10 GiB de fábrica, menor que el de aviso
+  };
+  retention: {
+    rawDays: number;              // 7 de fábrica, 1-30 (J.14)
+    fiveMinutesDays: number;      // 90 de fábrica, 7-365
+    hourlyDays: number;           // 730 de fábrica, 90-1825
+    freeSpaceWarnBytes: number;   // 1 GiB de fábrica (J.13); sin límites de edición propios
+    freeSpaceHaltBytes: number;   // 256 MiB de fábrica
+  };
+  lifecycle: {
+    closeAction: "minimize" | "exit";   // "minimize" de fábrica
+    closeActionRemembered: boolean;
+  };
+  notifications: {
+    soundEnabled: boolean;        // false de fábrica (US-072)
+  };
+  logging: {
+    verbose: boolean;             // ver `set_log_level`, §3.9: no se cambia con `set_setting`
+  };
+}
 ```
 
 `Settings` es un objeto tipado, no un diccionario libre. Sus límites están en `open-questions.md`
-D.1 y los valida el backend: la UI puede confiar en que un valor guardado es un valor legal.
+D.1/C.1/J.13/J.14/J.32 y los valida el backend: la UI puede confiar en que un valor guardado es un
+valor legal. La apariencia (`theme`/`language`/`useSystemAccent`) no vive en `Settings`: sigue
+teniendo su propio `get_appearance_settings()`; se persiste con el mismo `set_setting(key, value)`
+genérico, con las claves `settings.appearance.theme`, `settings.appearance.language` y
+`settings.appearance.use_system_accent`. `reset_settings` con `scope: "all"` también restaura
+`lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio; nunca toca la
+apariencia.
 
 ### 3.2 Inventario
 

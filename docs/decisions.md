@@ -720,3 +720,133 @@ como ya ocurre con `DeviceType`.
   `alert.rule.<rule_key>.title/summary` (una por regla implementada) y `alert.status.*`.
 - Ningún componente que ya estuviera consumiendo `title`/`summary` queda roto: el único consumidor
   era este mismo componente, corregido en el mismo cambio.
+
+## ADR-031 — `tauri-plugin-dialog` para elegir el destino de una exportación
+
+Estado: aceptada.
+
+### El problema
+
+`export_report`, `preview_diagnostic_zip` y `create_diagnostic_zip` (`docs/ui-contract.md` §3.7)
+necesitan una ruta de destino que hoy nadie puede producir: `capabilities/default.json` solo
+declara `core:default`, sin ningún permiso de acceso al sistema de archivos ni de diálogo. Aceptar
+`destinationPath` como una cadena libre construida por la interfaz sería justo la segunda vía de
+acceso al sistema de ficheros que el principio IX prohíbe — el mismo motivo por el que
+`open_log_folder` no recibe una ruta como argumento.
+
+### La decisión
+
+`tauri-plugin-dialog` 2.7 (equipo de Tauri), con un único permiso concedido:
+`dialog:allow-save` (no el conjunto `dialog:default`, que además habilita `allow-open` y
+`allow-message`, innecesarios aquí — mínimo privilegio real, no solo declarado). El usuario elige
+carpeta y nombre con el selector nativo de Windows desde `$lib/api`; el backend solo escribe en la
+ruta que ese diálogo devuelve, nunca en una construida por la interfaz.
+
+### Alternativas descartadas
+
+- **Carpeta fija sin diálogo** (como la carpeta controlada del benchmark, T077/J.27): evita la
+  dependencia y el permiso nuevos, pero un informe o un ZIP de diagnóstico está pensado para
+  salir del equipo — adjuntarlo a un correo, subirlo a un ticket de soporte—, y forzarlo siempre a
+  la misma carpeta interna contradice ese uso. Se ofreció como alternativa real (`AskUserQuestion`)
+  y el usuario prefirió el diálogo nativo.
+
+### Consecuencias
+
+- Dependencia nueva en un binario privilegiado (`tauri-plugin-dialog` + su equivalente JS
+  `@tauri-apps/plugin-dialog`) y permiso nuevo en `capabilities/default.json`. Se acepta por ser
+  oficial del equipo de Tauri, la UX esperada de cualquier «Guardar como» de la plataforma, y por
+  decisión explícita del usuario.
+- `$lib/api` gana el envoltorio de `save()` del plugin; ninguna pantalla lo llama directamente
+  (mismo criterio que el resto de la frontera IPC).
+
+## ADR-032 — El crate `zip` para el paquete de diagnóstico
+
+Estado: aceptada.
+
+### El problema
+
+T090 necesita empaquetar varios ficheros (ajustes, eventos exportados, capturas SMART brutas,
+registro de actividad) en un único ZIP de diagnóstico (US-051). No había ninguna dependencia de
+compresión en `Cargo.toml`.
+
+### La decisión
+
+`zip` 2.4 (`zip-rs/zip2`, mantenido, muy usado), con `default-features = false` y la sola
+característica `deflate` (arrastra a su vez `deflate-flate2` y `deflate-zopfli`: la variante solo
+`flate2` no compila sin depender también de una de las dos, así que se acepta `zopfli` en el árbol
+en vez de pelear con la selección de características). Sin `aes-crypto`, `bzip2`, `lzma`, `zstd`,
+`xz` ni `chrono`: el ZIP de diagnóstico no necesita cifrado ni otros algoritmos de compresión, y
+cada uno de esos suma dependencias transitivas propias.
+
+### Alternativas descartadas
+
+- **Escritor ZIP propio, sin comprimir** (mismo criterio que el LCG de T079 frente a `rand`):
+  descartado porque el formato ZIP tiene más superficie de la que parece a primera vista —cabeceras
+  local y central, CRC32, el registro de fin de directorio central— y un error ahí no falla alto:
+  produce un ZIP que algunos lectores abren mal y otros no, que es peor que no tener la función. El
+  LCG de T079 era mucho más simple (un generador congruencial lineal, no un formato de contenedor
+  con implicaciones de compatibilidad). Se ofreció como alternativa real (`AskUserQuestion`) y el
+  usuario prefirió el crate.
+
+### Consecuencias
+
+- Dependencia nueva en un binario privilegiado, con `zopfli` como dependencia transitiva
+  (algoritmo de compresión, sin superficie de seguridad relevante: no toca red ni entrada externa
+  sin confiar, solo comprime bytes ya generados por la propia aplicación).
+- El ZIP de diagnóstico admite compresión real (no solo `stored`), lo que mantiene manejable el
+  tamaño del registro de actividad incluido por FR-029c.
+
+## ADR-033 — El planificador en segundo plano es un hilo bloqueante que sondea cada 1 s, sin `tokio`
+
+Estado: aceptada.
+
+### El problema
+
+T020/T021/T022 necesitaban un bucle real que ejecutara la recopilación (SMART, contadores de
+rendimiento, eventos de Windows, altas/bajas de inventario) sin que la interfaz tuviera que pedirlo:
+hasta esta historia solo existía `refresh_now`, un comando manual. Cada uno de los cuatro trabajos
+tiene su propia cadencia configurable (`collectors::planificador`), que además se reduce en batería
+para los que no alimentan alertas graves (FR-030), y debe reaccionar a la pausa manual, a un cambio
+de ajuste de frecuencia y al cierre real de la aplicación sin quedarse colgado.
+
+### La decisión
+
+Un único hilo bloqueante (`tauri::async_runtime::spawn_blocking`, lanzado en `.setup()`), con un
+bucle que **sondea cada 1 segundo** (`open-questions.md` J.34) en vez de dormir el intervalo
+completo del próximo trabajo: en cada sondeo comprueba la señal de parada, si está pausado, y para
+cada uno de los cuatro trabajos si ya toca ejecutarse (`collectors::planificador::trabajos_debidos`,
+función pura, probada con tiempo inyectado). Cada trabajo debido se ejecuta de forma independiente
+—el fallo de uno no bloquea a los demás (`open-questions.md` J.39)— y el post-proceso común
+(notificaciones, `alerts:changed`, `metrics:updated`, `inventory:changed`, `source:degraded`, icono
+de bandeja) se comparte con `refresh_now` a través de `post_procesar_ciclo`. Todos los colectores son
+E/S síncrona (procesos, SQLite, FFI de Windows), nunca futuros, así que no hace falta ningún runtime
+asíncrono nuevo: `tauri::async_runtime::spawn_blocking` ya viene con Tauri, cero dependencias nuevas.
+El apagado limpio pasa por `RunEvent::Exit`/`ExitRequested` (`lib.rs`, vía `.build().run(|_,event|
+...)` en vez de `.run(...)` directo), que marca un `Arc<AtomicBool>` en `AppState` comprobado en
+cada sondeo — un único punto de parada, sea cual sea la vía de salida real.
+
+### Alternativas descartadas
+
+- **Un temporizador (`tokio::time::interval` o similar) por trabajo**: exigiría añadir `tokio` como
+  dependencia directa (hoy solo llega transitivamente vía Tauri, y no para Windows) y sincronizar
+  cuatro relojes independientes contra pausa, batería y ajustes que cambian en caliente —más
+  complejidad para el mismo resultado que un sondeo de 1 s ya da con cuatro comparaciones de
+  `Instant`.
+- **Interceptar cada `app.exit(0)` por separado** para señalizar la parada: descartado porque hay
+  al menos dos puntos de salida (cierre real de ventana, "Salir" de la bandeja) y cualquier futuro
+  tercero se olvidaría con facilidad; `RunEvent::Exit`/`ExitRequested` es el único punto que Tauri
+  garantiza que se dispara siempre, venga de donde venga la salida.
+
+### Consecuencias
+
+- La aplicación monitoriza de verdad sin intervención manual (T022 queda satisfecho además "gratis":
+  `AppState.paused` nunca se persiste, así que todo arranque empieza activo).
+- `SourceHealth` pasa de estar sin tipar (`status: String`) a un enum `SourceStatus` real
+  (`ok`/`partial`/`unsupported`/`timeout`/`error`), aunque esta historia solo produce `ok`/`timeout`/
+  `error` (`open-questions.md` J.37); `partial`/`unsupported` quedan para cuando alguien los pida.
+- `refresh_smart` se separó en `refresh_smart` (solo SMART) y `refresh_metricas_rendimiento` (solo
+  PDH): antes estaban acopladas porque nada las llamaba con cadencias distintas
+  (`open-questions.md` J.38).
+- `metrics:updated.historyWriteHalted` refleja un cálculo real de espacio libre, pero **no** detiene
+  todavía ninguna escritura (`open-questions.md` J.40): queda como seguimiento explícito, no como
+  olvido.

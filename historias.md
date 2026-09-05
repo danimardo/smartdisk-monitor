@@ -157,6 +157,30 @@ de componentes en `src/lib/components/` y los bocetos aprobados en [`design/`](d
 - Licencia del código propio: MIT
 - Plataforma inicial: Windows x64
 
+### Instalación y desinstalación
+
+El instalador (`pnpm app:build`, NSIS) resuelve WebView2 sin conexión (ADR-020) y registra la
+aplicación para todos los usuarios. La desinstalación **conserva** el historial y la configuración
+(ADR-012): quita el ejecutable, los accesos directos y el registro de Windows, pero no toca
+`%ProgramData%\SmartDisk Monitor\`, donde vive todo lo demás —
+
+- `smartdisk.sqlite`: inventario, métricas, alertas, eventos y ejecuciones de pruebas.
+- `logs\`: registro de actividad (`smartdisk.log.<fecha>`).
+
+Esto es deliberado: una desinstalación accidental o para reinstalar una versión más reciente no
+debe borrar meses de historial. La carpeta la crea el instalador con una ACL propia (ADR-026, `Get-Acl`/`icacls` — lectura abierta, escritura restringida a administradores), así que solo una
+cuenta con privilegios de administrador puede borrarla a mano.
+
+**Para limpiar todo sin desinstalar** —vía normal, con confirmación explícita y sin tocar el
+sistema de archivos a mano—: Ajustes → «Borrar todos los datos» (US-073). Exige escribir el nombre
+de la aplicación como frase de confirmación y deja la aplicación como recién instalada.
+
+**Para limpiar todo después de haber desinstalado ya** —o antes de reinstalar en un equipo que no
+va a volver a usarse—: borrar a mano, desde una sesión con privilegios de administrador,
+`%ProgramData%\SmartDisk Monitor\` completa. No queda ningún otro rastro: la aplicación no escribe
+en el registro de Windows más allá de lo que el propio instalador NSIS gestiona, ni en `%AppData%`
+ni en el perfil del usuario.
+
 
 ---
 
@@ -930,6 +954,13 @@ Criterios de aceptación:
 
 Fichero de origen: `docs/roadmap.md`
 
+**Estado real, 2026-09-05**: las ocho historias de usuario de
+[`specs/001-monitor-discos-windows/`](docs/../specs/001-monitor-discos-windows/tasks.md) están
+implementadas — inventario, panel e historial, alertas y systray, ajustes, pruebas y diagnóstico,
+informes y exportación, instalación/reconocimiento/retirada. Lo que sigue en este documento sin
+tachar es lo que de verdad queda abierto, no una plantilla sin actualizar. El seguimiento tarea a
+tarea vive en `tasks.md`; este documento es el resumen por versión.
+
 ### Criterio de priorización
 
 - P0: necesario para considerar utilizable la versión 1.0.
@@ -946,38 +977,59 @@ Objetivo: reducir riesgos antes de construir la interfaz completa.
 - Integrar `src/design-system/tokens.css`, la configuración Tailwind, los módulos de diseño, i18n y el catálogo Svelte entregado.
 - Validar los componentes entregados con Svelte 5 y el toolchain definitivo antes de modificarlos.
 - Montar un shell navegable con `AppShell`, `Sidebar` y `Toolbar` siguiendo el boceto v2 aprobado.
-- Verificar temas claro/oscuro, acento de Windows, fallback sin translucidez y movimiento reducido.
-- Probar elevación UAC y empaquetado x64.
-- **Verificar la instalación de WebView2 en un Windows Server 2019 limpio y sin salida a Internet**.
-  El modo ya está decidido (instalador sin conexión, ADR-020); lo que falta es comprobar que la
-  instalación silenciosa funciona en una máquina real.
-- **Comprobar la entrega de notificaciones toast desde un proceso elevado** con AUMID registrado. Si
-  Windows no las entrega, hay que sustituirlas por una ventana propia con el componente `Toast`.
-- ~~Medir la codificación de la salida de `chkdsk`~~ **hecho**: es CP1252, no CP850, y las
-  herramientas de Windows no coinciden entre sí. Queda **implementar y probar** la detección de
-  `open-questions.md` §Q con volcados reales como fixtures.
-- **Validar `accessibleAccent()`** contra los acentos de Windows, empezando por los claros.
-- ~~Probar bloqueo de instancia única y ACL de la carpeta de `ProgramData`~~ **hecho**: eran dos
-  problemas distintos. La instancia única va con el plugin oficial (ADR-025); queda una
-  comprobación de humo manual, que exige UAC, dentro de US-060. Y `%ProgramData%` **no** restringe
-  la escritura a administradores: un usuario sin privilegios se apropia de la carpeta
-  pre-creándola, y restablecer la ACL sin tomar la propiedad no lo arregla (ADR-026,
-  `open-questions.md` §R).
-- Validar `smartctl --scan-open --json` en NVMe, SATA y USB disponibles.
-- Interpretar correctamente los bits del código de salida de smartctl.
-- Contrastar en **Windows Server** la lista de eventos de `alert-rules.md` §3, verificada hasta ahora
-  solo en Windows 11 cliente: faltan RAID por hardware y Storage Spaces en producción.
-- Probar lectura de eventos y marcadores (bookmark de canal, no RecordId).
-- Probar contadores de rendimiento y mapeo disco-volumen.
-- Validar SQLite WAL en `ProgramData`.
-- Prototipar systray y cierre hacia bandeja.
-- Documentar cumplimiento de redistribución de smartmontools: fijar la versión exacta del binario y
-  elegir cómo se satisface la obligación de código fuente de la GPLv2.
-- Medir la interfaz con veinte discos y cinco mil eventos, y la escala tipográfica al 125 % y 150 %.
+- ~~Verificar temas claro/oscuro, acento de Windows, fallback sin translucidez y movimiento
+  reducido~~ **hecho**: cubierto por `e2e/ui/smoke.spec.ts` y `e2e/ui/a11y.spec.ts` en los dos temas.
+- ~~Probar elevación UAC y empaquetado x64~~ **hecho** para desarrollo (`pnpm app:dev` eleva);
+  queda el empaquetado real, véase T115 más abajo.
+- ~~Verificar la instalación de WebView2 en un Windows Server 2019 limpio y sin salida a
+  Internet~~ **resuelto con documentación oficial**, no medido en máquina real: véase
+  `open-questions.md` §M.
+- **Comprobar la entrega de notificaciones toast desde un proceso elevado** con AUMID registrado
+  sigue `ABIERTO` — solo se puede medir con un instalador real empaquetado e instalado
+  (`open-questions.md` I.2). El plan B ya está decidido (ventana propia con `Toast`) pero no tiene
+  sentido construirlo hasta que la medición falle.
+- ~~Medir la codificación de la salida de `chkdsk`~~ **hecho**: es CP1252, no CP850; la detección
+  está implementada y probada con volcados reales como fixtures — véase `open-questions.md` §Q.
+- ~~Validar `accessibleAccent()` contra los acentos de Windows~~ **hecho**: barrido completo de
+  262.144 colores del espacio sRGB, 0 % de fallos AA tras el tratamiento — véase `open-questions.md`
+  §O, reverificado en esta sesión (T112).
+- ~~Probar bloqueo de instancia única y ACL de la carpeta de `ProgramData`~~ **hecho**: la instancia
+  única va con el plugin oficial (ADR-025) y la ACL de `ProgramData` se corrige en el instalador
+  (ADR-026) — véase `open-questions.md` §R.
+- **Validar `smartctl --scan-open --json` en RAID por hardware y USB** sigue `ABIERTO`: esta sesión
+  solo tuvo acceso a NVMe real. Véase `open-questions.md` I.5.
+- ~~Interpretar correctamente los bits del código de salida de smartctl~~ **hecho**: parser con
+  100 % de cobertura de líneas en `collectors::smartctl_parser` (T108).
+- ~~Contrastar en Windows Server la lista de eventos de `alert-rules.md` §3~~ **hecho** contra
+  manifiestos y 180 días de registro real — véase `open-questions.md` §P. Queda pendiente el
+  contraste visual en servidor, que exige una máquina Server real.
+- ~~Probar lectura de eventos y marcadores (bookmark de canal, no RecordId)~~ **hecho**:
+  `collectors::event_log` implementado y probado contra fixtures reales.
+- ~~Probar contadores de rendimiento y mapeo disco-volumen~~ **hecho**:
+  `collectors::perf_counters` y `collectors::windows_storage` implementados.
+- ~~Validar SQLite WAL en `ProgramData`~~ **hecho**: `persistence::migrations` y `persistence::db`,
+  con pruebas de migración desde una versión publicada anterior.
+- ~~Prototipar systray y cierre hacia bandeja~~ **hecho**: `platform::bandeja`, pausa y reanudación
+  de la monitorización (Historia 7).
+- ~~Documentar cumplimiento de redistribución de smartmontools~~ **hecho**: versión y licencia
+  verificadas, binario y fuente en el repositorio — véase `open-questions.md` §N.
+- ~~Medir la interfaz con veinte discos y cinco mil eventos~~ **hecho**: ninguna tarea de 50 ms o
+  más (`e2e/ui/rendimiento.spec.ts`, `open-questions.md` I.7/J.26). **La escala tipográfica al 125 %
+  y 150 %** está medida (`open-questions.md` §L) pero la verificación pantalla por pantalla al
+  125 %/150 %/200 % con la ventana mínima 1024 × 560 sigue pendiente (T111, exige revisión visual
+  manual).
 
-Riesgos abiertos y su criterio de cierre: [`open-questions.md`](docs/open-questions.md) §I.
+Riesgos abiertos y su criterio de cierre: [`open-questions.md`](docs/open-questions.md) §I. En síntesis,
+lo que de verdad sigue abierto de toda la Fase 0: **I.2** (toast elevado), **I.5** (RAID/USB
+reales), el contraste en Windows Server, **T111** (escalado visual) y **T115** (guion completo sobre
+un instalador real) — los cinco exigen o hardware que esta sesión no tiene, o un instalador
+empaquetado, o revisión visual humana.
 
 Salida: informe de viabilidad y fixtures anonimizados.
+
+Las versiones 0.1 a 0.9 siguientes están **implementadas** (Historias 1-8 de
+`specs/001-monitor-discos-windows/tasks.md`); se conservan como agrupación temática del alcance, no
+como lista pendiente.
 
 ### Versión 0.1 — Inventario y recopilación
 
@@ -1033,13 +1085,18 @@ Salida: informe de viabilidad y fixtures anonimizados.
 
 ### Versión 1.0
 
-- Instalador para todos los usuarios.
-- Desinstalación que conserva datos.
-- Aviso documentado de SmartScreen por falta de firma.
-- Licencia MIT, terceros y atribuciones.
-- Nombre y versión dinámicos.
-- Release manual en GitHub.
-- Validación completa contra la definición de terminado de [`ui-design.md`](docs/ui-design.md) §8.
+- ~~Instalador para todos los usuarios~~ **hecho**: NSIS, WebView2 sin conexión (ADR-020).
+- ~~Desinstalación que conserva datos~~ **hecho**: véase «Instalación y desinstalación» en
+  [`README.md`](docs/../README.md).
+- Aviso documentado de SmartScreen por falta de firma — pendiente de una compilación firmada real.
+- ~~Licencia MIT, terceros y atribuciones~~ **hecho**: `THIRD_PARTY_NOTICES.md`.
+- ~~Nombre y versión dinámicos~~ **hecho**: `get_app_info` usa `app.package_info()` (T104).
+- Release manual en GitHub — pendiente de que el usuario decida publicar.
+- **Validación completa contra la definición de terminado de [`ui-design.md`](docs/ui-design.md) §8**
+  sigue abierta: exige recorrer cada pantalla al 125 %/150 %/200 % y en la ventana mínima
+  1024 × 560 (T111) y ejecutar el guion completo de `quickstart.md` sobre una compilación
+  empaquetada, no en desarrollo (T115). Ambas requieren interacción del usuario (revisión visual y
+  una instalación elevada real) y quedan deliberadamente para cuando esté disponible.
 
 ### Después de 1.0 (P2)
 
@@ -1822,6 +1879,8 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `settings.out_of_range` | valor fuera de los límites de `open-questions.md` D.1 | no |
 | `db.query_failed` | fallo de SQLite que no es un bloqueo (`db.locked`, más arriba, es el que sí lo es) | no |
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
+| `app.log_reload_failed` | no se pudo aplicar en caliente el nuevo nivel de registro | sí |
+| `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
 
 ---
 
@@ -1872,10 +1931,51 @@ interface WindowsAccent {
 invoke<Settings>("get_settings")
 invoke<void>("set_setting", { key: string, value: unknown })   // valida rango; AppError si no cabe
 invoke<Settings>("reset_settings", { scope: "all" | "alerts" | "schedule" | "retention" })
+
+interface Settings {
+  schedule: {
+    metricsFastSeconds: number;   // 30 s de fábrica, 10-300 (D.1)
+    smartFullSeconds: number;     // 300 s de fábrica, 60-3600
+    eventsSeconds: number;        // 30 s de fábrica, 15-300
+    discoverySeconds: number;     // 60 s de fábrica, 30-600
+  };
+  alerts: {
+    tempConfiguredWarnC: number;  // 70 de fábrica, 40-95 — solo se aplica sin límite del fabricante
+    tempConfiguredCritC: number;  // 80 de fábrica, entre tempConfiguredWarnC y 100
+    capacityWarnPercent: number;  // 10 de fábrica, 1-50 (C.1/ADR-019)
+    capacityCritPercent: number;  // 5 de fábrica, 1-50, menor que capacityWarnPercent
+    capacityAbsoluteFloorMinCapacityBytes: number;  // 256 GiB de fábrica: a partir de aquí también cuenta el suelo absoluto
+    capacityAbsoluteFloorWarnBytes: number;         // 20 GiB de fábrica
+    capacityAbsoluteFloorCritBytes: number;         // 10 GiB de fábrica, menor que el de aviso
+  };
+  retention: {
+    rawDays: number;              // 7 de fábrica, 1-30 (J.14)
+    fiveMinutesDays: number;      // 90 de fábrica, 7-365
+    hourlyDays: number;           // 730 de fábrica, 90-1825
+    freeSpaceWarnBytes: number;   // 1 GiB de fábrica (J.13); sin límites de edición propios
+    freeSpaceHaltBytes: number;   // 256 MiB de fábrica
+  };
+  lifecycle: {
+    closeAction: "minimize" | "exit";   // "minimize" de fábrica
+    closeActionRemembered: boolean;
+  };
+  notifications: {
+    soundEnabled: boolean;        // false de fábrica (US-072)
+  };
+  logging: {
+    verbose: boolean;             // ver `set_log_level`, §3.9: no se cambia con `set_setting`
+  };
+}
 ```
 
 `Settings` es un objeto tipado, no un diccionario libre. Sus límites están en `open-questions.md`
-D.1 y los valida el backend: la UI puede confiar en que un valor guardado es un valor legal.
+D.1/C.1/J.13/J.14/J.32 y los valida el backend: la UI puede confiar en que un valor guardado es un
+valor legal. La apariencia (`theme`/`language`/`useSystemAccent`) no vive en `Settings`: sigue
+teniendo su propio `get_appearance_settings()`; se persiste con el mismo `set_setting(key, value)`
+genérico, con las claves `settings.appearance.theme`, `settings.appearance.language` y
+`settings.appearance.use_system_accent`. `reset_settings` con `scope: "all"` también restaura
+`lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio; nunca toca la
+apariencia.
 
 #### 3.2 Inventario
 
@@ -4021,6 +4121,136 @@ como ya ocurre con `DeviceType`.
 - Ningún componente que ya estuviera consumiendo `title`/`summary` queda roto: el único consumidor
   era este mismo componente, corregido en el mismo cambio.
 
+### ADR-031 — `tauri-plugin-dialog` para elegir el destino de una exportación
+
+Estado: aceptada.
+
+#### El problema
+
+`export_report`, `preview_diagnostic_zip` y `create_diagnostic_zip` (`docs/ui-contract.md` §3.7)
+necesitan una ruta de destino que hoy nadie puede producir: `capabilities/default.json` solo
+declara `core:default`, sin ningún permiso de acceso al sistema de archivos ni de diálogo. Aceptar
+`destinationPath` como una cadena libre construida por la interfaz sería justo la segunda vía de
+acceso al sistema de ficheros que el principio IX prohíbe — el mismo motivo por el que
+`open_log_folder` no recibe una ruta como argumento.
+
+#### La decisión
+
+`tauri-plugin-dialog` 2.7 (equipo de Tauri), con un único permiso concedido:
+`dialog:allow-save` (no el conjunto `dialog:default`, que además habilita `allow-open` y
+`allow-message`, innecesarios aquí — mínimo privilegio real, no solo declarado). El usuario elige
+carpeta y nombre con el selector nativo de Windows desde `$lib/api`; el backend solo escribe en la
+ruta que ese diálogo devuelve, nunca en una construida por la interfaz.
+
+#### Alternativas descartadas
+
+- **Carpeta fija sin diálogo** (como la carpeta controlada del benchmark, T077/J.27): evita la
+  dependencia y el permiso nuevos, pero un informe o un ZIP de diagnóstico está pensado para
+  salir del equipo — adjuntarlo a un correo, subirlo a un ticket de soporte—, y forzarlo siempre a
+  la misma carpeta interna contradice ese uso. Se ofreció como alternativa real (`AskUserQuestion`)
+  y el usuario prefirió el diálogo nativo.
+
+#### Consecuencias
+
+- Dependencia nueva en un binario privilegiado (`tauri-plugin-dialog` + su equivalente JS
+  `@tauri-apps/plugin-dialog`) y permiso nuevo en `capabilities/default.json`. Se acepta por ser
+  oficial del equipo de Tauri, la UX esperada de cualquier «Guardar como» de la plataforma, y por
+  decisión explícita del usuario.
+- `$lib/api` gana el envoltorio de `save()` del plugin; ninguna pantalla lo llama directamente
+  (mismo criterio que el resto de la frontera IPC).
+
+### ADR-032 — El crate `zip` para el paquete de diagnóstico
+
+Estado: aceptada.
+
+#### El problema
+
+T090 necesita empaquetar varios ficheros (ajustes, eventos exportados, capturas SMART brutas,
+registro de actividad) en un único ZIP de diagnóstico (US-051). No había ninguna dependencia de
+compresión en `Cargo.toml`.
+
+#### La decisión
+
+`zip` 2.4 (`zip-rs/zip2`, mantenido, muy usado), con `default-features = false` y la sola
+característica `deflate` (arrastra a su vez `deflate-flate2` y `deflate-zopfli`: la variante solo
+`flate2` no compila sin depender también de una de las dos, así que se acepta `zopfli` en el árbol
+en vez de pelear con la selección de características). Sin `aes-crypto`, `bzip2`, `lzma`, `zstd`,
+`xz` ni `chrono`: el ZIP de diagnóstico no necesita cifrado ni otros algoritmos de compresión, y
+cada uno de esos suma dependencias transitivas propias.
+
+#### Alternativas descartadas
+
+- **Escritor ZIP propio, sin comprimir** (mismo criterio que el LCG de T079 frente a `rand`):
+  descartado porque el formato ZIP tiene más superficie de la que parece a primera vista —cabeceras
+  local y central, CRC32, el registro de fin de directorio central— y un error ahí no falla alto:
+  produce un ZIP que algunos lectores abren mal y otros no, que es peor que no tener la función. El
+  LCG de T079 era mucho más simple (un generador congruencial lineal, no un formato de contenedor
+  con implicaciones de compatibilidad). Se ofreció como alternativa real (`AskUserQuestion`) y el
+  usuario prefirió el crate.
+
+#### Consecuencias
+
+- Dependencia nueva en un binario privilegiado, con `zopfli` como dependencia transitiva
+  (algoritmo de compresión, sin superficie de seguridad relevante: no toca red ni entrada externa
+  sin confiar, solo comprime bytes ya generados por la propia aplicación).
+- El ZIP de diagnóstico admite compresión real (no solo `stored`), lo que mantiene manejable el
+  tamaño del registro de actividad incluido por FR-029c.
+
+### ADR-033 — El planificador en segundo plano es un hilo bloqueante que sondea cada 1 s, sin `tokio`
+
+Estado: aceptada.
+
+#### El problema
+
+T020/T021/T022 necesitaban un bucle real que ejecutara la recopilación (SMART, contadores de
+rendimiento, eventos de Windows, altas/bajas de inventario) sin que la interfaz tuviera que pedirlo:
+hasta esta historia solo existía `refresh_now`, un comando manual. Cada uno de los cuatro trabajos
+tiene su propia cadencia configurable (`collectors::planificador`), que además se reduce en batería
+para los que no alimentan alertas graves (FR-030), y debe reaccionar a la pausa manual, a un cambio
+de ajuste de frecuencia y al cierre real de la aplicación sin quedarse colgado.
+
+#### La decisión
+
+Un único hilo bloqueante (`tauri::async_runtime::spawn_blocking`, lanzado en `.setup()`), con un
+bucle que **sondea cada 1 segundo** (`open-questions.md` J.34) en vez de dormir el intervalo
+completo del próximo trabajo: en cada sondeo comprueba la señal de parada, si está pausado, y para
+cada uno de los cuatro trabajos si ya toca ejecutarse (`collectors::planificador::trabajos_debidos`,
+función pura, probada con tiempo inyectado). Cada trabajo debido se ejecuta de forma independiente
+—el fallo de uno no bloquea a los demás (`open-questions.md` J.39)— y el post-proceso común
+(notificaciones, `alerts:changed`, `metrics:updated`, `inventory:changed`, `source:degraded`, icono
+de bandeja) se comparte con `refresh_now` a través de `post_procesar_ciclo`. Todos los colectores son
+E/S síncrona (procesos, SQLite, FFI de Windows), nunca futuros, así que no hace falta ningún runtime
+asíncrono nuevo: `tauri::async_runtime::spawn_blocking` ya viene con Tauri, cero dependencias nuevas.
+El apagado limpio pasa por `RunEvent::Exit`/`ExitRequested` (`lib.rs`, vía `.build().run(|_,event|
+...)` en vez de `.run(...)` directo), que marca un `Arc<AtomicBool>` en `AppState` comprobado en
+cada sondeo — un único punto de parada, sea cual sea la vía de salida real.
+
+#### Alternativas descartadas
+
+- **Un temporizador (`tokio::time::interval` o similar) por trabajo**: exigiría añadir `tokio` como
+  dependencia directa (hoy solo llega transitivamente vía Tauri, y no para Windows) y sincronizar
+  cuatro relojes independientes contra pausa, batería y ajustes que cambian en caliente —más
+  complejidad para el mismo resultado que un sondeo de 1 s ya da con cuatro comparaciones de
+  `Instant`.
+- **Interceptar cada `app.exit(0)` por separado** para señalizar la parada: descartado porque hay
+  al menos dos puntos de salida (cierre real de ventana, "Salir" de la bandeja) y cualquier futuro
+  tercero se olvidaría con facilidad; `RunEvent::Exit`/`ExitRequested` es el único punto que Tauri
+  garantiza que se dispara siempre, venga de donde venga la salida.
+
+#### Consecuencias
+
+- La aplicación monitoriza de verdad sin intervención manual (T022 queda satisfecho además "gratis":
+  `AppState.paused` nunca se persiste, así que todo arranque empieza activo).
+- `SourceHealth` pasa de estar sin tipar (`status: String`) a un enum `SourceStatus` real
+  (`ok`/`partial`/`unsupported`/`timeout`/`error`), aunque esta historia solo produce `ok`/`timeout`/
+  `error` (`open-questions.md` J.37); `partial`/`unsupported` quedan para cuando alguien los pida.
+- `refresh_smart` se separó en `refresh_smart` (solo SMART) y `refresh_metricas_rendimiento` (solo
+  PDH): antes estaban acopladas porque nada las llamaba con cadencias distintas
+  (`open-questions.md` J.38).
+- `metrics:updated.historyWriteHalted` refleja un cálculo real de espacio libre, pero **no** detiene
+  todavía ninguna escritura (`open-questions.md` J.40): queda como seguimiento explícito, no como
+  olvido.
+
 
 ---
 
@@ -4315,9 +4545,9 @@ nadie mira.
 | I.2 | Notificaciones toast desde un proceso elevado | Si Windows las entrega con la app bajo `requireAdministrator` y AUMID registrado | Plan B: ventana propia con el componente `Toast`, anclada sobre la bandeja | `ABIERTO` — se mide al empaquetar: **US-060** |
 | I.3 | Codificación de la salida de `chkdsk` | ~~Pendiente~~ **Resuelto**: no es CP850 sino CP1252, y las herramientas de Windows no coinciden entre sí. Detección validada. Véase §Q | — | `DECIDIDO` |
 | I.4 | Acento del sistema con contraste bajo | ~~Pendiente~~ **Resuelto**: barrido del espacio sRGB completo. `accessibleAccent()` era correcto, pero faltaba el acento como texto. Véase §O | — | `DECIDIDO` |
-| I.5 | `smartctl` tras controladoras RAID y puentes USB | Qué cascada de `-d` (`sat`, `nvme`, `sntjmicron`, `csmi`) merece la pena antes de declarar "no compatible" | Se documenta la limitación por modelo de puente | `ABIERTO` — necesita hardware: **US-010** |
+| I.5 | `smartctl` tras controladoras RAID y puentes USB | Qué cascada de `-d` (`sat`, `nvme`, `sntjmicron`, `csmi`) merece la pena antes de declarar "no compatible" | Se documenta la limitación por modelo de puente | **Parcial**: el formato de ruta (`/dev/pdN`, no `\\.\PhysicalDriveN`) ya está medido y corregido contra 2 SATA + 2 NVMe reales, véase J.42. La cascada de modos para puentes USB/RAID exóticos sigue `ABIERTO` — necesita ese hardware concreto: **US-010** |
 | I.6 | Instancia única y ACL de `ProgramData` | ~~Pendiente~~ **Resuelto**: eran dos problemas. La instancia única exige comunicar procesos, no solo detectarlos (ADR-025). Y `ProgramData` **no** restringe la escritura a administradores: un usuario sin privilegios se apropia de la carpeta pre-creándola (ADR-026). Véase §R | — | `DECIDIDO` |
-| I.7 | Rendimiento de la interfaz con 20 discos y 5.000 eventos | Que la lista virtualizada y el panel aguantan sin bloqueo perceptible | Se recorta la densidad del panel o se pagina | `ABIERTO` — necesita la lista virtualizada: **US-021** |
+| I.7 | Rendimiento de la interfaz con 20 discos y 5.000 eventos | ~~Pendiente~~ **Resuelto**: medido con Playwright + `PerformanceObserver` de tareas largas, aislando el coste fijo de la primera navegación del coste real de la interacción. Cero tareas ≥50 ms en ambos escenarios (desplazar 5.000 eventos, recibir 20 discos en caliente). Véase J.26 | — | `DECIDIDO` |
 
 ---
 
@@ -4340,14 +4570,14 @@ asunción del programador.
 | J.10 | Eventos en la navegación | Sección propia en la `Sidebar`, con filtro preaplicado al entrar desde el detalle de un disco |
 | J.11 | Plurales en i18n | Función `tp()` con `Intl.PluralRules`; claves `<clave>.one` / `<clave>.other` |
 | J.12 | Persistencia de tema e idioma | `theme.set()` e `i18n.set()` devuelven la clave a guardar, pero **no** persisten: el llamante debe invocar `set_setting`. Es fácil de olvidar; conviene un envoltorio que lo haga |
-| J.16 | Qué reglas de `alert-rules.md` §2 entran en el primer motor de alertas | Solo las que evalúan datos de `smartctl` ya persistidos (§3, sin colector de eventos/capacidad/estado de recopilador): `smart.health.failed`, `nvme.critical_warning`, `smart.media_errors`, `smart.error_log`, `smart.spare_below_threshold`, `smart.wear_high`, `temp.above_configured_warn/crit` (8 reglas; ampliada desde la lista original al conectar el motor con datos reales — T051 — porque `error_log_entries_total` ya lo produce el parser y `motor::evaluar_error_log` ya estaba probado, sin motivo real para dejarlo fuera). Quedan explícitamente fuera —no implementadas a medias, no simuladas— las que dependen de: registro de eventos (`events.*`, `device.removed_unexpected`, `inventory.duplicate_id`: Historia 4), capacidad de volumen (`capacity.*`: Historia 3), límite del fabricante (`temp.above_vendor_limit/critical`: requiere parsear umbrales de atributo SMART, no implementado), fallo de consulta (`smart.unreadable`) y estado del recopilador (`collector.stalled`): ambos necesitan el seguimiento de estado por fuente de T020/T021, que sigue pendiente. Provisional hasta que existan esos colectores (spec 001-monitor-discos-windows, T046) |
+| J.16 | Qué reglas de `alert-rules.md` §2 entran en el primer motor de alertas | Solo las que evalúan datos de `smartctl` ya persistidos (§3, sin colector de eventos/capacidad/estado de recopilador): `smart.health.failed`, `nvme.critical_warning`, `smart.media_errors`, `smart.error_log`, `smart.spare_below_threshold`, `smart.wear_high`, `temp.above_configured_warn/crit` (8 reglas; ampliada desde la lista original al conectar el motor con datos reales — T051 — porque `error_log_entries_total` ya lo produce el parser y `motor::evaluar_error_log` ya estaba probado, sin motivo real para dejarlo fuera). Quedan explícitamente fuera —no implementadas a medias, no simuladas— las que dependen de: registro de eventos (`events.*`, `device.removed_unexpected`, `inventory.duplicate_id`: Historia 4), capacidad de volumen (`capacity.*`: Historia 3), límite del fabricante (`temp.above_vendor_limit/critical`: requiere parsear umbrales de atributo SMART, no implementado), fallo de consulta (`smart.unreadable`) y estado del recopilador (`collector.stalled`): ambos necesitaban el seguimiento de estado por fuente que T020/T021 aportaban. **Actualizado tras T020/T021**: ese seguimiento ya existe (`SourceHealth`/`source:degraded`, `open-questions.md` J.37), pero todavía no hay ninguna regla de `alert-rules.md` que lo consuma para producir `smart.unreadable`/`collector.stalled` — sigue siendo trabajo de una historia de alertas futura, ya no de recopilación. Provisional hasta que exista esa regla (spec 001-monitor-discos-windows, T046) |
 | J.17 | Cómo se resuelven `smart.media_errors` y `smart.error_log`, que según `alert-rules.md` resuelven "sin aumento durante 24 h" | **No implementado.** Esa resolución es temporal (tiempo transcurrido sin incremento), no de N ciclos consecutivos sobre el valor como el resto de la histéresis de `motor.rs`, y requeriría persistir cuándo fue el último incremento por grupo — no existe ese seguimiento. Ambas reglas quedan **activas hasta archivarse a mano** una vez creadas, igual que `smart.wear_high` (que sí documenta ese comportamiento como definitivo; estas dos no deberían quedarse así para siempre). Pendiente de una vía real: bien un campo temporal nuevo en `alert_groups`, bien un barrido periódico que compare `last_occurrence_at_utc` contra la ventana de 24 h (spec 001-monitor-discos-windows, T051) |
 | J.18 | Dónde se conecta la evaluación del motor con los datos reales | En `alerts::evaluar_smart(conn, device_id, ahora_utc)`, llamado desde `commands::refresh_smart` justo tras `persist_smart_reading` para cada dispositivo — un fallo al evaluar alertas se registra y no interrumpe el resto del ciclo (mismo criterio SC-008 que ya aplicaba a la propia lectura SMART). Sin esta llamada el motor nunca produce ningún `alert_group` en la aplicación real, por probado que esté en aislamiento; se descubrió al construir la bandeja del sistema (T052), cuando no había ninguna alerta real que mostrarle (spec 001-monitor-discos-windows, T051) |
-| J.19 | Cuándo se recalcula el color del icono de la bandeja, y qué hace el botón de cierre | El color (`domain::salud::tray_state`, espejo exacto de `trayState()` en `health.ts`) se recalcula en los puntos de sincronización existentes: arranque, `refresh_now`, las seis acciones sobre alertas y pausar/reanudar. **No** hay un ciclo real cada 30 s: el planificador en segundo plano (T020), la emisión de eventos (T021) y la reanudación automática al arrancar (T022) siguen sin implementar, así que el icono puede quedarse desactualizado entre sincronizaciones hasta que existan. El icono en sí se genera en memoria (RGBA) con los mismos `--sdm-{ok,warn,crit,unknown}` de tema claro, sin fichero `.ico` nuevo — `docs/decisions.md` (línea 102) ya señala systray como pantalla sin revisión visual. El botón de cierre (`X`) minimiza siempre a la bandeja, sin preguntar: la especificación (§3) pide "pregunta si debe minimizarse o salir y permite recordar la decisión", pero ese diálogo (con su propio componente, claves i18n y revisión de `ui-design.md` §8) no se ha construido; minimizar sin preguntar es el lado seguro de esa pregunta sin responder — nunca detiene la monitorización por sorpresa (spec 001-monitor-discos-windows, T052) |
+| J.19 | Cuándo se recalcula el color del icono de la bandeja, y qué hace el botón de cierre | El color (`domain::salud::tray_state`, espejo exacto de `trayState()` en `health.ts`) se recalcula en los puntos de sincronización existentes: arranque, `refresh_now`, las seis acciones sobre alertas y pausar/reanudar. **Actualizado tras T020/T021/T022**: ya hay un ciclo real (el planificador en segundo plano sondea cada 1 s y ejecuta cada trabajo según su propia cadencia, `open-questions.md` J.34), así que el icono se recalcula también al cerrar cada ciclo de recopilación, no solo en los puntos de sincronización manuales de antes. El icono en sí se genera en memoria (RGBA) con los mismos `--sdm-{ok,warn,crit,unknown}` de tema claro, sin fichero `.ico` nuevo — `docs/decisions.md` (línea 102) ya señala systray como pantalla sin revisión visual. **Actualizado en T099**: el botón de cierre (`X`) ya lee `lifecycle.close_action` de `settings` en cada cierre (no solo al arrancar, porque Ajustes puede cambiarlo mientras la aplicación sigue abierta) y minimiza o sale de verdad según lo que diga; sin ninguna clave guardada, sigue minimizando — el lado seguro ya razonado aquí. Lo que **no** se construyó, porque ninguna tarea de la Historia 7 lo pedía explícitamente: un diálogo emergente la primera vez que se cierra, preguntando "¿minimizar o salir?" con una casilla de "recordar". La especificación (§3) lo sugiere ("pregunta... y permite recordar la decisión"), pero `platform::ventana.rs` es un fichero de backend, no de interfaz, y añadir ese diálogo habría exigido un evento nuevo (`docs/ui-contract.md` §4 no tiene ninguno para esto) y un componente nuevo fuera del catálogo cerrado — la vía elegida en su lugar es que la propia pantalla de Ajustes (T100) exponga `lifecycle.close_action` como una preferencia normal, sin ceremonia de primer cierre: cumple igual "se puede elegir... y cambiar la decisión" (US-072) sin inventar un patrón de interfaz nuevo a mitad de una historia sobre el backend de ajustes (spec 001-monitor-discos-windows, T052/T099) |
 | J.20 | Con qué se implementó el toast nativo (T053), y cómo se decide cuándo notificar | **`tauri-plugin-notification` 2.0.0** (oficial del equipo de Tauri, mismo criterio que `tauri-plugin-single-instance`; usa WinRT en Windows). Se llama solo desde Rust (`NotificationExt`), nunca desde el webview, así que no necesita permiso de capacidades. Ajustado `rust-version` de `src-tauri/Cargo.toml` de `1.77` a `1.77.2` porque es el mínimo que declara el propio plugin. La decisión de notificar vive en `alerts::notificaciones` (no en `agrupacion`, que lo deja explícito en su cabecera): un episodio nuevo, una recaída o un escalado **siempre** notifican; una ocurrencia repetida respeta el cooldown por regla de `alert-rules.md` §2 (de "ninguno" en `smart.health.failed` a "7 días" en `smart.wear_high`); un grupo silenciado (`muted_until`) nunca notifica, silencio y color son cosas distintas (`ciclo.rs`). El cooldown se guarda en `AppState.notified_at` (id de grupo → instante), **en memoria, sin persistir** — igual que `paused`: perderlo al reiniciar puede como mucho volver a notificar algo ya visto, nunca dejar de notificar algo nuevo. **R1 sigue sin medirse**: si el toast llega de verdad bajo `requireAdministrator` con el identificador de aplicación registrado solo puede comprobarse al empaquetar (`research.md` R1); la alternativa ya decidida (ventana propia con `Toast`) no se ha construido, porque no tiene sentido hasta que R1 se mida y falle (spec 001-monitor-discos-windows, T053) |
 | J.21 | Por qué la cronología de un grupo recién creado aparecía vacía | Bug real, no una regla nueva: `repo_alertas::create_group` solo escribía en `alert_groups`, nunca en `alert_occurrences`; `reopen_as_new_cycle` (recaída) tampoco. La primera ocurrencia de cada episodio —y la primera del ciclo nuevo tras una recaída— no tenían fila propia. Corregido: ambas funciones insertan ahora su fila en la misma transacción, y `reopen_as_new_cycle` gana un parámetro `value_real` para poder escribirla. `get_alert_detail_impl` pasó de fabricar una única ocurrencia sintética a partir del grupo a consultar `repo_alertas::list_occurrences` de verdad. Encontrado al construir la pantalla de alertas (T054), al intentar mostrar una cronología que no tenía nada real que mostrar (spec 001-monitor-discos-windows, T054) |
 | J.22 | Cómo se implementó el colector de capacidad de volumen (T059), y por qué `DiskSummary.volumes` estaba siempre vacío | **Bug preexistente encontrado, no de esta tarea**: `VolumeSummary.drive_letters`/`DiskSummary.volumes` estaban declarados en el DTO pero nada los rellenaba nunca — `enrich_with_smart_data` fijaba `volumes: vec![]` a secas. Corregido con `build_volume_summaries()`, que lee `repo_inventario::volumes_for_device` + `get_volume` sin condicionarlo a que el disco tenga SMART (un disco sin SMART puede tener volúmenes). El colector en sí (`collectors::capacidad`) hace un único `Get-Partition \| Get-Volume` por PowerShell —mismo patrón que `windows_storage.rs`— porque `Get-Partition` ya sabe el `DiskNumber`, evitando correlacionar dos consultas por letra de unidad (frágil: la letra puede faltar). El enlace disco↔volumen usa esa misma numeración efímera de Windows, capturada en la misma pasada de `reconciliar_inventario` en que ya se conoce para los discos: confianza `Exact` si coincide con un dispositivo reconciliado, `Unknown` si no. Un volumen sin `UniqueId` se omite en vez de usar la letra como clave, que es justo lo inestable (spec 001-monitor-discos-windows, T059) |
-| J.23 | Cómo se implementó el colector de contadores de rendimiento (T058), y un hallazgo medido sobre Windows real | Enlace FFI directo a `pdh.dll` (mismo criterio que `platform::locale.rs` con `kernel32`: sin añadir el crate `windows` completo por cinco funciones estables). **Medido en un Windows real en español**: los nombres de objeto y contador de PDH están **localizados** (`PhysicalDisk` = "Disco físico", `% Idle Time` = "% de tiempo inactivo"); `PdhAddCounterW`/`PdhExpandWildCardPathW` con una ruta en inglés fallan con `PDH_CSTATUS_NO_OBJECT` fuera de un Windows en inglés — se comprobó primero con `Get-Counter` (falla con el nombre inglés, funciona con el español) y confirmó el diagnóstico. Solución: **`PdhAddEnglishCounterW`**, que traduce el nombre **y** resuelve el comodín de instancia (`\PhysicalDisk(0 *)\...`) en la misma llamada, sin paso de expansión aparte — probado end-to-end contra dos discos físicos reales de esta máquina, con valores de actividad y latencia coherentes con su carga real en el momento de la medición. Una tasa (bytes/s, sec/operación) exige dos muestras separadas en el tiempo: se recoge dos veces con 1 s de espera entre medias, una sola vez para las cinco fuentes (no cinco esperas), y se cierra la consulta —autónoma, no persistente entre ciclos, porque el planificador en segundo plano (T020) todavía no existe para mantenerla abierta entre ciclos de 30 s reales; mismo hueco que documentan J.18/J.19 (spec 001-monitor-discos-windows, T058) |
+| J.23 | Cómo se implementó el colector de contadores de rendimiento (T058), y un hallazgo medido sobre Windows real | Enlace FFI directo a `pdh.dll` (mismo criterio que `platform::locale.rs` con `kernel32`: sin añadir el crate `windows` completo por cinco funciones estables). **Medido en un Windows real en español**: los nombres de objeto y contador de PDH están **localizados** (`PhysicalDisk` = "Disco físico", `% Idle Time` = "% de tiempo inactivo"); `PdhAddCounterW`/`PdhExpandWildCardPathW` con una ruta en inglés fallan con `PDH_CSTATUS_NO_OBJECT` fuera de un Windows en inglés — se comprobó primero con `Get-Counter` (falla con el nombre inglés, funciona con el español) y confirmó el diagnóstico. Solución: **`PdhAddEnglishCounterW`**, que traduce el nombre **y** resuelve el comodín de instancia (`\PhysicalDisk(0 *)\...`) en la misma llamada, sin paso de expansión aparte — probado end-to-end contra dos discos físicos reales de esta máquina, con valores de actividad y latencia coherentes con su carga real en el momento de la medición. Una tasa (bytes/s, sec/operación) exige dos muestras separadas en el tiempo: se recoge dos veces con 1 s de espera entre medias, una sola vez para las cinco fuentes (no cinco esperas), y se cierra la consulta —autónoma, no persistente entre ciclos. **Actualizado tras T020**: el planificador en segundo plano ya existe y llama a esta función una vez por ciclo de `METRICAS_RAPIDAS` debido, pero sigue abriendo y cerrando su propia consulta PDH en cada llamada en vez de mantenerla abierta entre ciclos reales — eso sigue siendo una optimización pendiente, no relacionada con si el bucle existe (spec 001-monitor-discos-windows, T058) |
 | J.24 | Qué hash calcula `system_events.dedup_hash` (T067) | No especificado en ningún documento más allá de "hash de deduplicación" (`data-model.md` §2). La identidad real de un evento ya es `UNIQUE(channel, record_id)`, así que este campo no decide duplicados por sí solo. Se calcula como `sha256(provider \| event_id \| occurred_at_utc \| message)`: una huella de contenido pensada para el trabajo futuro de correlación por ventana temporal de `alert-rules.md` §3.5 (un mismo suceso físico produce varios eventos correlacionados en 60 s), no usada todavía por ningún módulo de esta sesión. Provisional hasta que la correlación por ventana (§3.5) se implemente y decida si necesita este campo o algo distinto |
 | J.25 | Confianza de la correlación evento→disco por número de disco (T069) según de dónde salga el número | `docs/alert-rules.md` §3.6 exige resolver contra el inventario, nunca por coincidencia textual pura, pero no distingue confianza entre las formas de identificador que "conviven" en un mismo mensaje. Decisión: **`exact`** cuando el número de disco sale de una ruta de dispositivo estructurada (`\Device\HarddiskN\...`, generada por el propio sistema en el XML crudo del evento) y coincide con un disco del inventario; **`inferred`** cuando sale del texto humano ya formateado ("disco N"/"disk N"), porque ese texto está traducido y depende de la plantilla de mensaje del proveedor, una capa menos directa que la ruta de dispositivo. `\Device\HarddiskVolumeNN` y los nombres PDO (`\Device\0003d2a5`) quedan sin resolver (`unknown`): el colector de capacidad (T059) no captura ese identificador por volumen todavía, y añadirlo es trabajo del propio colector, no de la correlación. El número que sigue a `DR` en `\Device\HarddiskN\DRxx` **nunca** se confunde con el número de disco (`alert-rules.md` §3.6, advertencia explícita) (spec 001-monitor-discos-windows, T069) |
 | J.26 | Medición de R3 (T074): 20 discos y 5.000 eventos frente al umbral de 50 ms de SC-007/SC-009 | **Medido con el plano de interfaz** (Playwright + IPC propio + `PerformanceObserver` de "long tasks", que solo informa de tareas ≥50 ms). Hallazgo real durante la medición: la **primera navegación** de la prueba produce 70-120 ms de tarea larga **incluso con 0 o 2 discos** — coste fijo de evaluar el paquete en un Chromium recién arrancado, no relacionado con la cantidad de datos. Confundir ese coste con el de renderizar 20 discos habría hecho fallar la prueba por una razón ajena a SC-007 (que habla de seguir respondiendo *durante* el trabajo, no del arranque en sí). Corregido separando ambos: cada prueba dejar pasar la carga inicial y **luego** reinicia el observador, midiendo solo la interacción real — desplazar los 5.000 eventos con `VirtualList`, o recibir 20 discos en caliente vía un `metrics:updated` simulado (`ipc-falso.ts` ganó `emitirEvento()` para poder disparar ese evento desde la prueba). Ambos escenarios pasan limpios, cero tareas largas. De camino se virtualizó también el panel general (T064 ya había virtualizado la lista de eventos): la rejilla `DiskCard` pasó de pintar todas las tarjetas de una vez a virtualizarse **por fila** con el mismo `VirtualList` genérico, agrupando tantas tarjetas por fila como columnas quepan en el ancho disponible — la primera medición (antes de aislar el coste fijo de navegación) señaló la rejilla sin virtualizar como sospechosa, y aunque el diagnóstico final mostró que el problema real estaba en la metodología de medición y no en la rejilla, la virtualización quedó aplicada por ser una mejora real y ya verificada, no se revirtió (spec 001-monitor-discos-windows, T074) |
@@ -4357,6 +4587,23 @@ asunción del programador.
 | J.13 | Umbrales de espacio libre para detener la escritura de historial | 1 GB para el aviso y 256 MB para la parada, sobre el volumen donde reside el historial (`storage.free_space_warn_bytes` / `storage.free_space_halt_bytes`, spec 001-monitor-discos-windows). Valores de partida razonables para Windows, **no medidos**; confirmar al implementar la retención (T001, T017-T018) |
 | J.14 | Cómo se representa la agregación de `metric_samples` | `docs/data-model.md` §4 exige conservar mínimo, máximo, promedio, primera y última lectura, pero el esquema solo tenía una columna de valor por fila. Se añade la tabla `metric_aggregates` (migración 0002) con `value_min/max/avg/first/last`, `bucket_start_utc`/`bucket_end_utc` y `resolution`. Los "tres periodos de retención" de US-071 son las tres resoluciones ya definidas (`raw`, `five_minutes`, `hourly`): `retention.raw_days` (7), `retention.five_minutes_days` (90), `retention.hourly_days` (730); pasado el tercero se purga. `value_last - value_first` da el incremento del bucket para contadores acumulativos, sin columna aparte. Valores por defecto, **no medidos** (spec 001-monitor-discos-windows, T015) |
 | J.29 | Cómo conectar los cinco comandos de pruebas (T083): identificadores, exclusión mutua, umbral térmico y columnas sin sitio propio en `test_runs` | **Identificador de `test_run` y sufijo aleatorio del archivo del benchmark** (J.27): `format!("{:x}", OffsetDateTime::now_utc().unix_timestamp_nanos())` — nanosegundos UTC en hexadecimal, sin añadir una dependencia de aleatoriedad (mismo criterio que el LCG de T079); la unicidad real la sigue dando `rutas::confirmar_no_sobrescribe`, no la improbabilidad de colisión. **Exclusión mutua** (`test.busy`, ya previsto en `ui-contract.md` §1: "ya hay una prueba en ese disco"): se aplica por disco físico subyacente vía `device_volume_links`, no solo por el id exacto recibido — antes de arrancar cualquier prueba se comprueba que ni el objetivo ni ningún otro volumen/dispositivo del mismo disco tenga ya un `test_run` en `pending`/`running`/`cancelling`. Esto cubre a la vez la regla genérica del contrato y la regla explícita de `product-specification.md` §6 ("el autotest no se permite simultáneamente con el benchmark de la aplicación"), sin tabla de exclusión aparte. **Umbral térmico "configurado"** de `tests::guardia::limite_critico_efectivo` cuando el fabricante no lo declara (hoy siempre: `vendor_temp_critical_c` no está implementado, J.15/J.16): se reutiliza el mismo valor que ya usa el motor de alertas para `temp.above_configured_crit`, **80 °C** (`alert-rules.md`, `alerts::motor::evaluar_temperatura_configurada_crit`) — mismo concepto normativo, no un valor nuevo. **Columnas sin sitio propio**: `test_runs` (migración 0001) no tiene columna para `command`, `output` ni `outputEncoding` (`ui-contract.md` §3.6); se guardan dentro de `parameters_json` (el comando, fijado al crear la fila) y `result_summary_json` (salida y codificación, solo se conocen al terminar) en vez de abrir una migración nueva. `orphanPath` reutiliza la columna `temp_path` ya existente: mientras la prueba corre, o si el archivo no se pudo borrar al terminar, queda con la ruta; se limpia a `NULL` en cuanto el borrado tiene éxito. `volume.not_found` se añade a la tabla de códigos de `ui-contract.md` §1 en paralelo a `device.not_found`, que hasta ahora solo cubría `device_id`. **Límite conocido, no simulado**: `RazonParada::Space` (T079) solo es alcanzable como rechazo previo (`test.insufficient_space`) antes de crear la fila — `tests::benchmark::ejecutar` no comprueba espacio libre durante la ejecución (T079 solo implementó cancelación y guardia térmica), así que un agotamiento de espacio a mitad de prueba no se detecta hoy (spec 001-monitor-discos-windows, T083) |
+| J.30 | Contenido exacto de la exportación tabular/estructurada (T087): ningún documento fija las columnas o campos | **CSV y JSON son el volcado completo**, una fila/objeto por `(dispositivo, metric_key, marca de tiempo)`: `schemaVersion, deviceId, deviceLabel, metricKey, unit, resolution, timestampUtc, value`. Qué métricas incluir no es una lista fija: `repo_metricas::distinct_metric_keys` devuelve las que de verdad tengan dato del dispositivo en el rango (crudo o agregado), para no inventar columnas vacías ni olvidar una real. **Resolución por rango**, igual que ya hace `get_metric_series_impl` para las gráficas (crudo ≤24 h y dentro de los últimos 7 días; `five_minutes` ≤7 días; `hourly` con reserva a `five_minutes` ≤90 días; `hourly` más allá) — implementada de nuevo en `reporting/export.rs`, sin tocar la función existente de `commands/mod.rs`, para no arriesgar una regresión en la gráfica por una necesidad distinta (el `value` de una fila agregada es `value_avg` con reserva a `value_last`, igual que ya hace `leer_agregados_dispositivo`). **HTML es un resumen legible, no el mismo volcado**: identidad y salud actual del dispositivo más las alertas que se dispararon en el rango — la especificación solo exige que sea "legible e imprimible" (`product-specification.md` §9), no que reproduzca miles de filas; quien necesite el detalle completo tiene el CSV o el JSON. **Dato ausente**: `null` en JSON, cadena literal `"N/A"` en CSV — nunca vacío ni cero, mismo criterio que el resto de la aplicación. `deviceIds: null` en el comando significa todos los dispositivos monitorizados (no los excluidos). **Sin evento de progreso nuevo**: `docs/ui-contract.md` §4 no define uno para exportar, y el escenario de aceptación ("la aplicación sigue respondiendo y muestra progreso", Historia 6 §spec) queda cubierto por la propia naturaleza asíncrona del `invoke` (la interfaz no se bloquea) más un indicador indeterminado local mientras se espera la respuesta — no hace falta inventar `export:progress` para una operación que no tiene fases intermedias que reportar. **Las alertas del resumen HTML muestran `ruleKey` tal cual** (p. ej. `smart.wear_high`), no una frase humana: ADR-030 decidió que el backend nunca manda texto de alerta, solo la clave, y este HTML lo genera el propio backend sin acceso a los diccionarios de `$lib/i18n` — duplicar ahí una traducción sería una segunda copia sin mantener, exactamente lo que ADR-030 quiso evitar (spec 001-monitor-discos-windows, T087/T088) |
+| J.31 | Contenido y disposición del ZIP de diagnóstico (T090): ningún documento fija los ficheros que lleva dentro | **`smart_snapshots.raw_json_path`/`fields_json` están sin usar**: ningún colector escribe hoy el JSON crudo de `smartctl` a disco ni a la base (`insert_smart_snapshot` siempre los llama con `None`, T036). El ZIP no puede leer un archivo que no existe, así que **vuelve a consultar `smartctl` en el momento de generarlo** (`collectors::smartctl::query_device_json`, ya verificado contra hardware real esta sesión) para cada dispositivo con `smartctl_path` — un diagnóstico fresco, no uno reconstruido de una captura que nunca se guardó. **Disposición dentro del ZIP**: `manifest.json` (schemaVersion, generatedAtUtc, versión de la app, `anonymized`, `redactedFields`), `settings.json` (`repo_varios::list_settings`, todas las claves), `events.json` (`repo_varios::list_events` sin filtro, límite alto en vez de paginado: es un volcado, no una pantalla), `smart/<deviceId>.json` (o `smart/<deviceId>.error.txt` si la consulta falla — un fallo de un disco no debe tirar el paquete entero), `logs/<nombre-de-fichero>` (todo lo que haya en `platform::paths::log_dir()`, tal cual lo escribe `tracing_appender::rolling::daily`, FR-029c). **Cada entrada de texto pasa por el mismo `Anonimizador`** antes de escribirse — de ahí que la sustitución sea consistente en todo el paquete (US-051): el mismo número de serie se convierte en el mismo `<SERIE-N>` tanto en `smart/*.json` como en `logs/*` si apareciera ahí. `includeIdentifiers: true` construye un `Anonimizador::sin_anonimizar()`: nada se sustituye, y `redactedFields` viaja vacío en el manifiesto (spec 001-monitor-discos-windows, T090) |
+| J.32 | Forma completa de `Settings` (T095/T096): `ui-contract.md` §3.1 nombra `get_settings`/`set_setting`/`reset_settings` pero nunca escribe la interfaz — ningún documento reúne en un solo sitio todos los campos configurables que ya estaban dispersos (D.1, C.1, J.13, J.14) | Cuatro grupos, alineados con los cuatro valores de `reset_settings({scope})`: **`schedule`** (`metricsFastSeconds`/`smartFullSeconds`/`eventsSeconds`/`discoverySeconds`) reutiliza tal cual los límites ya codificados en `collectors::planificador::{METRICAS_RAPIDAS,SMART_COMPLETO,EVENTOS_WINDOWS,ALTAS_Y_BAJAS}` (D.1) — ese módulo ya decía en su propio comentario "esto lo hace `domain::ajustes`, no este módulo", así que no son límites nuevos, son los que ya existían sin consumidor. **`alerts`**: `tempConfiguredWarnC`/`tempConfiguredCritC` (por defecto 70/80, los mismos literales que hoy tiene hardcodeados `alerts::motor` para `temp.above_configured_warn/crit`; límites nuevos, no medidos: 40-95 °C para el aviso, el crítico entre el aviso y 100 °C) y los cinco campos de capacidad ya decididos en C.1/ADR-019 (`capacityWarnPercent` 10, `capacityCritPercent` 5, `capacityAbsoluteFloorMinCapacityBytes` 256 GiB, `capacityAbsoluteFloorWarnBytes` 20 GiB, `capacityAbsoluteFloorCritBytes` 10 GiB — los mismos valores que ya usa `capacityState()` en `src/lib/design/health.ts`, hoy con el suelo fijo en una constante en vez de leído de `settings`). **`retention`**: los tres periodos de J.14 (7/90/730 días, límites nuevos y razonables: crudo 1-30, cinco minutos 7-365, horario 90-1825) más `storage.free_space_warn_bytes`/`halt_bytes` de J.13 (1 GiB/256 MiB, sin límites de UI porque US-071 solo pide poder cambiar los tres periodos, no estos dos bytes). **Fuera de estos tres grupos** (solo se restauran con `scope: "all"`): `lifecycle.closeAction` (`"minimize"` por defecto, `docs/open-questions.md` J.19 seguía abierta y este valor la cierra: minimizar es "el lado seguro" ya razonado en `lib.rs`) y `closeActionRemembered`, `notifications.soundEnabled` (`false` de fábrica, US-072), `logging.verbose` (ya nombrada en `data-model.md`). **Apariencia no vive en `Settings`**: `theme`/`language`/`useSystemAccent` siguen teniendo su propio `get_appearance_settings()` ya construido; se persisten con el mismo `set_setting(key, value)` genérico (`theme.svelte.ts`/`i18n.svelte.ts` ya devuelven `{key: "settings.appearance.theme"/"settings.appearance.language", value}` a la espera de un consumidor, que es exactamente lo que T097 les da). **Límite conocido, no ampliado por esta historia**: ni `domain::espacio` (guardia de espacio del historial) ni `capacityState()` ni ninguna regla `capacity.low/critical` en el motor de alertas leen hoy estos valores de `settings` en un ciclo real — no existe todavía el bucle de recopilación en producción que los invoque (ninguna tarea de esta historia lo pide); esta historia deja el valor correctamente guardado y validado, listo para cuando ese consumidor exista, igual que ya pasaba con `logging.verbose` antes de FR-029a (spec 001-monitor-discos-windows, T095/T096) |
+| J.33 | Comprobación de "cero peticiones salientes" (T107, SC-014, `quickstart.md` eslabón 10) — el guion exige "instalar en un equipo sin conexión" y "verificar con un monitor de red", que requiere un instalador real construido, instalado y en ejecución bajo un monitor de paquetes: no ejecutado esta sesión | **Auditoría estática, no medición en vivo** — mismo trato honesto que J.28 (autotest SMART): `src-tauri/Cargo.toml` no declara ningún cliente HTTP (`reqwest`/`hyper`/`ureq`) entre sus dependencias directas; `cargo tree --target x86_64-pc-windows-msvc -e normal` confirma que **ni siquiera aparecen como transitivas** en el árbol real de Windows — sí figuran en `Cargo.lock` (`reqwest`, `hyper`, `tokio`), pero por una dependencia opcional de `tauri` que el propio manifiesto de `tauri` acota a `cfg(target_os = "android", ...apple...)`: nunca se compilan para Windows. Búsqueda en todo `src-tauri/src`: cero usos de `std::net`, `TcpStream`, `UdpSocket` o una URL `http(s)://` real (las únicas coincidencias son un espacio de nombres XML dentro de una fixture de evento de Windows capturada, y las propias aserciones de test que comprueban que el HTML exportado *no* contiene ninguna). En el frontend: cero `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource` en todo `src/`; `package.json` solo depende de `@tauri-apps/api`, `@tauri-apps/plugin-dialog` y `zod`, ninguno de red. La CSP de `tauri.conf.json` cierra en profundidad: `connect-src 'self' ipc: http://ipc.localhost`, sin ningún origen remoto permitido aunque algo lo intentara. **Pendiente de la medición real** que el guion pide: construir el instalador (`pnpm app:build`), instalarlo en una máquina sin red y confirmar con un monitor de paquetes (Wireshark o similar) que no sale ni un byte — requiere una acción invasiva (instalación elevada de un binario real en el sistema) que esta sesión no ha ejecutado sin autorización explícita (spec 001-monitor-discos-windows, T107) |
+| J.34 | Cadencia de sondeo del bucle en segundo plano (T020): ningún documento fija con qué frecuencia el hilo comprueba si algún trabajo ya toca | **1 segundo**, no el intervalo real de cada trabajo. Sondear con un período fijo corto (en vez de dormir el intervalo completo de la próxima tarea) es lo que permite que pausar, cambiar una frecuencia en Ajustes o cerrar la aplicación reaccionen con un retardo máximo de 1 s, en vez de hasta 1 hora (el máximo configurable de SMART completo). El coste de sondear cada segundo con cuatro comparaciones de `Instant` es insignificante frente al beneficio de reactividad; no hay medición que lo respalde porque no hay nada que medir — es un valor de diseño, no un dato empírico (spec 001-monitor-discos-windows, T020) |
+| J.35 | Qué dispara `inventory:changed` y qué lleva su campo `updated` (T021): el esquema Zod ya tiene `added`/`removed`/`updated`, pero `ui-contract.md` §4 solo documenta el disparador como "alta o retirada de disco o volumen" | **`updated` viaja siempre `[]`**. El contrato tal cual está escrito no pide detectar cambios de campo en un disco que sigue presente (alias, modelo, capacidades) como disparador de este evento — inventar un diff campo a campo sin que ninguna historia lo pida sería anticipar un requisito que no existe. Si en el futuro se necesita, es una decisión de una historia con su propio criterio de qué cuenta como "cambio relevante" (spec 001-monitor-discos-windows, T021) |
+| J.36 | Qué hacer cuando `GetSystemPowerStatus` o `GetDiskFreeSpaceExW` fallan (T020): ninguna de las dos syscalls está garantizada a tener éxito, y ningún documento dice qué asumir si fallan | **Batería**: `ACLineStatus` fuera de `{0, 1}` (incluido `255`, "desconocido", y cualquier error de la llamada) se trata como **red eléctrica** — es el lado que menos reduce la frecuencia de recopilación y menos sorprende si en realidad el equipo funciona con batería (peor caso: se recopila un poco más de lo estrictamente necesario, nunca menos de lo que hace falta para una alerta grave). **Espacio libre**: si `GetDiskFreeSpaceExW` falla, se trata como `EstadoEspacio::Normal` (no se detiene la escritura de historial) y se registra un `tracing::warn!`: un dato desconocido no equivale a "disco lleno", mismo principio que "no compatible ≠ averiado" aplicado aquí a un fallo de sistema en vez de a un disco (spec 001-monitor-discos-windows, T020) |
+| J.37 | Cómo se agrega `SourceHealth` por ciclo (T020/T021): `SourceStatus` tiene cinco valores (`ok`/`partial`/`unsupported`/`timeout`/`error`) pero ningún documento dice cuándo usar cada uno, ni con qué granularidad se mide (¿por disco?, ¿por colector?) | El propio struct `SourceHealth` es por **tipo de colector** (`source: MetricSource`, cuatro variantes), no por disco. Se agrega **por ciclo**: cada llamada a un colector externo (`smartctl::query_device_json`, `perf_counters::leer`, `windows_storage::list_physical_disks`/`list_volumes`) cuenta como un intento; al cerrar el ciclo se compara el total de intentos contra los que fallaron. **Alcance de esta implementación**: solo se distinguen `ok` (todos los intentos de ese colector tuvieron éxito) de `timeout`/`error` (al menos uno falló; `timeout` si el `AppError` resultante es `retryable`, `error` si no) — **`partial` y `unsupported` no se sintetizan todavía**: `partial` exigiría decidir un umbral de qué proporción de fallos ya cuenta como degradación parcial frente a total, que nadie ha pedido; `unsupported` exigiría saber que un colector no tiene ningún dispositivo elegible, que no es lo mismo que haber fallado. Si un colector no se invoca en absoluto durante un ciclo (cero dispositivos elegibles), su entrada en `source_health` se deja tal cual estaba, nunca se inventa un valor. `Filesystem` (la cuarta variante de `MetricSource`) no tiene todavía ningún colector que la produzca (no hay muestras `filesystem` en `persistence::repo_metricas`); se queda sin entrada hasta que exista. `source:degraded` solo se emite en el **flanco** de subida a `timeout`/`error` desde cualquier otro estado, nunca en cada ciclo que siga degradado (spec 001-monitor-discos-windows, T020/T021) |
+| J.38 | `refresh_smart` mezclaba SMART y contadores de rendimiento en un único bucle por disco (T058); el bucle en segundo plano necesita dos cadencias independientes (`SMART_COMPLETO` y `METRICAS_RAPIDAS`) | **Se separa en dos funciones**: `refresh_smart` (solo SMART, evalúa alertas) y `refresh_metricas_rendimiento` (solo PDH, sin alertas). Antes de esta historia estaban acopladas porque nada las llamaba con cadencias distintas — `refresh_now` las invocaba juntas una sola vez—; el bucle en segundo plano sí necesita invocarlas por separado (30 s frente a 5 min por defecto), así que mantenerlas juntas habría hecho que el SMART completo se ejecutara cada 30 s en vez de cada 5 min, vaciando de sentido `SMART_COMPLETO`. `refresh_now` pasa a llamar a las dos, una tras otra, para conservar exactamente su comportamiento manual de antes ("actualizar ahora" sigue refrescando ambas cosas de golpe) (spec 001-monitor-discos-windows, T020) |
+| J.39 | Cómo comparten lógica `refresh_now` (comando manual) y el bucle en segundo plano, sin que el fallo de un trabajo bloquee a los demás en el bucle | **Orquestación separada, post-proceso compartido**. `refresh_now` conserva su semántica de siempre (una operación falla y se aborta esa llamada entera, tal como ya esperan sus pruebas y el guion manual "actualizar ahora"). El bucle en segundo plano (`ejecutar_ciclo`) trata cada trabajo debido de forma independiente: si `AltasYBajas` falla, `EventosWindows`/`SmartCompleto`/`MetricasRapidas` igualmente debidos en el mismo sondeo se siguen ejecutando — son dominios de fallo distintos (un fallo de enumeración de discos no tiene por qué impedir una lectura SMART ya en curso de otro disco), y un bucle autónomo que se bloquea entero por un fallo ajeno sería peor que uno que registra el fallo y sigue. Ambas vías comparten la función `post_procesar_ciclo` para el post-proceso común (notificaciones, `alerts:changed`, `metrics:updated`, `inventory:changed`, `source:degraded`, icono de bandeja): es la parte que sí debe comportarse igual venga de donde venga, y compartirla es lo que evita que diverjan en silencio (spec 001-monitor-discos-windows, T020/T021) |
+| J.40 | `metrics:updated.historyWriteHalted` necesita un valor real de la guardia de espacio (T018, ya implementada mas nunca conectada); ¿se aprovecha también para *detener* la escritura, o solo para *informarla*? | **Solo para informarla, esta sesión**. Se calcula de verdad (`platform::energia::espacio_libre_bytes` sobre `%ProgramData%` + `domain::espacio::UmbralesEspacio` con los umbrales de `settings`), así que el campo no miente. **No se ha conectado a ningún punto de escritura** (`persist_smart_reading`, `persist_perf_reading`, `refresh_events`): `evaluar_smart` decide activación/histéresis releyendo `metric_samples` recién persistidas, así que saltarse la escritura sin más dejaría a las alertas sin la lectura que necesitan evaluar — contradiciendo FR-020a ("la vigilancia y las alertas en vivo no dejan de funcionar"). Distinguir qué parte de la escritura debe seguir (la que alimenta alertas) de cuál debe detenerse (el historial de tendencias a largo plazo) exige mirar con cuidado `repo_metricas`/`evaluar_smart`, y no es prudente improvisarlo dentro de esta historia ya grande. Queda como tarea explícita de seguimiento, no como olvido (spec 001-monitor-discos-windows, T020) |
+| J.41 | T111 (escalado 125/150/200 %) encontró que `ui-design.md` §4.0.bis (Sidebar a 56 px por debajo de 1180 px) nunca se implementó, y causaba recortes reales de texto ("Panel gene...", "No" en vez de "No disponible") — pero la norma pide "iconos" y ni el boceto aprobado ni el catálogo de componentes definen ninguno para las seis secciones | **Marcador circular con la inicial de cada sección** (P/A/E/P/I/A), como paso intermedio autorizado explícitamente por el usuario tras plantear la disyuntiva (mismo criterio que bloqueó el asistente inicial, T041, por el motivo contrario). No es iconografía nueva: reutiliza la tipografía y el `rounded-pill`/`bg-glass-3` ya existentes, con el nombre completo como `aria-label`/`title` del enlace — el texto oculto no deja de ser accesible. El pie de pausar/reanudar se oculta por completo bajo 1180 px: la misma acción sigue disponible desde el menú de la bandeja (`platform::bandeja`), así que no hay pérdida funcional, solo de acceso redundante. Verificado con capturas en las siete pantallas reales a 1024×560/1280×720/819×448/683×373/512×280 (`e2e/ui/escalado.spec.ts`); sustituir el marcador por iconos reales sigue abierto para cuando haya una revisión de diseño (spec 001-monitor-discos-windows, T111) |
+| J.42 | Con el planificador ya arrancando de verdad contra hardware real (T020), `smartctl` fallaba con "Unable to detect device type" en los cuatro modos de la cascada, en los cuatro discos físicos de esta máquina (2 SATA, 2 NVMe) — medido por primera vez, `open-questions.md` I.5 seguía sin datos de hardware real | **El formato de ruta era el equivocado, no un problema de compatibilidad de disco ni de elevación**. `windows_storage::list_physical_disks` construye `smartctl_device_path` como `\\.\PhysicalDriveN` (la ruta nativa de Windows para `CreateFileW`), pero el `smartctl.exe` redistribuido (compilación MinGW, `x86_64-w64-mingw32-w11-b26200`) espera su propia convención POSIX: `smartctl -h` lo documenta explícitamente (`smartctl -a /dev/pd3` → "Prints all information for disk on PhysicalDrive 3"). Verificado a mano contra los cuatro discos reales: `\\.\PhysicalDriveN` falla siempre ("Unable to detect device type" en autodetección, "Invalid argument" en cada modo de `-d` explícito, para SATA **y** NVMe por igual, elevado o no); `/dev/pdN` funciona a la primera en los cuatro, con `model_name` y atributos SMART reales. Corregido cambiando la construcción de la ruta en `windows_storage.rs` y su análisis inverso en `disk_number_from_smartctl_path` (`commands/mod.rs`, usado para los contadores de rendimiento PDH, que sí siguen tomando el número de disco de Windows, no la ruta de `smartctl`). Cierra la parte de I.5 que bloqueaba cualquier lectura SMART en absoluto; la cascada de modos para puentes USB/RAID exóticos sigue abierta tal como I.5 ya la planteaba, pero ahora al menos parte de una ruta que sí abre el dispositivo (spec 001-monitor-discos-windows, T058/US-010) |
+| J.43 | `docs/ui-design.md` ya exige "Movimiento: duration-base (220 ms) con ease-sdm... en... cambio de pantalla", pero ningún cambio de sección lo tenía — usuario lo notó al usar la aplicación de verdad por primera vez: "todo aparece de golpe". La norma dice cuánto dura y con qué curva, no qué efecto visual usar | **Entrada con desvanecimiento y una leve subida** (`opacity 0→1`, `translateY(4px)→0`), sin animación de salida — mismo criterio que ya usan `ConfirmDialog`/`Toast` (una sola animación de entrada vía `@keyframes` + `var(--sdm-duration-base)`/`var(--sdm-ease)`, nunca JS). Se dispara con `{#key}` en `AppShell.svelte`, con la clave siendo `page.url.pathname` (pasada desde `+layout.svelte`): cambia de sección → remonta el contenido → repite la animación; cambia solo un parámetro dentro de la misma pantalla (un filtro, una página del listado) → no remonta, no hay parpadeo innecesario. Una animación cruzada (fundido simultáneo de la pantalla saliente y la entrante) se descartó por ser más compleja sin que la norma la pida, y por arriesgar un parpadeo si ambas pantallas comparten elementos con el mismo punto de foco. `prefers-reduced-motion` la anula igual que a `sdm-dialog`/`sdm-toast`, sin código adicional: es la misma regla global de `tokens.css` que ya vigila `animation-duration` (spec 001-monitor-discos-windows) |
+| J.44 | J.19 ya dejaba a propósito sin construir el diálogo "¿minimizar o salir? [ ] recordar" de la primera vez que se cierra la ventana; usando la aplicación real, el usuario preguntó si el minimizado silencioso (sin aviso alguno) estaba bien — no lo estaba: la ventana desaparece sin ninguna señal de que sigue vigilando | **Aviso nativo, una sola vez por arranque del proceso**, no el diálogo con casilla de recordar que J.19 seguía dejando pendiente (eso sigue exigiendo un componente y un evento nuevos, fuera de alcance de un cambio pequeño). Al minimizar por primera vez en la sesión, se muestra una notificación de Windows ("SmartDisk Monitor sigue activo... clic para reabrir, o Salir para cerrarla del todo"), reusando el mismo `tauri-plugin-notification` que ya usan las alertas — nada nuevo que aprobar. Un `AtomicBool` en `AppState` (`aviso_bandeja_mostrado`, en memoria, no persistido: cada arranque nuevo vuelve a avisar una vez) evita repetirlo en cada minimizado posterior de la misma sesión, que sería ruido. El "Salir" del menú de la bandeja sigue sin pedir confirmación (una acción explícita de menú no la necesita) (spec 001-monitor-discos-windows, US-072/T099) |
+| J.45 | El usuario pidió que la aplicación "se comporte más como una aplicación nativa de Windows": nada de selección de texto libre ni del cursor de I en cualquier etiqueta, como en una página web — pero acotó él mismo el alcance: "el texto que tenga sentido seleccionar y copiar lo vamos a dejar disponible". Qué cuenta como "tiene sentido copiar" no estaba escrito en ningún sitio | **`user-select: none` global en `body`** (`tokens.css`), reactivado solo en el contenido que ya llevaba una marca semántica de "es un valor o un dato técnico": `.sdm-num` (cifras de métrica y contador), `.font-mono`/`code`/`pre` (comando literal de `ConfirmDialog`, salida de `CodeOutput`, detalle técnico de `EmptyState`, XML crudo de un evento) y los campos de formulario (`input`/`textarea`/`contenteditable`, que gestionan su propia selección nativa). No se tocó `cursor`: basta con `user-select: none` para que el navegador deje de mostrar el cursor de texto sobre lo no seleccionable (solo lo muestra sobre contenido seleccionable), sin arriesgar el cursor de mano de enlaces y botones. Se añadió además una clase de escape explícita, `.sdm-selectable`, para marcar caso a caso contenido identificador que no encaja en las categorías anteriores — usada en el modelo/alias del disco (`DiskCard.svelte`, cabecera de `disks/[id]/+page.svelte`), pensado para buscar el modelo exacto o compararlo con la documentación del fabricante. El número de serie no se muestra todavía en ninguna pantalla (`DeviceDetail.serialNumber` existe en el contrato pero no se renderiza); cuando se añada, debe llevar `.sdm-selectable` o una de las clases ya cubiertas |
+| J.46 | El usuario notó que el gráfico de temperatura en tiempo real del detalle de disco no indica si un valor (p. ej. 52 °C frente a 100 °C) es bueno o peligroso, y eligió explícitamente la opción más completa entre las dos planteadas: zonas de fondo coloreadas, no solo una línea de umbral | **Dos zonas de fondo** en `TimeSeriesChart.svelte` (`warnThreshold`/`critThreshold`, sustituyendo el `threshold`/`thresholdLabel` que existía pero nunca se conectó desde ninguna pantalla): crítica desde el techo del gráfico hasta el umbral crítico, aviso desde ahí hasta el umbral de aviso, con `--sdm-warn-soft`/`--sdm-crit-soft` (ya usados en otras insignias, nunca un color nuevo) y sin superponerse entre sí. Los umbrales se calculan una sola vez por pantalla (`temperatureThresholds()` en `design/health.ts`, nueva) con la misma precedencia que `alert-rules.md` documenta para `temp.above_vendor_limit`/`_critical`/`temp.above_configured_warn`/`_crit` — el límite del fabricante manda si `smartctl` lo declaró (hoy nunca lo declara, I.5 sigue abierta), si no el configurado en Ajustes — y se reutilizan tal cual para colorear también la cifra grande de `MetricCard` (antes sin color: mismo defecto que el usuario señaló, pero en el número, no solo en el gráfico), así las dos lecturas del mismo dato en la misma pantalla no pueden discrepar entre sí. Ver K.7: el motor de alertas real todavía no lee el umbral configurado, solo el literal 70/80 °C — discrepancia ya registrada, no corregida aquí |
 
 ---
 
@@ -4380,6 +4627,8 @@ Cerradas desde la última revisión:
 
 | # | Cuestión | Por qué no se ha decidido |
 |---|---|---|
+| K.6 | Cobertura de «resto de `src-tauri/src/`» (constitución §VIII exige 80 %; medido con `cargo llvm-cov` tras T108: 72,50 % de líneas — 5.664/7.811 excluyendo `domain/`+`alerts/`, que sí llegan al 94,48 %, muy por encima de su 90 %) | El déficit no es pereza de pruebas, es arquitectónico. Prácticamente todas las líneas sin cubrir de `commands/mod.rs` (69,43 % del fichero, el mayor de `src-tauri/src/`) son los envoltorios finos `#[tauri::command]` que reciben `State<AppState>` o `tauri::AppHandle` — no se puede construir ninguno de los dos dentro de un `#[test]` (`main.rs` lleva `test = false` y hereda el manifiesto de elevación; es una limitación ya documentada y aceptada en `docs/testing-strategy.md` para el patrón `xxx_impl`). El resto son los colectores ya aceptados como límite de hardware o de sistema operativo (`perf_counters.rs` 20 %, `event_log.rs` 39 %, `smartctl.rs` 42 %, `platform/bandeja.rs` 23 %, `platform/accent.rs` 47 %) y el arranque de Tauri (`lib.rs` 0 %, `platform/ventana.rs` 0 %, ninguno de los dos instanciable sin la aplicación real corriendo). Cada función `_impl` que sí es pura (validación, transformación, acceso a `rusqlite::Connection`) ya tiene prueba: esta sesión añadió cobertura a 20 de ellas (`set_setting_impl` 32 %→98 %, `resolve_target_name`, `nivel_resuelto`, `export_report_impl`, `set_device_alias_impl`, `persist_perf_reading` y una docena más de funciones auxiliares que estaban al 0 %). Cerrar el hueco restante exige una de dos cosas que no son mías de decidir en silencio: **(a)** enmendar el umbral del principio VIII para que «resto de `src-tauri/src/`» excluya explícitamente los envoltorios `#[tauri::command]` y el arranque de Tauri —es un cambio de la constitución, requiere autorización explícita—, o **(b)** aceptar que ese 80 % nunca se alcanzará con este patrón arquitectónico (el propio patrón `_impl` que hace testeable el resto del backend) y documentarlo como excepción permanente. Queda para que el usuario elija entre las dos vías (spec 001-monitor-discos-windows, T108). |
+| K.7 | Implementando J.46 (zonas de aviso/crítico en el gráfico de temperatura) se encontró que `alerts::motor::evaluar_temperatura_configurada_warn`/`_crit` llevan los umbrales **literales** (`70.0`/`80.0`/`67.0`/`75.0`) en vez de recibir `AlertSettings.temp_configured_warn_c`/`_crit_c` — los mismos campos que `settings.alerts` ya persiste y que la pantalla de Ajustes ya deja editar (`settings.alerts.tempWarn`/`tempCrit`). Cambiar el ajuste en la interfaz no tiene ningún efecto sobre qué alertas se disparan de verdad | **No se ha tocado el motor de alertas en esta tarea**: era un cambio de comportamiento de alertas ya en producción, fuera del alcance autorizado (una mejora de UX en el gráfico de temperatura), y la constitución exige tratar un cambio de comportamiento observable como historia propia, no colarlo dentro de otra. El frontend (`disks/[id]/+page.svelte`, `src/lib/design/health.ts::temperatureThresholds`) sí lee `settings.alerts.tempConfiguredWarnC/CritC` para las zonas del gráfico y el color de la cifra grande, que es el comportamiento **documentado y pretendido** (`alert-rules.md`, columna "configured"): así, en cuanto se corrija el motor, backend y frontend coincidirán sin tocar la interfaz de nuevo. Mientras tanto, un usuario que cambie el umbral en Ajustes verá el gráfico reflejar su cambio, pero las alertas reales seguirán disparándose a 70/80 °C — una discrepancia real que corregir es tarea aparte (pasar `configuradas: (f64, f64)` a `evaluar_temperatura_configurada_warn`/`_crit`, leído de `AlertSettings` en el punto de la llamada, con sus pruebas de umbral actualizadas) |
 
 ---
 
@@ -5743,6 +5992,32 @@ a:hover {
   letter-spacing: var(--sdm-tracking-tight);
 }
 
+/* ---- Comportamiento de aplicación nativa (docs/open-questions.md J.45) ----
+   Tauri renderiza con un motor web, pero la aplicación debe sentirse como un programa de
+   escritorio: sin selección de texto arrastrando el ratón por toda la pantalla. Desactivar
+   `user-select` basta para que tampoco aparezca el cursor de texto sobre una etiqueta o un botón
+   (el navegador solo lo muestra sobre contenido seleccionable), sin tocar `cursor` y sin arriesgar
+   el cursor de mano de enlaces y botones. Se reactiva solo donde tiene sentido copiar: cifras
+   (`.sdm-num`), contenido técnico o monoespaciado (`.font-mono`, `code`, `pre`), lo marcado
+   explícitamente (`.sdm-selectable`) y los campos de formulario, que gestionan su propia
+   selección. */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sdm-num,
+.font-mono,
+code,
+pre,
+.sdm-selectable,
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -6222,6 +6497,31 @@ export function trayState(input: {
   return worstState(input.monitoredStates);
 }
 
+/** Umbrales efectivos de temperatura para un disco (`docs/alert-rules.md`,
+ *  `temp.above_vendor_limit`/`_critical` y `temp.above_configured_warn`/`_crit`): el límite del
+ *  fabricante manda si existe; a falta de él, el configurado en `settings.alerts` es el respaldo. */
+export function temperatureThresholds(
+  vendorLimitC: number | null | undefined,
+  vendorCriticalC: number | null | undefined,
+  configuredWarnC: number,
+  configuredCritC: number
+): { warn: number; crit: number } {
+  return { warn: vendorLimitC ?? configuredWarnC, crit: vendorCriticalC ?? configuredCritC };
+}
+
+/** Estado de salud de una lectura frente a un par de umbrales aviso/crítico. Mismo criterio de
+ *  operadores que `alert-rules.md`: el aviso es estrictamente por encima, el crítico llega igual. */
+export function classifyAgainstThresholds(
+  value: number | null,
+  warn: number,
+  crit: number
+): HealthState {
+  if (value === null) return "unknown";
+  if (value >= crit) return "crit";
+  if (value > warn) return "warn";
+  return "ok";
+}
+
 /** Por debajo de esta capacidad, el suelo absoluto de espacio libre no se aplica: en un volumen
  *  pequeño, 20 GB libres pueden ser un tercio del disco y marcarlo en rojo sería ruido puro.
  *  Configurable en `settings` (`alerts.capacity.absoluteFloorMinCapacityBytes`). */
@@ -6687,6 +6987,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "common.notAvailable": "No disponible",
   "common.unsupported": "No compatible",
   "common.noData": "Sin datos",
+  "common.sourceError": "Fuente con error",
   "common.refresh": "Actualizar",
   "common.cancel": "Cancelar",
   "common.close": "Cerrar",
@@ -6757,6 +7058,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "chart.resolution.raw": "Muestras cada 30 s",
   "chart.resolution.five_minutes": "Promedios de 5 min",
   "chart.resolution.hourly": "Promedios horarios",
+  "chart.tempWarnLabel": "Aviso ≥ {value}",
+  "chart.tempCritLabel": "Crítico ≥ {value}",
   "alerts.occurrences.one": "Cronología de 1 ocurrencia",
   "alerts.occurrences.other": "Cronología de las {count} ocurrencias",
   "alerts.mutedUntil": "Silenciada hasta {value}",
@@ -6768,6 +7071,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "startup.failed": "No se pudo iniciar la supervisión",
   "error.deviceNotFound": "Este disco ya no existe en el inventario.",
   "error.storageCollectorFailed": "No se pudo leer el inventario de almacenamiento de Windows.",
+  "error.smartctlQueryFailed": "No se pudo consultar smartctl.",
+  "error.perfCountersFailed": "No se pudieron leer los contadores de rendimiento.",
   "error.dbLocked": "La base de datos está ocupada; se puede reintentar.",
   "error.dbQueryFailed": "No se pudo completar la operación con el historial guardado.",
   "error.unexpected": "Ha ocurrido un error inesperado al hablar con el servicio de supervisión.",
@@ -6807,6 +7112,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alert.fact.lastValue": "Último valor",
   "tray.open": "Abrir SmartDisk Monitor",
   "tray.exit": "Salir",
+  "tray.minimizedTitle": "SmartDisk Monitor sigue activo",
+  "tray.minimizedBody": "Se minimizó a la bandeja del sistema y sigue vigilando tus discos. Haz clic en el icono para volver a abrirla, o elige «Salir» para cerrarla del todo.",
   "alert.rule.smart.error_log.title": "Errores registrados en el disco",
   "alert.rule.smart.error_log.summary": "El registro de errores del disco ha aumentado.",
   "alerts.filter.active": "Activas",
@@ -6908,7 +7215,99 @@ Fichero de origen: `src/lib/i18n/es.json`
   "tests.stoppedReason.cancelled": "Cancelada por el usuario",
   "tests.stoppedReason.thermal": "Detenida en el límite térmico",
   "tests.stoppedReason.space": "Detenida por falta de espacio",
-  "tests.stoppedReason.error": "Detenida por un error"
+  "tests.stoppedReason.error": "Detenida por un error",
+  "error.volumeNotFound": "Este volumen ya no existe en el inventario.",
+  "error.testBusy": "Ya hay una prueba en curso sobre ese disco.",
+  "error.testUnsupported": "El dispositivo no admite esta prueba.",
+  "error.testInsufficientSpace": "No queda espacio suficiente tras la reserva de seguridad.",
+  "error.testIoFailed": "No se pudo preparar o ejecutar la prueba.",
+  "error.pathInvalid": "La ruta no es válida para esta operación.",
+  "error.exportWriteFailed": "No se pudo escribir el destino elegido.",
+  "reports.range.title": "Intervalo",
+  "reports.devices.title": "Discos incluidos",
+  "reports.includeSerials.label": "Incluir números de serie",
+  "reports.includeSerials.hint": "Los números de serie identifican el disco físico; se omiten por defecto.",
+  "reports.format.csv": "CSV",
+  "reports.format.csvDesc": "Volcado tabular completo: una fila por disco, métrica y marca de tiempo.",
+  "reports.format.json": "JSON",
+  "reports.format.jsonDesc": "El mismo volcado que el CSV, estructurado por disco y con sus muestras anidadas.",
+  "reports.format.html": "HTML",
+  "reports.format.htmlDesc": "Resumen legible e imprimible: identidad de cada disco y sus alertas en el intervalo.",
+  "reports.cta.export": "Exportar",
+  "reports.export.savedAt": "Guardado en {path}",
+  "reports.diagnostic.title": "Paquete de diagnóstico",
+  "reports.diagnostic.desc": "Configuración, eventos, capturas SMART y registro de actividad en un único ZIP, anonimizado por defecto.",
+  "reports.diagnostic.includeIdentifiers.label": "Incluir identificadores reales",
+  "reports.diagnostic.includeIdentifiers.hint": "Por defecto se sustituyen números de serie, nombre de equipo y usuario.",
+  "reports.diagnostic.includeIdentifiers.warning": "El paquete incluirá números de serie, nombre de equipo y usuario reales.",
+  "reports.diagnostic.zipFilter": "Archivo ZIP",
+  "reports.diagnostic.cta.preview": "Ver contenido",
+  "reports.diagnostic.cta.save": "Guardar paquete",
+  "reports.diagnostic.preview.total": "Tamaño total: {size}",
+  "reports.diagnostic.preview.redacted": "Se ha sustituido:",
+  "diagnostic.entry.manifest": "Manifiesto del paquete",
+  "diagnostic.entry.settings": "Ajustes",
+  "diagnostic.entry.events": "Eventos del sistema",
+  "diagnostic.entry.smart": "Captura SMART",
+  "diagnostic.entry.logs": "Registro de actividad",
+  "diagnostic.entry.other": "Otro contenido",
+  "diagnostic.redacted.serialNumber": "números de serie",
+  "diagnostic.redacted.computerName": "nombre de equipo",
+  "diagnostic.redacted.userPaths": "usuario y rutas personales",
+  "settings.appearance.title": "Apariencia",
+  "settings.appearance.theme.light": "Claro",
+  "settings.appearance.theme.dark": "Oscuro",
+  "settings.appearance.theme.system": "Sistema",
+  "settings.appearance.language.es": "Español",
+  "settings.appearance.language.en": "Inglés",
+  "settings.appearance.useSystemAccent.label": "Usar el acento de Windows",
+  "settings.appearance.useSystemAccent.hint": "Desactívalo para volver al azul del sistema de diseño.",
+  "settings.notifications.sound.label": "Sonido en las notificaciones",
+  "settings.notifications.sound.hint": "Desactivado de fábrica.",
+  "settings.cta.restoreDefaults": "Restaurar valores de fábrica",
+  "settings.schedule.title": "Frecuencias",
+  "settings.schedule.rangeHint": "Entre {min} y {max} s",
+  "settings.schedule.metricsFast": "Temperatura, actividad, capacidad y latencia",
+  "settings.schedule.smartFull": "SMART completo",
+  "settings.schedule.events": "Eventos de Windows",
+  "settings.schedule.discovery": "Detección de altas y bajas",
+  "settings.unit.seconds": "s",
+  "settings.unit.days": "días",
+  "settings.alerts.title": "Umbrales de alerta",
+  "settings.alerts.tempPrecedence": "Solo se aplican a discos sin límite de temperatura declarado por el fabricante; si el fabricante lo declara, ese valor manda.",
+  "settings.alerts.tempWarn": "Temperatura de aviso",
+  "settings.alerts.tempCrit": "Temperatura crítica",
+  "settings.alerts.capacityWarnPercent": "Capacidad libre de aviso",
+  "settings.alerts.capacityCritPercent": "Capacidad libre crítica",
+  "settings.retention.title": "Retención e historial",
+  "settings.retention.neverPurged": "Las alertas, sus ocurrencias críticas, los eventos vinculados y las ejecuciones de pruebas nunca se borran por retención.",
+  "settings.retention.raw": "Muestras crudas",
+  "settings.retention.fiveMinutes": "Agregados de 5 minutos",
+  "settings.retention.hourly": "Agregados horarios",
+  "settings.retention.freeSpaceGuard": "La escritura de historial avisa por debajo de {warn} y se detiene por debajo de {halt}, sin afectar a la monitorización ni a las alertas en vivo.",
+  "settings.logging.title": "Registro de actividad",
+  "settings.logging.verbose.label": "Modo detallado",
+  "settings.logging.verbose.hint": "Actívalo para reproducir un fallo con más información.",
+  "settings.logging.cta.openFolder": "Abrir carpeta del registro",
+  "settings.lifecycle.title": "Al cerrar la ventana",
+  "settings.lifecycle.closeAction.label": "Qué hace el botón de cerrar",
+  "settings.lifecycle.closeAction.minimize": "Minimizar a la bandeja",
+  "settings.lifecycle.closeAction.minimizeHint": "La aplicación sigue monitorizando en segundo plano.",
+  "settings.lifecycle.closeAction.exit": "Salir de la aplicación",
+  "settings.lifecycle.closeAction.exitHint": "Deja de monitorizar hasta que se vuelva a abrir.",
+  "settings.dangerZone.title": "Borrar todos los datos",
+  "settings.dangerZone.desc": "Elimina todo el historial guardado: inventario, métricas, alertas, eventos y ejecuciones de pruebas. La aplicación queda como recién instalada.",
+  "settings.dangerZone.confirmPhraseLabel": "Escribe «{phrase}» para confirmar",
+  "settings.dangerZone.cta": "Borrar todos los datos",
+  "settings.dangerZone.confirmTitle": "¿Borrar todos los datos?",
+  "settings.dangerZone.confirmBody": "Se eliminará todo el historial guardado por la aplicación: inventario de discos, métricas, alertas, eventos vinculados, ejecuciones de pruebas y preferencias. Esta acción no se puede deshacer.",
+  "settings.dangerZone.confirmImpact": "Al terminar, la aplicación queda como recién instalada y vuelve a mostrar el asistente inicial.",
+  "settings.dangerZone.confirmLabel": "Borrar todos los datos",
+  "settings.dangerZone.done": "Todos los datos se han eliminado.",
+  "nav.about": "Acerca de",
+  "about.title": "Acerca de",
+  "about.body": "De {author}. Licencia MIT. Incluye smartmontools (GPLv2) y la tipografía Instrument Sans (SIL OFL 1.1); consulta los avisos de terceros completos en el instalador. Repositorio: https://github.com/danimardo/smartdisk-monitor",
+  "about.cta.copy": "Copiar información"
 }
 ```
 
@@ -6924,6 +7323,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "common.notAvailable": "Not available",
   "common.unsupported": "Not supported",
   "common.noData": "No data",
+  "common.sourceError": "Source error",
   "common.refresh": "Refresh",
   "common.cancel": "Cancel",
   "common.close": "Close",
@@ -6994,6 +7394,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "chart.resolution.raw": "Samples every 30 s",
   "chart.resolution.five_minutes": "5-minute averages",
   "chart.resolution.hourly": "Hourly averages",
+  "chart.tempWarnLabel": "Warning ≥ {value}",
+  "chart.tempCritLabel": "Critical ≥ {value}",
   "alerts.occurrences.one": "Timeline of 1 occurrence",
   "alerts.occurrences.other": "Timeline of {count} occurrences",
   "alerts.mutedUntil": "Muted until {value}",
@@ -7005,6 +7407,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "startup.failed": "Monitoring could not start",
   "error.deviceNotFound": "This disk no longer exists in the inventory.",
   "error.storageCollectorFailed": "The Windows storage inventory could not be read.",
+  "error.smartctlQueryFailed": "smartctl could not be queried.",
+  "error.perfCountersFailed": "The performance counters could not be read.",
   "error.dbLocked": "The database is busy; retrying may work.",
   "error.dbQueryFailed": "The operation against the saved history could not be completed.",
   "error.unexpected": "An unexpected error occurred while talking to the monitoring service.",
@@ -7044,6 +7448,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alert.fact.lastValue": "Last value",
   "tray.open": "Open SmartDisk Monitor",
   "tray.exit": "Exit",
+  "tray.minimizedTitle": "SmartDisk Monitor is still running",
+  "tray.minimizedBody": "It minimized to the system tray and keeps watching your disks. Click the icon to reopen it, or choose \"Exit\" to close it completely.",
   "alert.rule.smart.error_log.title": "Errors logged on the disk",
   "alert.rule.smart.error_log.summary": "The disk's error log count has increased.",
   "alerts.filter.active": "Active",
@@ -7145,7 +7551,99 @@ Fichero de origen: `src/lib/i18n/en.json`
   "tests.stoppedReason.cancelled": "Cancelled by the user",
   "tests.stoppedReason.thermal": "Stopped at the thermal limit",
   "tests.stoppedReason.space": "Stopped for lack of space",
-  "tests.stoppedReason.error": "Stopped due to an error"
+  "tests.stoppedReason.error": "Stopped due to an error",
+  "error.volumeNotFound": "This volume no longer exists in the inventory.",
+  "error.testBusy": "There's already a test running on that disk.",
+  "error.testUnsupported": "The device doesn't support this test.",
+  "error.testInsufficientSpace": "There isn't enough space left after the safety reserve.",
+  "error.testIoFailed": "The test couldn't be prepared or run.",
+  "error.pathInvalid": "The path isn't valid for this operation.",
+  "error.exportWriteFailed": "The chosen destination couldn't be written.",
+  "reports.range.title": "Interval",
+  "reports.devices.title": "Disks included",
+  "reports.includeSerials.label": "Include serial numbers",
+  "reports.includeSerials.hint": "Serial numbers identify the physical disk; omitted by default.",
+  "reports.format.csv": "CSV",
+  "reports.format.csvDesc": "Full tabular dump: one row per disk, metric and timestamp.",
+  "reports.format.json": "JSON",
+  "reports.format.jsonDesc": "The same dump as the CSV, structured by disk with its samples nested.",
+  "reports.format.html": "HTML",
+  "reports.format.htmlDesc": "Readable, printable summary: each disk's identity and its alerts in the interval.",
+  "reports.cta.export": "Export",
+  "reports.export.savedAt": "Saved to {path}",
+  "reports.diagnostic.title": "Diagnostic package",
+  "reports.diagnostic.desc": "Settings, events, SMART captures and the activity log in a single ZIP, anonymized by default.",
+  "reports.diagnostic.includeIdentifiers.label": "Include real identifiers",
+  "reports.diagnostic.includeIdentifiers.hint": "By default, serial numbers, computer name and username are replaced.",
+  "reports.diagnostic.includeIdentifiers.warning": "The package will include real serial numbers, computer name and username.",
+  "reports.diagnostic.zipFilter": "ZIP archive",
+  "reports.diagnostic.cta.preview": "View contents",
+  "reports.diagnostic.cta.save": "Save package",
+  "reports.diagnostic.preview.total": "Total size: {size}",
+  "reports.diagnostic.preview.redacted": "Replaced:",
+  "diagnostic.entry.manifest": "Package manifest",
+  "diagnostic.entry.settings": "Settings",
+  "diagnostic.entry.events": "System events",
+  "diagnostic.entry.smart": "SMART capture",
+  "diagnostic.entry.logs": "Activity log",
+  "diagnostic.entry.other": "Other content",
+  "diagnostic.redacted.serialNumber": "serial numbers",
+  "diagnostic.redacted.computerName": "computer name",
+  "diagnostic.redacted.userPaths": "username and personal paths",
+  "settings.appearance.title": "Appearance",
+  "settings.appearance.theme.light": "Light",
+  "settings.appearance.theme.dark": "Dark",
+  "settings.appearance.theme.system": "System",
+  "settings.appearance.language.es": "Spanish",
+  "settings.appearance.language.en": "English",
+  "settings.appearance.useSystemAccent.label": "Use the Windows accent",
+  "settings.appearance.useSystemAccent.hint": "Turn it off to go back to the design system's blue.",
+  "settings.notifications.sound.label": "Notification sound",
+  "settings.notifications.sound.hint": "Off by default.",
+  "settings.cta.restoreDefaults": "Restore factory values",
+  "settings.schedule.title": "Frequencies",
+  "settings.schedule.rangeHint": "Between {min} and {max} s",
+  "settings.schedule.metricsFast": "Temperature, activity, capacity and latency",
+  "settings.schedule.smartFull": "Full SMART",
+  "settings.schedule.events": "Windows events",
+  "settings.schedule.discovery": "Arrival/removal detection",
+  "settings.unit.seconds": "s",
+  "settings.unit.days": "days",
+  "settings.alerts.title": "Alert thresholds",
+  "settings.alerts.tempPrecedence": "Only applies to disks without a temperature limit declared by the manufacturer; when the manufacturer declares one, that value wins.",
+  "settings.alerts.tempWarn": "Warning temperature",
+  "settings.alerts.tempCrit": "Critical temperature",
+  "settings.alerts.capacityWarnPercent": "Free capacity warning",
+  "settings.alerts.capacityCritPercent": "Free capacity critical",
+  "settings.retention.title": "Retention and history",
+  "settings.retention.neverPurged": "Alerts, their critical occurrences, linked events and test runs are never deleted by retention.",
+  "settings.retention.raw": "Raw samples",
+  "settings.retention.fiveMinutes": "5-minute aggregates",
+  "settings.retention.hourly": "Hourly aggregates",
+  "settings.retention.freeSpaceGuard": "History writing warns below {warn} and stops below {halt}, without affecting monitoring or live alerts.",
+  "settings.logging.title": "Activity log",
+  "settings.logging.verbose.label": "Verbose mode",
+  "settings.logging.verbose.hint": "Turn it on to reproduce a failure with more detail.",
+  "settings.logging.cta.openFolder": "Open log folder",
+  "settings.lifecycle.title": "When closing the window",
+  "settings.lifecycle.closeAction.label": "What the close button does",
+  "settings.lifecycle.closeAction.minimize": "Minimize to tray",
+  "settings.lifecycle.closeAction.minimizeHint": "The application keeps monitoring in the background.",
+  "settings.lifecycle.closeAction.exit": "Exit the application",
+  "settings.lifecycle.closeAction.exitHint": "Stops monitoring until reopened.",
+  "settings.dangerZone.title": "Delete all data",
+  "settings.dangerZone.desc": "Removes all stored history: inventory, metrics, alerts, events and test runs. The application ends up like a fresh install.",
+  "settings.dangerZone.confirmPhraseLabel": "Type \"{phrase}\" to confirm",
+  "settings.dangerZone.cta": "Delete all data",
+  "settings.dangerZone.confirmTitle": "Delete all data?",
+  "settings.dangerZone.confirmBody": "All history stored by the application will be removed: disk inventory, metrics, alerts, linked events, test runs and preferences. This action cannot be undone.",
+  "settings.dangerZone.confirmImpact": "Once finished, the application ends up like a fresh install and shows the initial setup wizard again.",
+  "settings.dangerZone.confirmLabel": "Delete all data",
+  "settings.dangerZone.done": "All data has been deleted.",
+  "nav.about": "About",
+  "about.title": "About",
+  "about.body": "By {author}. MIT license. Includes smartmontools (GPLv2) and the Instrument Sans typeface (SIL OFL 1.1); see the full third-party notices in the installer. Repository: https://github.com/danimardo/smartdisk-monitor",
+  "about.cta.copy": "Copy information"
 }
 ```
 
