@@ -73,7 +73,7 @@ pub struct Volume {
 
 /// El wire (`src/lib/design/types.ts` `MetricSource`) usa kebab-case salvo
 /// `perf-counter`, que abrevia "performance" — ninguna convención de `rename_all` lo produce sola.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
 #[ts(export, export_to = "../../src/lib/api/generated/")]
 pub enum MetricSource {

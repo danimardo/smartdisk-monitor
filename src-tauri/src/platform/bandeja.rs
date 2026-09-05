@@ -135,7 +135,12 @@ pub fn actualizar(app: &AppHandle) {
         .is_some();
 
     let estados: Vec<HealthState> = respuesta.devices.iter().map(|d| d.state).collect();
-    let fallo_recopilador = respuesta.sources.iter().any(|s| s.status == "error");
+    let fallo_recopilador = respuesta.sources.iter().any(|s| {
+        matches!(
+            s.status,
+            crate::commands::SourceStatus::Timeout | crate::commands::SourceStatus::Error
+        )
+    });
     let color = tray_state(pausado, fallo_recopilador, &estados);
     let locale = locale_actual();
     let resumen = texto_resumen(locale, pausado, &estados);

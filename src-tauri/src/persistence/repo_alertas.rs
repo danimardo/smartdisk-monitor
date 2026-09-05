@@ -8,7 +8,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::domain::tipos::{AlertGroup, AlertOccurrence, AlertSeverity, AlertStatus};
 
-fn severity_to_str(v: AlertSeverity) -> &'static str {
+pub fn severity_to_str(v: AlertSeverity) -> &'static str {
     match v {
         AlertSeverity::Warning => "warning",
         AlertSeverity::Critical => "critical",
@@ -22,7 +22,7 @@ fn severity_from_str(s: &str) -> AlertSeverity {
     }
 }
 
-fn status_to_str(v: AlertStatus) -> &'static str {
+pub fn status_to_str(v: AlertStatus) -> &'static str {
     match v {
         AlertStatus::Active => "active",
         AlertStatus::Acknowledged => "acknowledged",

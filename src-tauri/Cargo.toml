@@ -53,6 +53,16 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 sha2 = "0.10.9"
 ts-rs = "10.1.0"
 
+# Diálogo nativo de guardado para exportar informes y el ZIP de diagnóstico (T091, ADR-031):
+# `destinationPath` lo elige el usuario con el selector de Windows, no un parámetro de ruta libre
+# que abriría una segunda vía de acceso al sistema de ficheros (principio IX).
+tauri-plugin-dialog = "2"
+
+# ZIP del diagnóstico (T090, ADR-032). Crate de uso muy extendido y mantenido: escribir a mano un
+# formato binario con implicaciones de seguridad (cabeceras, CRC32, directorio central) no es un
+# ahorro razonable frente a la dependencia, a diferencia del LCG de T079 (mucho más simple).
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
 

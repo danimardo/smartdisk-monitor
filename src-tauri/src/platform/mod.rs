@@ -3,6 +3,7 @@
 
 pub mod accent;
 pub mod bandeja;
+pub mod energia;
 pub mod locale;
 pub mod paths;
 pub mod rotulos;

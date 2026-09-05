@@ -18,7 +18,7 @@ fn identity_confidence_from_str(s: &str) -> IdentityConfidence {
     }
 }
 
-fn device_type_to_str(v: DeviceType) -> &'static str {
+pub fn device_type_to_str(v: DeviceType) -> &'static str {
     match v {
         DeviceType::Nvme => "nvme",
         DeviceType::SataSsd => "sata_ssd",

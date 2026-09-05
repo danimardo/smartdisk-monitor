@@ -25,11 +25,12 @@ pub mod tests;
 pub fn run() {
     // El registro arranca antes que nada: un fallo al abrir la ventana también debe quedar escrito.
     // Precedencia del nivel: --log-level > settings > info (constitución §XV). `settings` todavía
-    // no es legible aquí, así que de momento solo manda la línea de órdenes.
+    // no es legible aquí (no hay base abierta): arranca con el nivel de línea de órdenes o `info`,
+    // y se recarga en cuanto `AppState` existe, en el `.setup()` de más abajo.
     let args: Vec<String> = std::env::args().collect();
     let level = logging::level_from_cli(&args).unwrap_or(logging::LogLevel::Info);
     let log_dir = platform::paths::log_dir();
-    let _guard = logging::init(level, &log_dir);
+    let (_guard, manejador_nivel) = logging::init(level, &log_dir);
 
     tauri::Builder::default()
         // Primero de todos a propósito: los plugins se ejecutan en el orden en que se registran,
@@ -44,11 +45,14 @@ pub fn run() {
             platform::ventana::restaurar_ventana_principal(app);
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             // apariencia y ajustes
             commands::get_appearance_settings,
             commands::get_system_accent_color,
             commands::set_setting,
+            commands::get_settings,
+            commands::reset_settings,
             // inventario
             commands::get_devices,
             commands::get_device_detail,
@@ -85,12 +89,31 @@ pub fn run() {
             // registro
             commands::log_from_ui,
             commands::get_log_level,
+            commands::set_log_level,
+            commands::open_log_folder,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             // La base se abre aquí, no en cada comando: una sola conexión compartida y las
             // migraciones ya aplicadas antes de que la interfaz pueda pedir nada.
             let estado = persistence::db::AppState::open(&platform::paths::data_dir())
                 .expect("no se pudo abrir la base de datos ni aplicar sus migraciones");
+
+            // Ahora que la base existe, se puede completar la precedencia del nivel de registro
+            // (§XV): si la línea de órdenes no forzó ninguno, se recarga con el que diga
+            // `logging.verbose`. Antes de este punto solo podía saberse el de la línea de órdenes.
+            if logging::level_from_cli(&args).is_none() {
+                let verbose = {
+                    let conn = estado
+                        .conn
+                        .lock()
+                        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+                    commands::leer_ajuste_bool(&conn, "logging.verbose", false)
+                };
+                if verbose {
+                    let _ = manejador_nivel.establecer(logging::LogLevel::Debug);
+                }
+            }
+            app.manage(manejador_nivel);
             app.manage(estado);
 
             // La ventana nace oculta y se muestra cuando el frontend ha pintado: así no se ve un
@@ -101,23 +124,53 @@ pub fn run() {
             // sola vez aquí y se recalcula desde los comandos que pueden cambiar su color.
             platform::bandeja::instalar(app.handle())?;
 
-            // Cerrar con la X no termina la aplicación: la sigue monitorizando en la bandeja
-            // (`docs/product-specification.md` §3). La pregunta "minimizar o salir" con opción de
-            // recordar queda pendiente de un diálogo propio (`docs/open-questions.md` J.19); de
-            // momento minimiza siempre, que es el lado seguro de esa pregunta sin responder.
+            // El bucle de recopilación en segundo plano (T020/T021/T022): sondea cada 1 s desde su
+            // propio hilo bloqueante, reanuda siempre al arrancar (`AppState.paused` nunca se
+            // persiste) y se detiene con `RunEvent::Exit`/`ExitRequested`, más abajo.
+            commands::iniciar_planificador(app.handle().clone());
+
+            // Cerrar con la X no termina la aplicación por defecto: sigue monitorizando en la
+            // bandeja (`docs/product-specification.md` §3), salvo que `lifecycle.close_action`
+            // diga lo contrario (US-072, T099, `docs/open-questions.md` J.19/J.32) — se lee en
+            // cada cierre, no solo al arrancar, porque la pantalla de Ajustes puede cambiarlo
+            // mientras la aplicación sigue abierta.
             if let Some(ventana) = app.get_webview_window(platform::ventana::VENTANA_PRINCIPAL) {
                 let ventana_a_ocultar = ventana.clone();
+                let app_handle = app.handle().clone();
                 ventana.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        if let Err(e) = ventana_a_ocultar.hide() {
-                            tracing::warn!(error = %e, "no se pudo minimizar la ventana a la bandeja");
-                        }
+                        let salir = {
+                            let estado = app_handle.state::<persistence::db::AppState>();
+                            let conn = estado.conn.lock().expect(
+                                "el mutex de la conexión no se envenena: sin pánicos dentro",
+                            );
+                            commands::leer_ajuste_string(
+                                &conn,
+                                "lifecycle.close_action",
+                                "minimize",
+                            ) == "exit"
+                        };
+                        platform::ventana::gestionar_cierre(&app_handle, &ventana_a_ocultar, salir);
                     }
                 });
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error al arrancar SmartDisk Monitor");
+        .build(tauri::generate_context!())
+        .expect("error al arrancar SmartDisk Monitor")
+        .run(|app_handle, event| {
+            // Único punto de parada del bucle en segundo plano, sea cual sea la vía de salida
+            // (cierre real de ventana, "Salir" de la bandeja, señal del sistema): más fiable que
+            // interceptar cada `app.exit(0)` por separado.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                let estado = app_handle.state::<persistence::db::AppState>();
+                estado
+                    .detener_planificador
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        });
 }

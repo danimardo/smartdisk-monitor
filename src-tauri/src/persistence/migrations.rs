@@ -273,4 +273,67 @@ mod tests {
             "deberían quedar como mucho 3 copias, hay {restantes}"
         );
     }
+
+    /// T106: no hay todavía ninguna versión publicada anterior a esta (es la primera), así que lo
+    /// verificable hoy es el mecanismo de actualización en sí, no una base real de una versión
+    /// previa. Simula justo eso: una base que solo llegó a la migración 1 (como si viniera de un
+    /// binario publicado antes de que existiera la 2), reabierta con el binario actual — debe
+    /// aplicar solo la 2, en orden, sin volver a tocar la 1, y terminar con el mismo esquema que
+    /// una instalación desde cero.
+    #[test]
+    fn actualiza_desde_una_version_publicada_anterior_sin_reaplicar_lo_ya_hecho() {
+        let db_path = temp_db_path("actualizacion.sqlite");
+        let mut conn = Connection::open(&db_path).unwrap();
+
+        // Solo la migración 1, como dejaría una versión publicada antes de que existiera la 2.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at_utc TEXT NOT NULL,
+                checksum TEXT NOT NULL
+            )",
+        )
+        .unwrap();
+        conn.execute_batch(MIGRATIONS[0].sql).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied_at_utc, checksum) VALUES (1, ?1, ?2)",
+            rusqlite::params![now_utc_iso(), checksum(MIGRATIONS[0].sql)],
+        )
+        .unwrap();
+
+        // "Actualizar" con el binario actual: debe ver la 1 ya aplicada y aplicar solo la 2.
+        let aplicadas = apply_pending(&mut conn, &db_path).unwrap();
+        assert_eq!(
+            aplicadas,
+            vec![2],
+            "solo debe aplicar lo pendiente, nunca reaplicar la 1"
+        );
+
+        let version_final: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(version_final, 2);
+
+        let existe_agregados: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = 'metric_aggregates'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            existe_agregados, 1,
+            "el esquema final debe quedar idéntico al de una instalación desde cero"
+        );
+
+        // Una actualización real (venía de una versión anterior con datos) sí debe crear copia de
+        // seguridad antes de tocar el esquema — a diferencia de una instalación desde cero.
+        let backups_dir = db_path.parent().unwrap().join("migraciones_previas");
+        assert!(
+            backups_dir.is_dir() && fs::read_dir(&backups_dir).unwrap().next().is_some(),
+            "una actualización con datos previos debe dejar una copia de seguridad"
+        );
+    }
 }

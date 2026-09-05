@@ -53,10 +53,13 @@ pub struct DiscoFisico {
     /// WWN o `PNPDeviceID`: lo que `domain::identidad::compute_fingerprint` necesita cuando no
     /// hay número de serie. `UniqueId` es lo más parecido que expone `Get-PhysicalDisk`.
     pub wwn_o_pnp_device_id: String,
-    /// Ruta que `smartctl` necesita para hablar con el disco (`\\.\PhysicalDriveN`), construida
-    /// a partir del índice numérico que Windows asigna. **No** es la misma noción que
-    /// `wwn_o_pnp_device_id`: ese identifica el disco de forma estable entre reconexiones, este
-    /// solo dice dónde está montado *ahora* y puede cambiar entre arranques.
+    /// Ruta que `smartctl` necesita para hablar con el disco (`/dev/pdN`, la convención propia de
+    /// esta compilación MinGW — no la ruta nativa de Windows `\\.\PhysicalDriveN`, que
+    /// `smartctl -h` no reconoce y falla con "Unable to detect device type" en todos los modos,
+    /// medido contra hardware real, `open-questions.md` J.42), construida a partir del índice
+    /// numérico que Windows asigna. **No** es la misma noción que `wwn_o_pnp_device_id`: ese
+    /// identifica el disco de forma estable entre reconexiones, este solo dice dónde está montado
+    /// *ahora* y puede cambiar entre arranques.
     pub smartctl_device_path: Option<String>,
 }
 
@@ -118,7 +121,7 @@ pub fn parse_physical_disks_json(json: &str) -> Result<Vec<DiscoFisico>, ErrorPa
                 .device_id
                 .as_deref()
                 .and_then(|id| id.trim().parse::<u32>().ok())
-                .map(|n| format!(r"\\.\PhysicalDrive{n}"));
+                .map(|n| format!("/dev/pd{n}"));
             DiscoFisico {
                 model: c
                     .model
@@ -193,23 +196,14 @@ mod tests {
     #[test]
     fn el_deviceid_numerico_se_convierte_en_ruta_de_smartctl() {
         let discos = parse_physical_disks_json(UN_DISCO).unwrap();
-        assert_eq!(
-            discos[0].smartctl_device_path.as_deref(),
-            Some(r"\\.\PhysicalDrive0")
-        );
+        assert_eq!(discos[0].smartctl_device_path.as_deref(), Some("/dev/pd0"));
     }
 
     #[test]
     fn dos_discos_reciben_rutas_distintas_segun_su_indice() {
         let discos = parse_physical_disks_json(DOS_DISCOS).unwrap();
-        assert_eq!(
-            discos[0].smartctl_device_path.as_deref(),
-            Some(r"\\.\PhysicalDrive0")
-        );
-        assert_eq!(
-            discos[1].smartctl_device_path.as_deref(),
-            Some(r"\\.\PhysicalDrive1")
-        );
+        assert_eq!(discos[0].smartctl_device_path.as_deref(), Some("/dev/pd0"));
+        assert_eq!(discos[1].smartctl_device_path.as_deref(), Some("/dev/pd1"));
     }
 
     #[test]

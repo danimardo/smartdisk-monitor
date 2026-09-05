@@ -160,6 +160,29 @@ pub fn volume_series(
     filas.collect()
 }
 
+/// Qué métricas tienen algún dato de un dispositivo en el rango, en cualquier resolución
+/// (crudo o agregado): un informe (T087) no puede asumir una lista fija de claves, y una métrica
+/// cuyos crudos ya purgó la retención puede seguir teniendo agregados dentro del rango.
+pub fn distinct_metric_keys(
+    conn: &Connection,
+    device_id: &str,
+    from_utc: &str,
+    to_utc: &str,
+) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT metric_key FROM metric_samples
+           WHERE device_id = ?1 AND sampled_at_utc BETWEEN ?2 AND ?3
+         UNION
+         SELECT metric_key FROM metric_aggregates
+           WHERE device_id = ?1 AND bucket_start_utc BETWEEN ?2 AND ?3
+         ORDER BY metric_key",
+    )?;
+    let filas = stmt.query_map(params![device_id, from_utc, to_utc], |r| {
+        r.get::<_, String>(0)
+    })?;
+    filas.collect()
+}
+
 /// Las `n` muestras más recientes de una métrica, de más reciente a más antigua: la forma que
 /// espera `alerts::motor` (histéresis sobre `&[f64]`, más reciente primero). Menos de `n` filas
 /// simplemente devuelve las que haya — es `motor` quien decide que un contador incompleto no basta

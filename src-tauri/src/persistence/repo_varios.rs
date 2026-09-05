@@ -455,6 +455,22 @@ pub fn set_setting_raw(
     Ok(())
 }
 
+/// Todas las claves de `settings`, para el ZIP de diagnóstico (T090): el propio ajuste, no una
+/// vista parcial.
+pub fn list_settings(conn: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT key, value_json FROM settings ORDER BY key")?;
+    let filas = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    filas.collect()
+}
+
+/// Borra una clave: `reset_settings` (T097) vuelve así a su valor de fábrica sin tener que
+/// conocerlo aquí — quien lee con `get_setting_raw`/las funciones `leer_ajuste_*` de `commands`
+/// ya cae al valor por defecto cuando la clave no existe.
+pub fn delete_setting(conn: &Connection, key: &str) -> rusqlite::Result<()> {
+    conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

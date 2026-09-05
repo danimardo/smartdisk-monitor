@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use time::format_description::FormatItem;
 use time::macros::format_description;
 use tracing_subscriber::fmt::time::OffsetTime;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{reload, EnvFilter, Registry};
 
 /// Formato legible con un editor de texto, que es como se abrirá el 90 % de las veces.
 const TIME_FORMAT: &[FormatItem<'static>] =
@@ -84,17 +86,35 @@ pub fn level_from_cli<S: AsRef<str>>(args: &[S]) -> Option<LogLevel> {
     }
 }
 
-/// Arranca el registro. Devuelve el guardia del escritor de fichero, que **debe mantenerse vivo**
-/// durante toda la ejecución: al soltarlo se vacían los buffers pendientes.
+/// Asa para cambiar el nivel de registro en caliente (T098, FR-029a): activar el modo detallado
+/// no exige reiniciar la aplicación, igual que el resto de ajustes (US-070, "un cambio se aplica
+/// sin reiniciar").
+#[derive(Clone)]
+pub struct ManejadorNivel(reload::Handle<EnvFilter, Registry>);
+
+impl ManejadorNivel {
+    pub fn establecer(&self, nivel: LogLevel) -> Result<(), String> {
+        self.0
+            .reload(EnvFilter::new(nivel.as_filter()))
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Arranca el registro. Devuelve el guardia del escritor de fichero —que **debe mantenerse vivo**
+/// durante toda la ejecución: al soltarlo se vacían los buffers pendientes— y el asa para cambiar
+/// el nivel después de arrancar.
 ///
 /// Precedencia del nivel (constitución §XV): `--log-level` > `settings` > `info`. Aquí se recibe ya
 /// resuelto, porque `settings` puede no ser legible todavía cuando esto se llama.
-pub fn init(level: LogLevel, log_dir: &Path) -> tracing_appender::non_blocking::WorkerGuard {
+pub fn init(
+    level: LogLevel,
+    log_dir: &Path,
+) -> (tracing_appender::non_blocking::WorkerGuard, ManejadorNivel) {
     let file_appender = tracing_appender::rolling::daily(log_dir, "smartdisk.log");
     let (writer, guard) = tracing_appender::non_blocking(file_appender);
 
-    let subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::new(level.as_filter()))
+    let (filtro, manejador) = reload::Layer::new(EnvFilter::new(level.as_filter()));
+    let capa_fmt = tracing_subscriber::fmt::layer()
         .with_writer(writer)
         .with_ansi(false)
         .with_target(true);
@@ -103,18 +123,19 @@ pub fn init(level: LogLevel, log_dir: &Path) -> tracing_appender::non_blocking::
     // y se dice en la primera línea para que nadie interprete mal las horas después.
     match time::UtcOffset::current_local_offset() {
         Ok(offset) => {
-            subscriber
-                .with_timer(OffsetTime::new(offset, TIME_FORMAT))
+            Registry::default()
+                .with(filtro)
+                .with(capa_fmt.with_timer(OffsetTime::new(offset, TIME_FORMAT)))
                 .init();
         }
         Err(_) => {
-            subscriber.init();
+            Registry::default().with(filtro).with(capa_fmt).init();
             tracing::warn!("no se pudo determinar la zona horaria local; las horas van en UTC");
         }
     }
 
     tracing::info!(nivel = level.as_filter(), "registro iniciado");
-    guard
+    (guard, ManejadorNivel(manejador))
 }
 
 #[cfg(test)]

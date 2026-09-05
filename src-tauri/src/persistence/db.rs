@@ -63,6 +63,26 @@ pub struct AppState {
     pub test_cancel_flags: std::sync::Mutex<
         std::collections::HashMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>,
     >,
+    /// Último estado conocido de cada colector de métricas (T020/T021), una entrada por variante
+    /// de `MetricSource` como mucho. Comparar el estado anterior contra el nuevo es lo que permite
+    /// emitir `source:degraded` solo en el flanco de subida a `timeout`/`error`, nunca en cada
+    /// ciclo que siga degradado. En memoria: un reinicio no necesita recordar una degradación de
+    /// antes de arrancar, el primer ciclo la vuelve a detectar si sigue.
+    pub source_health: std::sync::Mutex<
+        std::collections::HashMap<
+            crate::domain::tipos::MetricSource,
+            crate::commands::SourceHealth,
+        >,
+    >,
+    /// Señal de parada del bucle en segundo plano (T020): se marca `true` cuando la aplicación va
+    /// a terminar de verdad (`RunEvent::Exit`/`ExitRequested` en `lib.rs`), nunca al minimizar a la
+    /// bandeja. El hilo la comprueba en cada sondeo de 1 s (`open-questions.md` J.34).
+    pub detener_planificador: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// `true` en cuanto se avisó una vez, en esta sesión del proceso, de que cerrar la ventana la
+    /// minimiza a la bandeja en vez de terminar la aplicación. Sin este aviso, la primera vez
+    /// parece que la aplicación se cerró sola. Solo una vez por arranque, no en cada minimizado:
+    /// repetirlo sería ruido, no ayuda (`open-questions.md` J.44).
+    pub aviso_bandeja_mostrado: std::sync::atomic::AtomicBool,
 }
 
 impl AppState {
@@ -74,6 +94,9 @@ impl AppState {
             paused: std::sync::Mutex::new(None),
             notified_at: std::sync::Mutex::new(std::collections::HashMap::new()),
             test_cancel_flags: std::sync::Mutex::new(std::collections::HashMap::new()),
+            source_health: std::sync::Mutex::new(std::collections::HashMap::new()),
+            detener_planificador: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            aviso_bandeja_mostrado: std::sync::atomic::AtomicBool::new(false),
         })
     }
 }
