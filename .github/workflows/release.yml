@@ -1,0 +1,63 @@
+# Publica el instalador de Windows en una Release de GitHub.
+#
+# Se dispara al crear una etiqueta `vX.Y.Z`: quien decide publicar sube antes la versión en
+# package.json (de donde `tauri.conf.json` la lee, ADR-011) y crea la etiqueta a mano — nunca al
+# fusionar en main, para no publicar nunca un commit a medio terminar sin que alguien lo decida
+# expresamente.
+#
+# El instalador no va firmado (no hay certificado de firma de código): Windows SmartScreen avisará
+# de "editor no reconocido" la primera vez que se ejecute. Es un aviso esperado, ya documentado en
+# docs/roadmap.md y en el propio README, no un fallo de este workflow.
+
+name: Publicar instalador
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Compilar y publicar
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Toolchain fijado en rust-toolchain.toml
+        run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Instalar sin resolver versiones
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalador NSIS (WebView2 sin conexión)
+        run: pnpm app:build
+
+      - name: Publicar la Release con el instalador
+        uses: softprops/action-gh-release@v2
+        with:
+          # generate_release_notes añade el registro de commits desde la etiqueta anterior;
+          # el cuerpo fijo va delante, con el aviso de SmartScreen que nadie debe pasar por alto.
+          generate_release_notes: true
+          body: |
+            Instalador de Windows x64 (NSIS), sin firmar. Windows SmartScreen mostrará
+            "Windows protegió tu PC" la primera vez que se ejecute — es un aviso esperado por
+            falta de certificado de firma de código, no una descarga corrupta: "Más información"
+            → "Ejecutar de todas formas". Requiere Windows 10 1809+, Windows 11 o Windows Server
+            2016+ con Experiencia de escritorio; el WebView2 Runtime se instala solo si falta.
+          files: src-tauri/target/release/bundle/nsis/*.exe
