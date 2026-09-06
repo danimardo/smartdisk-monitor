@@ -49,6 +49,12 @@ describe("diskSummary", () => {
   it("RECHAZA que `volumes` no sea un array", () => {
     expect(S.diskSummary.safeParse({ ...discoValido, volumes: null }).success).toBe(false);
   });
+
+  it("acepta `smartHealthPassed` booleano o null, RECHAZA otra cosa (ADR-041)", () => {
+    expect(S.diskSummary.safeParse({ ...discoValido, smartHealthPassed: true }).success).toBe(true);
+    expect(S.diskSummary.safeParse({ ...discoValido, smartHealthPassed: null }).success).toBe(true);
+    expect(S.diskSummary.safeParse({ ...discoValido, smartHealthPassed: 1 }).success).toBe(false);
+  });
 });
 
 describe("metricSeries", () => {

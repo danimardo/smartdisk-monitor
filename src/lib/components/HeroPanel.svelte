@@ -31,6 +31,9 @@
     facts = [] as { label: string; value: string | null; state?: HealthState | null; icon: IconName }[],
     /** Marca de dato obsoleto: hora de la última lectura válida (`formatTime` ya aplicado) o "". */
     lastValidAt = "",
+    /** Cuánto abarca la curva de fondo, ya formateado ("Ventana: 8 min"). "" = no mostrarlo. La
+     *  ventana la decide la pantalla (`ultimoTramoVisible`), no este componente. */
+    windowLabel = "",
     loading = false,
     onopen = undefined as ((diskId: string) => void) | undefined,
     onviewalert = undefined as ((alertId: string) => void) | undefined
@@ -39,19 +42,37 @@
   const state = $derived<HealthState>(disk?.state ?? "unknown");
   const tone = $derived(healthToken[state]);
   const atencion = $derived(state === "warn" || state === "crit");
-  const sinSmart = $derived(
-    disk?.state === "unknown" && (disk.unknownReason ?? "unsupported") === "unsupported"
-  );
+  /** No hay lectura SMART reciente (el `state` puede venir ya elevado a `warn` por
+   *  `estadoConAlertas` si el motivo es `unreadable`, así que se mira `unknownReason`, no `state`). */
+  const sinSmartFresco = $derived(disk?.unknownReason != null);
 
-  /** La cifra se colorea solo cuando es una alarma; «todo en orden» va en el color de texto normal. */
-  const cifraColor = $derived(atencion ? tone.fg : "var(--sdm-text)");
+  /** La cifra se colorea solo cuando es una alarma; «todo en orden» va en el color de texto normal;
+   *  «No disponible» va en gris, no en ámbar aunque el disco cuente como advertencia. */
+  const cifraColor = $derived(
+    sinSmartFresco ? "var(--sdm-text-faint)" : atencion ? tone.fg : "var(--sdm-text)"
+  );
   const serieColor = $derived(atencion ? tone.fg : "var(--sdm-accent)");
 
   const cifra = $derived(
-    sinSmart || disk?.temperatureC == null ? NOT_AVAILABLE() : formatTemperature(disk.temperatureC)
+    sinSmartFresco || disk?.temperatureC == null ? NOT_AVAILABLE() : formatTemperature(disk.temperatureC)
   );
   const identidad = $derived(disk ? `${disk.model} · ${disk.deviceType}` : "");
-  const hayCurva = $derived(!sinSmart && series.some((p) => p.v !== null));
+  const hayCurva = $derived(!sinSmartFresco && series.some((p) => p.v !== null));
+
+  /** Etiqueta de la píldora: el texto dice **por qué** (sin datos SMART), el color —del `state`—
+   *  dice si eso cuenta como aviso. Nunca el color solo. */
+  const etiquetaPildora = $derived(
+    sinSmartFresco ? t("disk.noSmartData") : atencion ? t(`health.${state}`) : t("dashboard.hero.allGood")
+  );
+
+  /** Explicación humana del «sin datos SMART», por causa. */
+  const explicacionSinSmart = $derived(
+    disk?.unknownReason === "unreadable" || disk?.unknownReason === "collector-error"
+      ? t("disk.noSmartUnreadable")
+      : disk?.unknownReason === "unsupported"
+        ? t("disk.noSmartExplain")
+        : t("disk.noSmartPending")
+  );
 </script>
 
 <Card padding="none">
@@ -71,11 +92,7 @@
     <div class="relative flex h-full gap-4 p-5">
       <div class="flex min-w-0 flex-1 flex-col gap-2">
         <div class="flex items-center gap-2">
-          <StatusPill
-            {state}
-            label={atencion ? t(`health.${state}`) : t("dashboard.hero.allGood")}
-            icon="auto"
-          />
+          <StatusPill {state} label={etiquetaPildora} icon="auto" />
           {#if identidad}<span class="sdm-selectable truncate text-xs text-fg-dim">{identidad}</span>{/if}
         </div>
 
@@ -84,7 +101,7 @@
         {:else}
           <div class="flex items-baseline gap-2">
             <span class="sdm-display text-hero" style="color: {cifraColor}">{cifra}</span>
-            {#if threshold != null && !sinSmart}
+            {#if threshold != null && !sinSmartFresco}
               <span class="sdm-num text-xs text-fg-faint"
                 >{t("chart.tempWarnLabel", { value: formatTemperature(threshold) })}</span
               >
@@ -94,15 +111,19 @@
 
         {#if lastValidAt}
           <span class="text-2xs text-warn">{t("dashboard.hero.lastValid", { time: lastValidAt })}</span>
-        {:else if !hayCurva && !sinSmart && !loading}
+        {:else if !hayCurva && !sinSmartFresco && !loading}
           <span class="text-2xs text-fg-faint">{t("dashboard.hero.noSeries")}</span>
+        {:else if hayCurva && windowLabel && !loading}
+          <span class="text-2xs text-fg-faint">{windowLabel}</span>
         {/if}
 
         <p class="m-0 max-w-[520px] text-sm text-fg-dim" style="text-wrap: pretty">
-          {#if sinSmart}
-            {t("disk.noSmartExplain")}
+          {#if sinSmartFresco}
+            {explicacionSinSmart}
           {:else if atencion && explanation}
             {explanation}
+          {:else if atencion}
+            {t("dashboard.hero.attentionBody")}
           {:else}
             {t("dashboard.hero.allGoodBody")}
           {/if}

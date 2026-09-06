@@ -3,6 +3,7 @@ import {
   capacityState,
   classifyAgainstThresholds,
   deviceState,
+  estadoConAlertas,
   globalStatus,
   selectHeroDisk,
   temperatureThresholds,
@@ -43,6 +44,82 @@ describe("deviceState — reconocer no apaga el color (ADR-016, §B.1)", () => {
   it("sin datos frescos es desconocido, no correcto: no saber que algo va bien no es saberlo", () => {
     expect(deviceState([], false)).toBe("unknown");
     expect(deviceState([], true)).toBe("ok");
+  });
+});
+
+describe("estadoConAlertas — B.1 conectado de punta a punta (el backend no funde alertas)", () => {
+  const disco = (
+    state: HealthState,
+    volIds: string[] = [],
+    unknownReason: "unsupported" | "unreadable" | "collector-error" | "not-yet-sampled" | null = null
+  ) => ({
+    id: "d1",
+    state,
+    unknownReason,
+    volumes: volIds.map((id) => ({ id }))
+  });
+  const alerta = (
+    severity: "warn" | "crit",
+    key: string,
+    status: "active" | "acknowledged" | "resolved" | "archived" = "active"
+  ) => ({ severity, status, deduplicationKey: key });
+
+  it("sin alertas conserva el estado de SMART tal cual", () => {
+    expect(estadoConAlertas(disco("ok"), [])).toBe("ok");
+    expect(estadoConAlertas(disco("unknown"), [])).toBe("unknown");
+  });
+
+  it("una alerta de dispositivo vigente eleva un disco correcto a su severidad", () => {
+    expect(estadoConAlertas(disco("ok"), [alerta("warn", "temp.high|device:d1|")])).toBe("warn");
+    expect(estadoConAlertas(disco("ok"), [alerta("crit", "temp.crit|device:d1|")])).toBe("crit");
+  });
+
+  it("una alerta de un volumen del disco también cuenta: un volumen lleno es problema del disco", () => {
+    expect(estadoConAlertas(disco("ok", ["v9"]), [alerta("warn", "capacity.low|volume:v9")])).toBe(
+      "warn"
+    );
+  });
+
+  it("manda la peor severidad, y reconocer no la apaga (ADR-016)", () => {
+    expect(
+      estadoConAlertas(disco("ok", ["v9"]), [
+        alerta("warn", "capacity.low|volume:v9"),
+        alerta("crit", "smart.fail|device:d1|", "acknowledged")
+      ])
+    ).toBe("crit");
+  });
+
+  it("una alerta resuelta o archivada deja de contar", () => {
+    expect(estadoConAlertas(disco("ok"), [alerta("crit", "x|device:d1|", "resolved")])).toBe("ok");
+    expect(estadoConAlertas(disco("ok"), [alerta("crit", "x|device:d1|", "archived")])).toBe("ok");
+  });
+
+  it("una alerta de otro disco no tiñe este", () => {
+    expect(estadoConAlertas(disco("ok"), [alerta("crit", "x|device:otro|")])).toBe("ok");
+  });
+
+  it("una alerta vigente sobre un disco sin SMART fresco lo saca de «unknown»", () => {
+    expect(estadoConAlertas(disco("unknown"), [alerta("warn", "x|device:d1|")])).toBe("warn");
+  });
+
+  it("un disco que dejó de responder a SMART (unreadable) cuenta como advertencia, sin alerta", () => {
+    expect(estadoConAlertas(disco("unknown", [], "unreadable"), [])).toBe("warn");
+    expect(estadoConAlertas(disco("unknown", [], "collector-error"), [])).toBe("warn");
+  });
+
+  it("un disco sin SMART por diseño (unsupported) o aún sin medir NO cuenta como advertencia", () => {
+    expect(estadoConAlertas(disco("unknown", [], "unsupported"), [])).toBe("unknown");
+    expect(estadoConAlertas(disco("unknown", [], "not-yet-sampled"), [])).toBe("unknown");
+  });
+
+  it("con la monitorización en pausa, un unreadable no salta a ámbar (el estado de pausa manda)", () => {
+    expect(estadoConAlertas(disco("unknown", [], "unreadable"), [], { paused: true })).toBe("unknown");
+  });
+
+  it("una alerta crítica gana a la promoción por unreadable", () => {
+    expect(
+      estadoConAlertas(disco("unknown", [], "unreadable"), [alerta("crit", "x|device:d1|")])
+    ).toBe("crit");
   });
 });
 
@@ -237,6 +314,23 @@ describe("selectHeroDisk — quién protagoniza el panel (HeroPanel.md)", () => 
   it("salvo que el sin-SMART sea el único disco", () => {
     const r = selectHeroDisk([disco("usb", { state: "unknown", unknownReason: "unsupported" })], []);
     expect(r?.id).toBe("usb");
+  });
+
+  it("sin alerta de dispositivo pero con un disco en warn (volumen lleno o SMART ilegible), protagoniza ese, no el de sistema", () => {
+    const r = selectHeroDisk(
+      [
+        disco("sys", { volumes: [{ isSystemVolume: true }] }),
+        disco("lleno", { state: "warn" }),
+        disco("ilegible", { state: "warn", unknownReason: "unreadable" })
+      ],
+      []
+    );
+    expect(r?.id).toBe("lleno");
+  });
+
+  it("un crit sin alerta de dispositivo gana a un warn", () => {
+    const r = selectHeroDisk([disco("w", { state: "warn" }), disco("c", { state: "crit" })], []);
+    expect(r?.id).toBe("c");
   });
 
   it("una alerta solo reconocida sigue eligiendo su disco (cuenta para la salud)", () => {

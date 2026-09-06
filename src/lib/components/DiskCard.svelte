@@ -27,12 +27,18 @@
 
   const state = $derived<HealthState>(disk?.state ?? "unknown");
   const tone = $derived(healthToken[state]);
-  const label = $derived(state === "unknown" ? t("disk.noSmartData") : t(`health.${state}`));
+  /** No hay lectura SMART reciente: el bus no la expone, dejó de responder, o aún no ha llegado la
+   *  primera. El backend lo marca poniendo `unknownReason` (lo deja en `null` en cuanto la lectura
+   *  es fresca). Independiente del color: un disco puede contar como advertencia (`state` ya
+   *  elevado por `estadoConAlertas`) *y* no tener SMART fresco a la vez. */
+  const sinSmartFresco = $derived(disk?.unknownReason != null);
+  /** El texto de la píldora dice **por qué** (sin datos SMART); el color lo pone `state`. */
+  const label = $derived(sinSmartFresco ? t("disk.noSmartData") : t(`health.${state}`));
   const overTempLimit = $derived(
     !!disk?.temperatureC && !!disk?.vendorTempLimitC && disk.temperatureC >= disk.vendorTempLimitC
   );
   const volume = $derived(disk?.volumes?.[0] ?? null);
-  const hayCurva = $derived(state !== "unknown" && temperatureSeries.some((p) => p.v !== null));
+  const hayCurva = $derived(!sinSmartFresco && temperatureSeries.some((p) => p.v !== null));
 
   /** Un dato ausente se compone como «—» a text-xs en gris, con el texto completo en el `title`
    *  (`DiskCard.md`): así el disco sin SMART deja de pesar más que el que tiene datos. */
@@ -100,7 +106,10 @@
                 <Icon name={m.icon} size={12} />
                 <span class="truncate">{m.label}</span>
               </span>
-              {#if m.value === null}
+              <!-- Sin SMART fresco las tres magnitudes van a «—», aunque quede en la base una
+                   lectura vieja o un contador de rendimiento en vivo (boceto §4): un dato caduco
+                   presentado como actual engaña. -->
+              {#if m.value === null || sinSmartFresco}
                 <span class="text-xs text-fg-dim" title={t("common.notAvailable")}>—</span>
               {:else}
                 <span class="sdm-num sdm-display text-xl" style="color: {m.color}">{m.text}</span>

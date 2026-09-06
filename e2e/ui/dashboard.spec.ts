@@ -20,12 +20,57 @@ test.describe("panel general v3", () => {
     await expect(page.getByText(inventario.devices[1].alias as string).first()).toBeVisible();
   });
 
+  test("una alerta activa tiñe el panel: ni «Todo en orden», y el héroe ofrece «Ver la alerta» (B.1)", async ({
+    page
+  }) => {
+    // El inventario trae disk-0 en `state: "ok"` y una alerta `warn` activa a su nombre. El backend
+    // no funde una cosa con la otra (`enrich_with_smart_data` pasa `None`); el panel sí debe hacerlo.
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/");
+
+    await expect(page.getByText(inventario.devices[0].model).first()).toBeVisible();
+    await expect(page.getByText(es["global.allGood"])).toHaveCount(0);
+    await expect(page.getByText(es["global.needsAttention.one"]).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: es["dashboard.hero.viewAlert"] }).first()).toBeVisible();
+  });
+
   test("la fila inferior trae «Sucesos del sistema» y «Reparto de estados»", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/");
 
     await expect(page.getByText(es["dashboard.events.title"])).toBeVisible();
     await expect(page.getByText(es["dashboard.spread.title"])).toBeVisible();
+  });
+
+  test("un disco que dejó de responder a SMART (unreadable) cuenta como advertencia, no se calla (§B.5)", async ({
+    page
+  }) => {
+    const disco = inventario.devices[0];
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_alert_groups: [],
+      get_devices: {
+        ...inventario,
+        devices: [
+          {
+            ...disco,
+            state: "unknown",
+            unknownReason: "unreadable",
+            // El backend deja la última lectura vieja; la tarjeta no debe enseñarla como actual.
+            temperatureC: 44,
+            lastReadAt: "2026-09-04T08:00:00Z"
+          }
+        ]
+      }
+    });
+    await page.goto("/");
+
+    await expect(page.getByText(disco.model).first()).toBeVisible();
+    await expect(page.getByText(es["global.allGood"])).toHaveCount(0);
+    await expect(page.getByText(es["global.needsAttention.one"]).first()).toBeVisible();
+    // Sigue diciendo «Sin datos SMART» (el texto explica), y no enseña la temperatura vieja.
+    await expect(page.getByText(es["disk.noSmartData"]).first()).toBeVisible();
+    await expect(page.getByText("44 °C")).toHaveCount(0);
   });
 
   test("sin discos: estado vacío con acción, sin héroe ni rejilla", async ({ page }) => {

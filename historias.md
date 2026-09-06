@@ -4729,6 +4729,50 @@ internas (`window.width`, `window.height`, `window.x`, `window.y`, `window.maxim
   **objetivo de diseño** (1280 × 720) y el **mínimo técnico** (1024 × 560) no cambian.
 - Sin contrato nuevo, sin DTO `ts-rs`, sin esquema Zod, sin permiso de Tauri, sin dependencia.
 
+### ADR-041 — `DiskSummary` lleva la autoevaluación SMART (`smartHealthPassed`)
+
+Estado: aceptada. Fecha: 2026-09-06.
+
+#### El problema
+
+El `HeroPanel` del panel general muestra cuatro «hechos» del disco protagonista. El boceto aprobado
+(`design/propuesta-rediseno`, `smartdisk-v3.html`) pone como primero **«Salud del firmware ·
+Correcta»**; la implementación mostraba en su lugar **«Ocupación · N %»** (porcentaje ocupado del
+volumen principal). La autoevaluación SMART (`smart_status.passed`) sí se recopila —se persiste como
+métrica `health_passed` (1.0/0.0) y se expone en `DeviceDetail.counters`—, pero **no viaja en
+`DiskSummary`**, que es el único DTO que reciben el `HeroPanel` y la `DiskCard`. La clave i18n
+`disk.firmwareHealth` ya existía en los dos diccionarios, dejada preparada.
+
+#### La decisión
+
+Añadir a `DiskSummary` el campo `smart_health_passed: Option<bool>` (`smartHealthPassed` en el
+wire): `Some(true)` autoevaluación superada, `Some(false)` fallida, `None` sin dato o disco sin
+SMART. Lo rellena `enrich_with_smart_data` leyendo la última muestra de `health_passed`, igual que
+ya lee temperatura, desgaste y horas. El `HeroPanel` sustituye el hecho «Ocupación» por «Salud del
+firmware» (`icon: shield`, en rojo solo si `false`); el orden de hechos pasa a ser el del boceto:
+firmware, desgaste, actividad, horas.
+
+#### Alternativas descartadas
+
+- **Mantener «Ocupación» y aceptar la desviación del boceto.** Coste cero (nada de backend). Se
+  descarta porque el boceto es la referencia vinculante (`ADR-034`, `docs/ui-design.md` §0), la
+  ocupación de un volumen ya la comunica la barra de capacidad de cada `DiskCard`, y el trabajo del
+  Hero es «¿tengo un problema?» —donde «el disco ha fallado su propia autoevaluación» encaja y «el
+  disco está lleno al 93 %» ya tiene su alerta y su barra—.
+- **Derivarlo en el frontend de `disk.state`.** No sirve: `state` refleja alertas y frescura, no el
+  resultado del autotest. Un disco puede tener `state = ok` y `health_passed = false` en el mismo
+  ciclo en que se está creando la alerta `smart.health.failed`.
+- **Reusar `provenance` o un campo existente.** Opaco y frágil; un booleano nuevo es más honesto.
+
+#### Consecuencias
+
+- Un campo anulable más en un DTO que `ts-rs` ya refleja: regenera `generated/DiskSummary.ts` y
+  `generated/DeviceDetail.ts` al compilar. `DeviceDetail` lo hereda por `#[serde(flatten)]` —
+  inofensivo, ya tenía el mismo dato en `counters`.
+- Esquema Zod (`schemas.ts`) y su prueba de rechazo; interfaz en `src/lib/design/types.ts`;
+  `docs/ui-contract.md` §3.2.
+- Sin comando nuevo, sin permiso de Tauri, sin dependencia.
+
 
 ---
 
@@ -4786,6 +4830,16 @@ fiable. Implementado en `deviceState()` y `alertCountsTowardHealth()` (`src/lib/
 *Consecuencia asumida:* un disco con un problema crónico se queda en rojo. Se mitiga con el
 distintivo de "reconocida" y con el orden de la lista, no apagando el color.
 
+*Corrección 2026-09-06:* la decisión estaba solo a medias. `enrich_with_smart_data` (Rust) siempre
+pasa `None` como severidad a `device_state`, así que `DiskSummary.state` únicamente refleja la
+frescura de SMART (`ok` / `unknown`), nunca `warn` / `crit`; y ninguna pantalla fundía `app.alerts`
+con `app.devices`. Resultado observado: con tres alertas `active` el panel decía «Todo en orden».
+Se cierra con `estadoConAlertas(disk, alerts)` (`src/lib/design/health.ts`), que el panel general y
+el chrome aplican antes de leer `disk.state`. **Cuentan las alertas dirigidas al dispositivo
+(`…|device:<id>`) y a cualquier volumen suyo (`…|volume:<id>`)**: un volumen lleno es un problema
+del disco que lo contiene, no una categoría aparte. `deviceState()` se conserva como la definición
+canónica de la regla y la prueba de `health.test.ts` que la fija.
+
 #### B.2 · El silencio no es un estado · `DECIDIDO`
 
 `mutedUntil` es ortogonal a `AlertStatus`: una alerta puede estar activa y silenciada a la vez. El
@@ -4824,6 +4878,29 @@ Un `unknown` no impide el verde por sí solo, pero sí cuando su causa es `unrea
 `collector-error`: eso es una degradación real y aporta una advertencia (`unknownContributesWarning`).
 Un dispositivo que declara no soportar SMART (`unsupported`) es normalidad y no ensucia nada.
 
+*Corrección 2026-09-06:* también estaba a medias.
+- `enrich_with_smart_data` marcaba `not-yet-sampled` («aún no medido») cuando en realidad había
+  habido lecturas y dejaron de llegar. Ahora, si hay al menos una muestra histórica y la última no
+  es fresca, el motivo es `unreadable` («dejó de responder»). El caso `not-yet-sampled` queda solo
+  para un disco que nunca ha devuelto nada.
+- `unknownContributesWarning()` era **código muerto**. Ahora lo aplica `estadoConAlertas()`
+  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se presenta como
+  advertencia en el panel y cuenta para «necesitan atención» —salvo con la monitorización en
+  pausa, donde el estado de pausa manda—.
+- `selectHeroDisk()` gana un criterio intermedio: sin alerta de dispositivo, protagoniza el disco
+  con el peor `state` (ya fundido) antes que el de sistema, para que el Hero no muestre «Todo en
+  orden» habiendo un disco en `warn`/`crit` por un volumen lleno o un SMART ilegible. El
+  `HeroPanel` estrena un texto genérico («Este disco necesita atención…») para ese caso sin alerta
+  con clave i18n propia.
+
+**Pendiente (`PENDIENTE`):** el **grupo de alerta** `smart.unreadable` (documentado en
+`alert-rules.md`: «consulta fallida 3 ciclos seguidos → advertencia») sigue **sin implementar**. El
+colector descarta el fallo por disco (`commands/mod.rs`, `refresh_smart` hace `continue` sin
+registrar nada) y el motor nunca lo evalúa. Enfoque propuesto: registrar el fallo como un
+`smart_snapshots` con `query_status='error'` y contar 3 seguidos en el motor, con resolución a la
+primera lectura correcta. Hasta entonces, un disco ilegible se ve como advertencia (arriba) pero
+no genera un grupo de alerta con su cronología ni su notificación.
+
 #### B.6 · Cambio de severidad de un grupo ya reconocido · `PROPUESTO`
 
 Si un grupo `acknowledged` sube de severidad (advertencia → crítico), vuelve a `active` y se
@@ -4851,6 +4928,16 @@ correctamente un pendrive monitorizado generaría un crítico falso. Reglas:
 Donde la especificación decía "tras tres muestras" o "tras tres intentos", se entiende **tres
 ciclos consecutivos del recopilador correspondiente**, no tres dentro de una ventana. Con la
 frecuencia por defecto: 90 s para temperatura, 15 min para SMART. Recogido en `alert-rules.md`.
+
+#### B.10 · Un disco sin SMART fresco no enseña su última lectura como si fuera de ahora · `DECIDIDO`
+
+`enrich_with_smart_data` conserva `temperatureC` / `percentageUsed` / `powerOnHours` con la última
+muestra persistida aunque ya no sea fresca (solo `state` y `unknownReason` se condicionan a la
+frescura). En la `DiskCard`, si `unknownReason` no es `null` —bus sin SMART, disco que dejó de
+responder, o primera lectura aún no llegada— las tres magnitudes se muestran como «—», nunca el
+valor viejo ni un contador de rendimiento en vivo presentado como lectura SMART (boceto
+`01-panel-general.md` §4, constitución §I). La marca de dato obsoleto con la hora de la última
+lectura válida es trabajo aparte (afecta al `HeroPanel`, ver §K).
 
 ---
 
@@ -4945,6 +5032,23 @@ el `SegmentedControl` de intervalo cubre la necesidad y evita un patrón nuevo. 
 US-022 promete "al menos 30 días de historial": se cumple con los agregados de 5 minutos, no con las
 muestras crudas (7 días). La historia se reformula para decirlo explícitamente y no dar a entender
 que habrá 30 días de detalle.
+
+#### E.4 · La sparkline del panel general se ajusta al último tramo continuo · `DECIDIDO` (2026-09-06)
+
+El `HeroPanel` y las miniaturas de la `DiskCard` piden 24 h, pero **dibujan solo el último tramo
+sin cortes** (`ultimoTramoVisible()` en `src/lib/design/series.ts`), no las 24 h enteras. Motivo:
+con la app parada a ratos —se cierra, se reinicia el equipo, se acaba de instalar— el histórico
+tiene huecos de horas que `Sparkline` pinta como rayas sueltas (regla «un hueco es un hueco», que
+no cambia). Enseñar el tramo en curso devuelve la onda del boceto y su ancho se adapta a lo que
+hay: un minuto de datos → ventana de un minuto (**sin mínimo de zoom**, decisión del usuario).
+
+- El corte se hace donde una separación supera **4×** el **percentil 25** de las separaciones
+  reales (no la mediana: con pocas muestras y un parón, media serie *es* el parón). Un ciclo
+  perdido no abre tramo nuevo; un parón de horas sí.
+- El pie del Hero muestra la ventana real («Ventana: 8 min» / «Ventana: 24 h», `formatSpanShort`).
+- **No afecta** al detalle de disco (`/disks/[id]`): ahí el `SegmentedControl` de intervalo y los
+  ejes son la interfaz, y la ventana la elige el usuario.
+- Los factores (4×, p25) son de afinado; si un histórico real se ve mal, se ajustan aquí.
 
 ---
 
@@ -7186,6 +7290,9 @@ export interface DiskSummary {
   vendorTempLimitC?: number | null;
   /** Umbral crítico del fabricante, si lo declara; por debajo de él manda el configurado en ajustes. */
   vendorTempCriticalC?: number | null;
+  /** Autoevaluación SMART global (`smart_status.passed`): `true` superada, `false` fallida, `null`
+   *  sin dato o disco sin SMART. La consume el primer hecho del `HeroPanel` (ADR-041). */
+  smartHealthPassed?: boolean | null;
   /** Presente solo cuando `state === "unknown"`: explica por qué y decide si cuenta como advertencia. */
   unknownReason?: UnknownReason | null;
   /** Última lectura válida de cualquier fuente. Alimenta la marca de dato obsoleto. */
@@ -7281,6 +7388,52 @@ export function deviceState(
   return hasFreshData ? "ok" : "unknown";
 }
 
+/** Estado **presentable** de un disco en el chrome y en el panel: su `state` de SMART (frescura),
+ *  elevado a la peor severidad de sus alertas `active`/`acknowledged`.
+ *
+ *  Existe porque `B.1` (`docs/open-questions.md`) está a medio conectar: el backend nunca funde las
+ *  alertas en `DiskSummary.state` (`enrich_with_smart_data` siempre pasa `None` a `device_state`),
+ *  así que se hace aquí —que es donde `B.1` dijo que vivía—, una sola vez, y todo lo que lee
+ *  `disk.state` en el panel pasa antes por esta función.
+ *
+ *  Cuentan tanto las alertas dirigidas al **dispositivo** (`…|device:<id>`) como a un **volumen
+ *  suyo** (`…|volume:<id>`): un volumen lleno es un problema del disco que lo contiene, no una
+ *  categoría aparte.
+ *
+ *  Además, un `unknown` cuya causa **debería** funcionar —`unreadable` (dejó de responder),
+ *  `collector-error`— se presenta como advertencia (`unknownContributesWarning`, §B.5), salvo con
+ *  la monitorización en pausa: ahí el `state` de pausa manda y esto no debe teñir las tarjetas.
+ *  Si no hay nada de esto, se conserva el `state` de SMART tal cual (`ok` / `unknown`): no saber
+ *  que un disco está bien no es saber que lo está. */
+export function estadoConAlertas(
+  disk: {
+    id: string;
+    state: HealthState;
+    unknownReason?: UnknownReason | null;
+    volumes?: readonly { id: string }[];
+  },
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[],
+  opts: { paused?: boolean } = {}
+): HealthState {
+  const suyas = alerts.filter(
+    (a) =>
+      alertCountsTowardHealth(a.status) &&
+      (a.deduplicationKey.includes(`device:${disk.id}`) ||
+        (disk.volumes ?? []).some((v) => a.deduplicationKey.includes(`volume:${v.id}`)))
+  );
+  if (suyas.some((a) => a.severity === "crit")) return "crit";
+  if (suyas.some((a) => a.severity === "warn")) return "warn";
+  if (
+    !opts.paused &&
+    disk.state === "unknown" &&
+    disk.unknownReason != null &&
+    unknownContributesWarning(disk.unknownReason)
+  ) {
+    return "warn";
+  }
+  return disk.state;
+}
+
 /** Severidad máxima de una lista. `unknown` no gana nunca a un estado conocido:
  *  se usa solo cuando no hay ningún estado conocido que mostrar. */
 export function worstState(states: readonly HealthState[]): HealthState {
@@ -7319,11 +7472,16 @@ export function globalStatus(input: {
  *
  *   1. el disco con la alerta que cuenta para la salud (`active`/`acknowledged`) de mayor severidad;
  *      empate → la de ocurrencia más reciente;
- *   2. si no hay ninguna, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
- *   3. si no se sabe, el primero del inventario;
- *   4. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
+ *   2. si no hay ninguna, el disco con el **peor `state`** (crit sobre warn) — así el protagonista
+ *      nunca es un disco sano habiendo uno con problema, aunque ese problema venga de un volumen
+ *      lleno o de un SMART ilegible y no de una alerta dirigida al dispositivo; empate → orden de
+ *      inventario;
+ *   3. si todos van bien, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
+ *   4. si no se sabe, el primero del inventario;
+ *   5. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
  *
- *  Devuelve `null` solo si no hay ningún disco. */
+ *  `state` debe venir ya con las alertas fundidas (`estadoConAlertas`). Devuelve `null` solo si no
+ *  hay ningún disco. */
 export function selectHeroDisk<
   D extends {
     id: string;
@@ -7362,6 +7520,12 @@ export function selectHeroDisk<
     puntuados.sort((a, b) => b.sev - a.sev || b.when.localeCompare(a.when));
     return puntuados[0].disk;
   }
+
+  // Sin alerta de dispositivo, pero el `state` ya trae fundidas las alertas de volumen y el SMART
+  // ilegible: si algún disco no está sano, protagoniza él, no el de sistema.
+  const conProblema =
+    elegibles.find((d) => d.state === "crit") ?? elegibles.find((d) => d.state === "warn");
+  if (conProblema) return conProblema;
 
   return elegibles.find((d) => d.volumes?.some((v) => v.isSystemVolume)) ?? elegibles[0];
 }
@@ -7494,6 +7658,25 @@ export function formatPercent(value: number | null | undefined, locale = i18n.fo
 export function formatHours(hours: number | null | undefined, locale = i18n.formatLocale): string {
   if (isMissing(hours)) return NOT_AVAILABLE();
   return `${hours.toLocaleString(locale)} h`;
+}
+
+/** Duración compacta y localizada ("45 s", "6 min", "3 h"). La usa el pie del gráfico del panel
+ *  general para decir cuánto abarca la ventana visible, que en v3 se adapta a los datos que hay
+ *  (`ultimoTramoVisible`). Como el panel nunca pide más de 24 h, no hay tramo de días. Unidad y
+ *  plural los resuelve `Intl`, no un diccionario. */
+export function formatSpanShort(
+  milliseconds: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
+  if (isMissing(milliseconds) || milliseconds < 0) return NOT_AVAILABLE();
+  const s = milliseconds / 1000;
+  const [value, unit] =
+    s < 90
+      ? [Math.round(s), "second" as const]
+      : s < 90 * 60
+        ? [Math.round(s / 60), "minute" as const]
+        : [Math.round(s / 3600), "hour" as const];
+  return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "short" }).format(value);
 }
 
 /** Caudal en **bytes por segundo**, que es la unidad que persiste el backend
@@ -7908,6 +8091,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "disk.activity": "Actividad",
   "disk.powerOnHours": "Horas encendido",
   "disk.firmwareHealth": "Salud del firmware",
+  "disk.firmwareHealthOk": "Correcta",
+  "disk.firmwareHealthFail": "Revisar",
   "disk.vendorLimit": "límite del fabricante {value}",
   "disk.freeSpace": "{value} libres",
   "disk.advancedDetails": "Detalles avanzados",
@@ -7975,14 +8160,18 @@ Fichero de origen: `src/lib/i18n/es.json`
   "dashboard.noDevicesCta": "Buscar dispositivos otra vez",
   "dashboard.hero.allGood": "Todo en orden",
   "dashboard.hero.allGoodBody": "Ningún disco necesita atención ahora mismo.",
+  "dashboard.hero.attentionBody": "Este disco necesita atención. Ábrelo para ver el detalle.",
   "dashboard.hero.openDisk": "Abrir el disco",
   "dashboard.hero.viewAlert": "Ver la alerta",
   "dashboard.hero.lastValid": "último dato válido a las {time}",
-  "dashboard.hero.noSeries": "Sin muestras en las últimas 24 h",
+  "dashboard.hero.noSeries": "Sin muestras recientes",
+  "dashboard.hero.window": "Ventana: {span}",
   "dashboard.spread.title": "Reparto de estados",
   "dashboard.events.title": "Sucesos del sistema",
   "dashboard.events.empty": "Sin sucesos recientes",
   "disk.noSmartExplain": "El bus de este disco no reenvía los comandos SMART. No es una avería: se vigila su capacidad y los sucesos de Windows, pero no la temperatura ni el desgaste.",
+  "disk.noSmartUnreadable": "Este disco ha dejado de responder a las consultas SMART. Se sigue vigilando su capacidad y los sucesos de Windows; la última lectura conocida puede estar anticuada.",
+  "disk.noSmartPending": "Todavía no ha llegado la primera lectura SMART de este disco.",
   "disk.capacity": "Ocupación",
   "disk.notFound": "Disco no encontrado",
   "onboarding.title": "Configuración inicial",
@@ -8320,6 +8509,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "disk.activity": "Activity",
   "disk.powerOnHours": "Power-on hours",
   "disk.firmwareHealth": "Firmware health",
+  "disk.firmwareHealthOk": "Passed",
+  "disk.firmwareHealthFail": "Check",
   "disk.vendorLimit": "vendor limit {value}",
   "disk.freeSpace": "{value} free",
   "disk.advancedDetails": "Advanced details",
@@ -8387,14 +8578,18 @@ Fichero de origen: `src/lib/i18n/en.json`
   "dashboard.noDevicesCta": "Look for devices again",
   "dashboard.hero.allGood": "All good",
   "dashboard.hero.allGoodBody": "No disk needs attention right now.",
+  "dashboard.hero.attentionBody": "This disk needs attention. Open it for details.",
   "dashboard.hero.openDisk": "Open disk",
   "dashboard.hero.viewAlert": "View alert",
   "dashboard.hero.lastValid": "last valid reading at {time}",
-  "dashboard.hero.noSeries": "No samples in the last 24 h",
+  "dashboard.hero.noSeries": "No recent samples",
+  "dashboard.hero.window": "Window: {span}",
   "dashboard.spread.title": "Status spread",
   "dashboard.events.title": "System events",
   "dashboard.events.empty": "No recent events",
   "disk.noSmartExplain": "This disk's bus does not forward SMART commands. That is not a fault: its capacity and Windows events are still watched, but not temperature or wear.",
+  "disk.noSmartUnreadable": "This disk has stopped responding to SMART queries. Its capacity and Windows events are still watched; the last known reading may be stale.",
+  "disk.noSmartPending": "The first SMART reading for this disk has not arrived yet.",
   "disk.capacity": "Usage",
   "disk.notFound": "Disk not found",
   "onboarding.title": "Initial setup",

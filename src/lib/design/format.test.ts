@@ -6,6 +6,7 @@ import {
   formatHours,
   formatLatency,
   formatPercent,
+  formatSpanShort,
   formatTemperature,
   formatThroughput,
   maskSerial,
@@ -24,7 +25,8 @@ describe("un dato ausente nunca se convierte en cero", () => {
     ["formatPercent", formatPercent],
     ["formatHours", formatHours],
     ["formatThroughput", formatThroughput],
-    ["formatLatency", formatLatency]
+    ["formatLatency", formatLatency],
+    ["formatSpanShort", formatSpanShort]
   ])("%s devuelve 'No disponible' con null, undefined y NaN", (_name, fn) => {
     expect(fn(null)).toBe("No disponible");
     expect(fn(undefined)).toBe("No disponible");
@@ -82,6 +84,21 @@ describe("formatLatency — un decimal por debajo de 10 ms", () => {
     expect(formatLatency(0.2)).toBe("0,2 ms");
     expect(formatLatency(4)).toBe("4,0 ms");
     expect(formatLatency(120)).toBe("120 ms");
+  });
+});
+
+describe("formatSpanShort — ventana del gráfico del panel", () => {
+  beforeEach(() => i18n.init("es", "es-ES"));
+
+  it("elige la unidad por el tamaño del intervalo", () => {
+    expect(formatSpanShort(45_000)).toBe("45 s");
+    expect(formatSpanShort(6 * 60_000)).toBe("6 min");
+    expect(formatSpanShort(3 * 3_600_000)).toBe("3 h");
+    expect(formatSpanShort(24 * 3_600_000)).toBe("24 h");
+  });
+
+  it("un intervalo negativo es un dato imposible, no cero", () => {
+    expect(formatSpanShort(-1)).toBe("No disponible");
   });
 });
 

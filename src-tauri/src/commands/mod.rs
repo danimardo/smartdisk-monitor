@@ -87,6 +87,10 @@ pub struct DiskSummary {
     pub power_on_hours: Option<f64>,
     pub vendor_temp_limit_c: Option<f64>,
     pub vendor_temp_critical_c: Option<f64>,
+    /// Autoevaluación SMART global (`smart_status.passed`): `Some(true)` superada, `Some(false)`
+    /// fallida, `None` sin dato o disco sin SMART. La consume el primer hecho del `HeroPanel`
+    /// («Salud del firmware», ADR-041).
+    pub smart_health_passed: Option<bool>,
     pub unknown_reason: Option<UnknownReason>,
     pub last_read_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -273,6 +277,7 @@ fn device_to_summary(d: &Device) -> DiskSummary {
         power_on_hours: None,
         vendor_temp_limit_c: None,
         vendor_temp_critical_c: None,
+        smart_health_passed: None,
         unknown_reason: Some(UnknownReason::NotYetSampled),
         last_read_at: None,
         provenance: None,
@@ -1336,6 +1341,8 @@ fn enrich_with_smart_data(conn: &rusqlite::Connection, d: &Device) -> AppResult<
         .map_err(rusqlite_err_to_app_error)?;
     let horas_encendido = repo_metricas::latest_device_sample(conn, &d.id, "power_on_hours")
         .map_err(rusqlite_err_to_app_error)?;
+    let salud_smart = repo_metricas::latest_device_sample(conn, &d.id, "health_passed")
+        .map_err(rusqlite_err_to_app_error)?;
     // Los contadores de rendimiento son un colector aparte, con su propia cadencia
     // (`METRICAS_RAPIDAS`, independiente de `SMART_COMPLETO`): se refleja aunque todavía no haya
     // llegado ninguna lectura SMART, en vez de esperar a `temperatura` como el resto de campos de
@@ -1357,6 +1364,10 @@ fn enrich_with_smart_data(conn: &rusqlite::Connection, d: &Device) -> AppResult<
     resumen.temperature_c = temperatura.as_ref().and_then(|m| m.value_real);
     resumen.percentage_used = desgaste.as_ref().and_then(|m| m.value_real);
     resumen.power_on_hours = horas_encendido.as_ref().and_then(|m| m.value_real);
+    resumen.smart_health_passed = salud_smart
+        .as_ref()
+        .and_then(|m| m.value_real)
+        .map(|v| v != 0.0);
     resumen.last_read_at = Some(principal.sampled_at_utc.clone());
     resumen.provenance = Some(Provenance {
         source: MetricSource::Smartctl,
@@ -1365,10 +1376,16 @@ fn enrich_with_smart_data(conn: &rusqlite::Connection, d: &Device) -> AppResult<
     });
 
     resumen.state = crate::domain::salud::device_state(true, fresco, None);
+    // Aquí ya hay al menos una lectura SMART histórica (si no, se habría vuelto en la línea de
+    // arriba con `not-yet-sampled`). Que la última no sea fresca y `smartctl` tenga ruta conocida
+    // significa que el disco **dejó de responder**: `unreadable`, no `not-yet-sampled` (que es
+    // "aún no medido"). La distinción importa porque `unreadable` es una degradación real y cuenta
+    // como advertencia (`open-questions.md` §B.5, `unknownContributesWarning`). El caso de la
+    // monitorización en pausa lo distingue el frontend, que es donde vive ese estado.
     resumen.unknown_reason = if fresco {
         None
     } else {
-        Some(UnknownReason::NotYetSampled)
+        Some(UnknownReason::Unreadable)
     };
 
     Ok(resumen)
@@ -5295,7 +5312,7 @@ mod tests_salud {
     }
 
     #[test]
-    fn una_lectura_caducada_vuelve_a_quedar_desconocida_sin_borrar_el_dato() {
+    fn una_lectura_caducada_deja_el_disco_como_ilegible_sin_borrar_el_dato() {
         let conn = conn_de_prueba();
         let d = dispositivo_con_ruta("d1", Some(r"\.\PhysicalDrive0"));
         repo_inventario::upsert_device(&conn, &d).unwrap();
@@ -5315,7 +5332,8 @@ mod tests_salud {
         );
         assert_eq!(
             resumen.summary.unknown_reason,
-            Some(UnknownReason::NotYetSampled)
+            Some(UnknownReason::Unreadable),
+            "hubo lectura y dejó de haberla: 'ilegible', no 'aún no medido'"
         );
         // El dato sigue disponible para mostrarlo con su antigüedad, aunque el estado sea unknown.
         assert_eq!(resumen.summary.temperature_c, Some(40.0));

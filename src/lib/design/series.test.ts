@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { cadencia, huecos, rangoConAire, submuestrear, tramos, type Punto } from "./series";
+import {
+  cadencia,
+  huecos,
+  rangoConAire,
+  submuestrear,
+  tramos,
+  ultimoTramoVisible,
+  type Punto
+} from "./series";
 
 /** «Un hueco es un hueco» (constitución §I): estas pruebas fijan que la serie nunca se interpola
  *  sobre un `null` ni sobre un salto temporal, y que el rango deja aire. Es lógica compartida por
@@ -44,6 +52,56 @@ describe("tramos — corta en null y en salto temporal", () => {
   it("serie vacía o toda null: ningún tramo", () => {
     expect(tramos([], 1)).toEqual([]);
     expect(tramos([{ t: 0, v: null }], 1)).toEqual([]);
+  });
+});
+
+describe("ultimoTramoVisible — la ventana del panel se adapta al último tramo sin cortes", () => {
+  const MIN = 60_000;
+
+  it("serie con un parón largo en medio: solo el tramo posterior", () => {
+    const p: Punto[] = [
+      { t: 0, v: 40 },
+      { t: 5 * MIN, v: 41 },
+      { t: 10 * MIN, v: 42 },
+      // parón de 17 h
+      { t: 17 * 60 * MIN, v: 45 },
+      { t: 17 * 60 * MIN + 5 * MIN, v: 46 },
+      { t: 17 * 60 * MIN + 10 * MIN, v: 47 }
+    ];
+    const r = ultimoTramoVisible(p);
+    expect(r.points.map((x) => x.v)).toEqual([45, 46, 47]);
+    expect(r.desde).toBe(17 * 60 * MIN);
+    expect(r.hasta).toBe(17 * 60 * MIN + 10 * MIN);
+  });
+
+  it("un ciclo perdido no abre tramo nuevo: el hueco pequeño no corta la ventana", () => {
+    const p: Punto[] = [
+      { t: 0, v: 1 },
+      { t: 5 * MIN, v: 2 },
+      { t: 15 * MIN, v: 3 }, // 10 min: solo dos veces la cadencia
+      { t: 20 * MIN, v: 4 }
+    ];
+    expect(ultimoTramoVisible(p).points).toHaveLength(4);
+  });
+
+  it("serie densa y entera: no la toca", () => {
+    const p: Punto[] = Array.from({ length: 50 }, (_, i) => ({ t: i * MIN, v: i }));
+    expect(ultimoTramoVisible(p).points).toHaveLength(50);
+  });
+
+  it("un solo punto tras el parón: ese punto (sin mínimo de zoom)", () => {
+    const p: Punto[] = [
+      { t: 0, v: 1 },
+      { t: 5 * MIN, v: 2 },
+      { t: 300 * MIN, v: 9 }
+    ];
+    const r = ultimoTramoVisible(p);
+    expect(r.points).toEqual([{ t: 300 * MIN, v: 9 }]);
+    expect(r.desde).toBe(r.hasta);
+  });
+
+  it("serie vacía: todo a cero", () => {
+    expect(ultimoTramoVisible([])).toEqual({ points: [], desde: 0, hasta: 0 });
   });
 });
 

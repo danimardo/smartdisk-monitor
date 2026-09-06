@@ -13,4 +13,10 @@ import type { VolumeSummary } from "./VolumeSummary";
  * identidad y ciclo de vida. `#[serde(flatten)]` evita duplicar los dieciséis campos de
  * `DiskSummary` a mano, que es justo el riesgo de divergencia que `ts-rs` existe para cerrar.
  */
-export type DeviceDetail = { fingerprint: string, identityConfidence: IdentityConfidence, serialNumber: string | null, firmware: string | null, busType: string | null, capabilities: Array<DeviceCapability>, counters: Array<SmartCounter>, firstSeenAt: string, lastSeenAt: string, removedAt: string | null, id: string, alias: string | null, model: string, deviceType: DeviceType, state: HealthState, temperatureC: number | null, percentageUsed: number | null, activityPercent: number | null, powerOnHours: number | null, vendorTempLimitC: number | null, vendorTempCriticalC: number | null, unknownReason: UnknownReason | null, lastReadAt: string | null, provenance?: Provenance | null, volumes: Array<VolumeSummary>, };
+export type DeviceDetail = { fingerprint: string, identityConfidence: IdentityConfidence, serialNumber: string | null, firmware: string | null, busType: string | null, capabilities: Array<DeviceCapability>, counters: Array<SmartCounter>, firstSeenAt: string, lastSeenAt: string, removedAt: string | null, id: string, alias: string | null, model: string, deviceType: DeviceType, state: HealthState, temperatureC: number | null, percentageUsed: number | null, activityPercent: number | null, powerOnHours: number | null, vendorTempLimitC: number | null, vendorTempCriticalC: number | null, 
+/**
+ * Autoevaluación SMART global (`smart_status.passed`): `Some(true)` superada, `Some(false)`
+ * fallida, `None` sin dato o disco sin SMART. La consume el primer hecho del `HeroPanel`
+ * («Salud del firmware», ADR-041).
+ */
+smartHealthPassed: boolean | null, unknownReason: UnknownReason | null, lastReadAt: string | null, provenance?: Provenance | null, volumes: Array<VolumeSummary>, };

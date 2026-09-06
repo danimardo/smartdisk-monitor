@@ -48,6 +48,25 @@ export function formatHours(hours: number | null | undefined, locale = i18n.form
   return `${hours.toLocaleString(locale)} h`;
 }
 
+/** Duración compacta y localizada ("45 s", "6 min", "3 h"). La usa el pie del gráfico del panel
+ *  general para decir cuánto abarca la ventana visible, que en v3 se adapta a los datos que hay
+ *  (`ultimoTramoVisible`). Como el panel nunca pide más de 24 h, no hay tramo de días. Unidad y
+ *  plural los resuelve `Intl`, no un diccionario. */
+export function formatSpanShort(
+  milliseconds: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
+  if (isMissing(milliseconds) || milliseconds < 0) return NOT_AVAILABLE();
+  const s = milliseconds / 1000;
+  const [value, unit] =
+    s < 90
+      ? [Math.round(s), "second" as const]
+      : s < 90 * 60
+        ? [Math.round(s / 60), "minute" as const]
+        : [Math.round(s / 3600), "hour" as const];
+  return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "short" }).format(value);
+}
+
 /** Caudal en **bytes por segundo**, que es la unidad que persiste el backend
  *  (`read_bytes_per_second` / `write_bytes_per_second`). La escala es la misma base 1024 que
  *  `formatBytes`, de modo que "180 MB/s" son 180 × 1024² B/s.

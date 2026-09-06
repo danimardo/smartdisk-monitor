@@ -37,6 +37,52 @@ export function deviceState(
   return hasFreshData ? "ok" : "unknown";
 }
 
+/** Estado **presentable** de un disco en el chrome y en el panel: su `state` de SMART (frescura),
+ *  elevado a la peor severidad de sus alertas `active`/`acknowledged`.
+ *
+ *  Existe porque `B.1` (`docs/open-questions.md`) está a medio conectar: el backend nunca funde las
+ *  alertas en `DiskSummary.state` (`enrich_with_smart_data` siempre pasa `None` a `device_state`),
+ *  así que se hace aquí —que es donde `B.1` dijo que vivía—, una sola vez, y todo lo que lee
+ *  `disk.state` en el panel pasa antes por esta función.
+ *
+ *  Cuentan tanto las alertas dirigidas al **dispositivo** (`…|device:<id>`) como a un **volumen
+ *  suyo** (`…|volume:<id>`): un volumen lleno es un problema del disco que lo contiene, no una
+ *  categoría aparte.
+ *
+ *  Además, un `unknown` cuya causa **debería** funcionar —`unreadable` (dejó de responder),
+ *  `collector-error`— se presenta como advertencia (`unknownContributesWarning`, §B.5), salvo con
+ *  la monitorización en pausa: ahí el `state` de pausa manda y esto no debe teñir las tarjetas.
+ *  Si no hay nada de esto, se conserva el `state` de SMART tal cual (`ok` / `unknown`): no saber
+ *  que un disco está bien no es saber que lo está. */
+export function estadoConAlertas(
+  disk: {
+    id: string;
+    state: HealthState;
+    unknownReason?: UnknownReason | null;
+    volumes?: readonly { id: string }[];
+  },
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[],
+  opts: { paused?: boolean } = {}
+): HealthState {
+  const suyas = alerts.filter(
+    (a) =>
+      alertCountsTowardHealth(a.status) &&
+      (a.deduplicationKey.includes(`device:${disk.id}`) ||
+        (disk.volumes ?? []).some((v) => a.deduplicationKey.includes(`volume:${v.id}`)))
+  );
+  if (suyas.some((a) => a.severity === "crit")) return "crit";
+  if (suyas.some((a) => a.severity === "warn")) return "warn";
+  if (
+    !opts.paused &&
+    disk.state === "unknown" &&
+    disk.unknownReason != null &&
+    unknownContributesWarning(disk.unknownReason)
+  ) {
+    return "warn";
+  }
+  return disk.state;
+}
+
 /** Severidad máxima de una lista. `unknown` no gana nunca a un estado conocido:
  *  se usa solo cuando no hay ningún estado conocido que mostrar. */
 export function worstState(states: readonly HealthState[]): HealthState {
@@ -75,11 +121,16 @@ export function globalStatus(input: {
  *
  *   1. el disco con la alerta que cuenta para la salud (`active`/`acknowledged`) de mayor severidad;
  *      empate → la de ocurrencia más reciente;
- *   2. si no hay ninguna, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
- *   3. si no se sabe, el primero del inventario;
- *   4. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
+ *   2. si no hay ninguna, el disco con el **peor `state`** (crit sobre warn) — así el protagonista
+ *      nunca es un disco sano habiendo uno con problema, aunque ese problema venga de un volumen
+ *      lleno o de un SMART ilegible y no de una alerta dirigida al dispositivo; empate → orden de
+ *      inventario;
+ *   3. si todos van bien, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
+ *   4. si no se sabe, el primero del inventario;
+ *   5. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
  *
- *  Devuelve `null` solo si no hay ningún disco. */
+ *  `state` debe venir ya con las alertas fundidas (`estadoConAlertas`). Devuelve `null` solo si no
+ *  hay ningún disco. */
 export function selectHeroDisk<
   D extends {
     id: string;
@@ -118,6 +169,12 @@ export function selectHeroDisk<
     puntuados.sort((a, b) => b.sev - a.sev || b.when.localeCompare(a.when));
     return puntuados[0].disk;
   }
+
+  // Sin alerta de dispositivo, pero el `state` ya trae fundidas las alertas de volumen y el SMART
+  // ilegible: si algún disco no está sano, protagoniza él, no el de sistema.
+  const conProblema =
+    elegibles.find((d) => d.state === "crit") ?? elegibles.find((d) => d.state === "warn");
+  if (conProblema) return conProblema;
 
   return elegibles.find((d) => d.volumes?.some((v) => v.isSystemVolume)) ?? elegibles[0];
 }

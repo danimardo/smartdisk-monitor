@@ -70,6 +70,25 @@ describe("DiskCard", () => {
     await expect.element(page.getByText("Sin datos SMART")).toBeInTheDocument();
   });
 
+  it("con SMART caducado (unknownReason presente) no enseña la última lectura vieja como si fuera de ahora", async () => {
+    // El backend deja `temperatureC` con la última muestra aunque ya no sea fresca; la tarjeta no
+    // debe presentarla como actual. Las tres magnitudes van a «—» (boceto §4).
+    const { container } = await render(DiskCard, {
+      props: {
+        disk: discoBase({
+          state: "unknown",
+          unknownReason: "unreadable",
+          temperatureC: 41,
+          percentageUsed: 3,
+          activityPercent: 0
+        }),
+        href: "/disks/d1"
+      }
+    });
+    expect(container.textContent).not.toContain("41 °C");
+    await expect.element(page.getByText("—").first()).toBeInTheDocument();
+  });
+
   it("un dato ausente se muestra como «—» discreto con «No disponible» en el title, nunca como 0 ni vacío", async () => {
     const { container } = await render(DiskCard, {
       props: {

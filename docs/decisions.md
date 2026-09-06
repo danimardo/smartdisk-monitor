@@ -1206,3 +1206,47 @@ internas (`window.width`, `window.height`, `window.x`, `window.y`, `window.maxim
 - `docs/open-questions.md` J.8 y `docs/ui-design.md` §4.0 pasan la predeterminada a 1695 × 988; el
   **objetivo de diseño** (1280 × 720) y el **mínimo técnico** (1024 × 560) no cambian.
 - Sin contrato nuevo, sin DTO `ts-rs`, sin esquema Zod, sin permiso de Tauri, sin dependencia.
+
+## ADR-041 — `DiskSummary` lleva la autoevaluación SMART (`smartHealthPassed`)
+
+Estado: aceptada. Fecha: 2026-09-06.
+
+### El problema
+
+El `HeroPanel` del panel general muestra cuatro «hechos» del disco protagonista. El boceto aprobado
+(`design/propuesta-rediseno`, `smartdisk-v3.html`) pone como primero **«Salud del firmware ·
+Correcta»**; la implementación mostraba en su lugar **«Ocupación · N %»** (porcentaje ocupado del
+volumen principal). La autoevaluación SMART (`smart_status.passed`) sí se recopila —se persiste como
+métrica `health_passed` (1.0/0.0) y se expone en `DeviceDetail.counters`—, pero **no viaja en
+`DiskSummary`**, que es el único DTO que reciben el `HeroPanel` y la `DiskCard`. La clave i18n
+`disk.firmwareHealth` ya existía en los dos diccionarios, dejada preparada.
+
+### La decisión
+
+Añadir a `DiskSummary` el campo `smart_health_passed: Option<bool>` (`smartHealthPassed` en el
+wire): `Some(true)` autoevaluación superada, `Some(false)` fallida, `None` sin dato o disco sin
+SMART. Lo rellena `enrich_with_smart_data` leyendo la última muestra de `health_passed`, igual que
+ya lee temperatura, desgaste y horas. El `HeroPanel` sustituye el hecho «Ocupación» por «Salud del
+firmware» (`icon: shield`, en rojo solo si `false`); el orden de hechos pasa a ser el del boceto:
+firmware, desgaste, actividad, horas.
+
+### Alternativas descartadas
+
+- **Mantener «Ocupación» y aceptar la desviación del boceto.** Coste cero (nada de backend). Se
+  descarta porque el boceto es la referencia vinculante (`ADR-034`, `docs/ui-design.md` §0), la
+  ocupación de un volumen ya la comunica la barra de capacidad de cada `DiskCard`, y el trabajo del
+  Hero es «¿tengo un problema?» —donde «el disco ha fallado su propia autoevaluación» encaja y «el
+  disco está lleno al 93 %» ya tiene su alerta y su barra—.
+- **Derivarlo en el frontend de `disk.state`.** No sirve: `state` refleja alertas y frescura, no el
+  resultado del autotest. Un disco puede tener `state = ok` y `health_passed = false` en el mismo
+  ciclo en que se está creando la alerta `smart.health.failed`.
+- **Reusar `provenance` o un campo existente.** Opaco y frágil; un booleano nuevo es más honesto.
+
+### Consecuencias
+
+- Un campo anulable más en un DTO que `ts-rs` ya refleja: regenera `generated/DiskSummary.ts` y
+  `generated/DeviceDetail.ts` al compilar. `DeviceDetail` lo hereda por `#[serde(flatten)]` —
+  inofensivo, ya tenía el mismo dato en `counters`.
+- Esquema Zod (`schemas.ts`) y su prueba de rechazo; interfaz en `src/lib/design/types.ts`;
+  `docs/ui-contract.md` §3.2.
+- Sin comando nuevo, sin permiso de Tauri, sin dependencia.

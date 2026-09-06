@@ -64,6 +64,9 @@ export interface DiskSummary {
   vendorTempLimitC?: number | null;
   /** Umbral crítico del fabricante, si lo declara; por debajo de él manda el configurado en ajustes. */
   vendorTempCriticalC?: number | null;
+  /** Autoevaluación SMART global (`smart_status.passed`): `true` superada, `false` fallida, `null`
+   *  sin dato o disco sin SMART. La consume el primer hecho del `HeroPanel` (ADR-041). */
+  smartHealthPassed?: boolean | null;
   /** Presente solo cuando `state === "unknown"`: explica por qué y decide si cuenta como advertencia. */
   unknownReason?: UnknownReason | null;
   /** Última lectura válida de cualquier fuente. Alimenta la marca de dato obsoleto. */

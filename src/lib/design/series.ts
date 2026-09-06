@@ -44,6 +44,42 @@ export function tramos(points: readonly Punto[], step: number): { t: number; v: 
   return out;
 }
 
+/** Recorta la serie a su **último tramo sin cortes**: desde la última separación grande entre
+ *  muestras hasta el final. Para el panel general (v3, `Sparkline.md`): con la app parada a ratos
+ *  —se cierra, se reinicia el equipo, se acaba de instalar— la ventana fija de 24 h deja huecos de
+ *  horas que se dibujan como rayas sueltas; enseñar solo el tramo en curso devuelve la onda
+ *  continua del boceto, y su ancho se adapta a lo que hay (un minuto de datos → ventana de un
+ *  minuto).
+ *
+ *  Un salto se considera «la app estuvo parada» si supera `factorCorte` veces la cadencia normal.
+ *  Como referencia de cadencia se usa el **percentil 25** de las separaciones, no la mediana: con
+ *  pocas muestras y un parón, la mitad de las separaciones *son* el parón y la mediana se
+ *  contamina. `tramos()` sigue partiendo el trazo **dentro** de la ventana ya recortada —dibujar
+ *  un hueco es otro trabajo—. Cuenta el tiempo real entre muestras, `null` incluidos. Serie vacía
+ *  → todo a cero. */
+export function ultimoTramoVisible(
+  points: readonly Punto[],
+  factorCorte = 4
+): { points: Punto[]; desde: number; hasta: number } {
+  if (points.length === 0) return { points: [], desde: 0, hasta: 0 };
+  const deltas = points
+    .slice(1)
+    .map((p, i) => p.t - points[i].t)
+    .filter((d) => d > 0)
+    .sort((a, b) => a - b);
+  const cadenciaBase = deltas.length ? deltas[Math.floor(deltas.length * 0.25)] : 1;
+  const umbral = cadenciaBase * factorCorte;
+  let inicio = 0;
+  for (let i = points.length - 1; i > 0; i--) {
+    if (points[i].t - points[i - 1].t > umbral) {
+      inicio = i;
+      break;
+    }
+  }
+  const cola = points.slice(inicio);
+  return { points: cola, desde: cola[0].t, hasta: cola.at(-1)!.t };
+}
+
 /** Bandas de ausencia de datos, en dominio de tiempo, incluidos los extremos: si la serie empieza
  *  después de `from` o termina antes de `to`, esos tramos también son huecos. */
 export function huecos(

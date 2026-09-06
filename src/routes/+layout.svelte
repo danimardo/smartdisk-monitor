@@ -13,10 +13,11 @@
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
-  import { globalStatus, type GlobalStatusKind } from "$lib/design/health";
+  import { estadoConAlertas, globalStatus, type GlobalStatusKind } from "$lib/design/health";
   import { healthIcon, type IconName } from "$lib/design/icons";
   import { formatAge } from "$lib/design/format";
   import {
+    getAlertGroups,
     getAppInfo,
     getAppearanceSettings,
     getDevices,
@@ -25,11 +26,13 @@
     subscribe,
     toAppError
   } from "$lib/api";
-  import { setLogLevel as setLoggerLevel } from "$lib/logger";
+  import { createLogger, setLogLevel as setLoggerLevel } from "$lib/logger";
   import { app } from "$lib/stores/app.svelte";
   import type { AppError } from "$lib/design/types";
 
   let { children } = $props();
+
+  const log = createLogger("app");
 
   let ready = $state(false);
   let startupError = $state<AppError | null>(null);
@@ -65,7 +68,7 @@
     globalStatus({
       loaded: app.loadedAt !== null,
       paused: app.paused,
-      monitoredStates: app.devices.map((d) => d.state)
+      monitoredStates: app.devices.map((d) => estadoConAlertas(d, app.alerts, { paused: app.paused }))
     })
   );
 
@@ -200,6 +203,23 @@
           },
           "system:accent-changed": () => void applySystemAccent()
         });
+
+        // 4. Las alertas, por el mismo motivo que el inventario: el color del disco y el estado
+        //    global (píldora + pie del riel) deben ser correctos aunque se entre directo a
+        //    `/disks/x` o al panel, no solo al pasar por `/alerts`. Sin filtro, igual que
+        //    `alerts/+page.ts`. Va **después** de suscribirse y en su propio `try`: no son
+        //    imprescindibles para arrancar y un fallo aquí no debe tumbar la suscripción ni la
+        //    pantalla — si no llegan ahora, llegan por `alerts:changed` (ADR-015).
+        if (app.alertsLoadedAt === null) {
+          try {
+            app.upsertAlerts(await getAlertGroups());
+            app.alertsLoadedAt = new Date().toISOString();
+          } catch (cause) {
+            log.warn("no se pudieron cargar las alertas al arrancar", {
+              code: toAppError(cause).code
+            });
+          }
+        }
       } catch (cause) {
         // Un fallo de arranque se explica: nunca una ventana en blanco.
         startupError = toAppError(cause);

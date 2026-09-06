@@ -10,4 +10,10 @@ import type { VolumeSummary } from "./VolumeSummary";
  * las últimas muestras SMART persistidas; sin ellas (o sin `smartctl_path`) `state` es `unknown`
  * con un motivo explícito, nunca un relleno inventado (FR-004, FR-006).
  */
-export type DiskSummary = { id: string, alias: string | null, model: string, deviceType: DeviceType, state: HealthState, temperatureC: number | null, percentageUsed: number | null, activityPercent: number | null, powerOnHours: number | null, vendorTempLimitC: number | null, vendorTempCriticalC: number | null, unknownReason: UnknownReason | null, lastReadAt: string | null, provenance?: Provenance | null, volumes: Array<VolumeSummary>, };
+export type DiskSummary = { id: string, alias: string | null, model: string, deviceType: DeviceType, state: HealthState, temperatureC: number | null, percentageUsed: number | null, activityPercent: number | null, powerOnHours: number | null, vendorTempLimitC: number | null, vendorTempCriticalC: number | null, 
+/**
+ * Autoevaluación SMART global (`smart_status.passed`): `Some(true)` superada, `Some(false)`
+ * fallida, `None` sin dato o disco sin SMART. La consume el primer hecho del `HeroPanel`
+ * («Salud del firmware», ADR-041).
+ */
+smartHealthPassed: boolean | null, unknownReason: UnknownReason | null, lastReadAt: string | null, provenance?: Provenance | null, volumes: Array<VolumeSummary>, };

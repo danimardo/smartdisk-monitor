@@ -88,6 +88,7 @@ export const diskSummary = z.object({
   powerOnHours: nullableNumber,
   vendorTempLimitC: nullableNumber.optional(),
   vendorTempCriticalC: nullableNumber.optional(),
+  smartHealthPassed: z.boolean().nullable().optional(),
   unknownReason: unknownReason.nullable().optional(),
   lastReadAt: isoUtc.nullable().optional(),
   provenance: provenance.nullable().optional(),

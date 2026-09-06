@@ -50,6 +50,16 @@ fiable. Implementado en `deviceState()` y `alertCountsTowardHealth()` (`src/lib/
 *Consecuencia asumida:* un disco con un problema crónico se queda en rojo. Se mitiga con el
 distintivo de "reconocida" y con el orden de la lista, no apagando el color.
 
+*Corrección 2026-09-06:* la decisión estaba solo a medias. `enrich_with_smart_data` (Rust) siempre
+pasa `None` como severidad a `device_state`, así que `DiskSummary.state` únicamente refleja la
+frescura de SMART (`ok` / `unknown`), nunca `warn` / `crit`; y ninguna pantalla fundía `app.alerts`
+con `app.devices`. Resultado observado: con tres alertas `active` el panel decía «Todo en orden».
+Se cierra con `estadoConAlertas(disk, alerts)` (`src/lib/design/health.ts`), que el panel general y
+el chrome aplican antes de leer `disk.state`. **Cuentan las alertas dirigidas al dispositivo
+(`…|device:<id>`) y a cualquier volumen suyo (`…|volume:<id>`)**: un volumen lleno es un problema
+del disco que lo contiene, no una categoría aparte. `deviceState()` se conserva como la definición
+canónica de la regla y la prueba de `health.test.ts` que la fija.
+
 ### B.2 · El silencio no es un estado · `DECIDIDO`
 
 `mutedUntil` es ortogonal a `AlertStatus`: una alerta puede estar activa y silenciada a la vez. El
@@ -88,6 +98,29 @@ Un `unknown` no impide el verde por sí solo, pero sí cuando su causa es `unrea
 `collector-error`: eso es una degradación real y aporta una advertencia (`unknownContributesWarning`).
 Un dispositivo que declara no soportar SMART (`unsupported`) es normalidad y no ensucia nada.
 
+*Corrección 2026-09-06:* también estaba a medias.
+- `enrich_with_smart_data` marcaba `not-yet-sampled` («aún no medido») cuando en realidad había
+  habido lecturas y dejaron de llegar. Ahora, si hay al menos una muestra histórica y la última no
+  es fresca, el motivo es `unreadable` («dejó de responder»). El caso `not-yet-sampled` queda solo
+  para un disco que nunca ha devuelto nada.
+- `unknownContributesWarning()` era **código muerto**. Ahora lo aplica `estadoConAlertas()`
+  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se presenta como
+  advertencia en el panel y cuenta para «necesitan atención» —salvo con la monitorización en
+  pausa, donde el estado de pausa manda—.
+- `selectHeroDisk()` gana un criterio intermedio: sin alerta de dispositivo, protagoniza el disco
+  con el peor `state` (ya fundido) antes que el de sistema, para que el Hero no muestre «Todo en
+  orden» habiendo un disco en `warn`/`crit` por un volumen lleno o un SMART ilegible. El
+  `HeroPanel` estrena un texto genérico («Este disco necesita atención…») para ese caso sin alerta
+  con clave i18n propia.
+
+**Pendiente (`PENDIENTE`):** el **grupo de alerta** `smart.unreadable` (documentado en
+`alert-rules.md`: «consulta fallida 3 ciclos seguidos → advertencia») sigue **sin implementar**. El
+colector descarta el fallo por disco (`commands/mod.rs`, `refresh_smart` hace `continue` sin
+registrar nada) y el motor nunca lo evalúa. Enfoque propuesto: registrar el fallo como un
+`smart_snapshots` con `query_status='error'` y contar 3 seguidos en el motor, con resolución a la
+primera lectura correcta. Hasta entonces, un disco ilegible se ve como advertencia (arriba) pero
+no genera un grupo de alerta con su cronología ni su notificación.
+
 ### B.6 · Cambio de severidad de un grupo ya reconocido · `PROPUESTO`
 
 Si un grupo `acknowledged` sube de severidad (advertencia → crítico), vuelve a `active` y se
@@ -115,6 +148,16 @@ correctamente un pendrive monitorizado generaría un crítico falso. Reglas:
 Donde la especificación decía "tras tres muestras" o "tras tres intentos", se entiende **tres
 ciclos consecutivos del recopilador correspondiente**, no tres dentro de una ventana. Con la
 frecuencia por defecto: 90 s para temperatura, 15 min para SMART. Recogido en `alert-rules.md`.
+
+### B.10 · Un disco sin SMART fresco no enseña su última lectura como si fuera de ahora · `DECIDIDO`
+
+`enrich_with_smart_data` conserva `temperatureC` / `percentageUsed` / `powerOnHours` con la última
+muestra persistida aunque ya no sea fresca (solo `state` y `unknownReason` se condicionan a la
+frescura). En la `DiskCard`, si `unknownReason` no es `null` —bus sin SMART, disco que dejó de
+responder, o primera lectura aún no llegada— las tres magnitudes se muestran como «—», nunca el
+valor viejo ni un contador de rendimiento en vivo presentado como lectura SMART (boceto
+`01-panel-general.md` §4, constitución §I). La marca de dato obsoleto con la hora de la última
+lectura válida es trabajo aparte (afecta al `HeroPanel`, ver §K).
 
 ---
 
@@ -209,6 +252,23 @@ el `SegmentedControl` de intervalo cubre la necesidad y evita un patrón nuevo. 
 US-022 promete "al menos 30 días de historial": se cumple con los agregados de 5 minutos, no con las
 muestras crudas (7 días). La historia se reformula para decirlo explícitamente y no dar a entender
 que habrá 30 días de detalle.
+
+### E.4 · La sparkline del panel general se ajusta al último tramo continuo · `DECIDIDO` (2026-09-06)
+
+El `HeroPanel` y las miniaturas de la `DiskCard` piden 24 h, pero **dibujan solo el último tramo
+sin cortes** (`ultimoTramoVisible()` en `src/lib/design/series.ts`), no las 24 h enteras. Motivo:
+con la app parada a ratos —se cierra, se reinicia el equipo, se acaba de instalar— el histórico
+tiene huecos de horas que `Sparkline` pinta como rayas sueltas (regla «un hueco es un hueco», que
+no cambia). Enseñar el tramo en curso devuelve la onda del boceto y su ancho se adapta a lo que
+hay: un minuto de datos → ventana de un minuto (**sin mínimo de zoom**, decisión del usuario).
+
+- El corte se hace donde una separación supera **4×** el **percentil 25** de las separaciones
+  reales (no la mediana: con pocas muestras y un parón, media serie *es* el parón). Un ciclo
+  perdido no abre tramo nuevo; un parón de horas sí.
+- El pie del Hero muestra la ventana real («Ventana: 8 min» / «Ventana: 24 h», `formatSpanShort`).
+- **No afecta** al detalle de disco (`/disks/[id]`): ahí el `SegmentedControl` de intervalo y los
+  ejes son la interfaz, y la ventana la elige el usuario.
+- Los factores (4×, p25) son de afinado; si un histórico real se ve mal, se ajustan aquí.
 
 ---
 
