@@ -25,10 +25,11 @@
   } = $props();
 </script>
 
-<header class="sdm-material-chrome z-10 flex h-14 flex-none items-center gap-3 border-b border-hairline px-5">
-  <div class="flex min-w-0 flex-col">
+<header class="sdm-material-chrome z-10 flex h-14 flex-none items-center gap-3 border-b border-hairline px-6">
+  <!-- Título y subtítulo en la **misma línea** (boceto): apilados, el `h-14` quedaba apretado. -->
+  <div class="flex min-w-0 items-baseline gap-2">
     <span class="sdm-display truncate text-xl">{title}</span>
-    {#if subtitle}<span class="truncate text-2xs text-fg-faint">{subtitle}</span>{/if}
+    {#if subtitle}<span class="shrink-0 text-2xs text-fg-faint">{subtitle}</span>{/if}
   </div>
   <div class="flex-1"></div>
   <StatusPill state={globalState} label={globalLabel} icon="auto" />

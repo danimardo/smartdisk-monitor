@@ -10,6 +10,9 @@
     leading = undefined,
     /** Filo de la tarjeta. `crit` marca una zona destructiva (`06-ajustes.md`); el fondo no cambia. */
     border = "hairline" as "hairline" | "crit",
+    /** Utilidades extra sobre la `<section>`: para que el llamante ajuste el encaje (p. ej.
+     *  `h-full` en una rejilla que quiere todas las tarjetas iguales), nunca colores ni radios. */
+    class: klass = "",
     children
   } = $props();
   const pads: Record<string, string> = { none: "", sm: "p-4", md: "p-5", lg: "p-6" };
@@ -18,7 +21,7 @@
 <section
   class="sdm-material flex flex-col gap-3 rounded-card {pads[padding]} {border === 'crit'
     ? 'border-crit'
-    : ''}"
+    : ''} {klass}"
 >
   {#if title || action || leading}
     <header class="flex items-center gap-3">

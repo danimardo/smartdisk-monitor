@@ -56,7 +56,11 @@
   const cifra = $derived(
     sinSmartFresco || disk?.temperatureC == null ? NOT_AVAILABLE() : formatTemperature(disk.temperatureC)
   );
-  const identidad = $derived(disk ? `${disk.model} · ${disk.deviceType}` : "");
+  /** Si el usuario le ha puesto alias, ese va primero y el modelo detrás («Datos · Crucial MX500
+   *  1TB», boceto); sin alias, modelo y tipo de bus como hasta ahora. */
+  const identidad = $derived(
+    !disk ? "" : disk.alias ? `${disk.alias} · ${disk.model}` : `${disk.model} · ${disk.deviceType}`
+  );
 
   /** Puntos con valor y cuánto tiempo abarcan. Con menos de cuatro o menos de minuto y medio no
    *  hay onda que dibujar (la app se acaba de abrir): mejor decir «recopilando datos» que enseñar
@@ -146,13 +150,13 @@
         </p>
 
         <div class="mt-auto flex items-center gap-2">
-          {#if atencion && alertId && onviewalert}
+          {#if alertId && onviewalert}
             <Button variant="primary" onclick={() => onviewalert?.(alertId)}
               >{t("dashboard.hero.viewAlert")}</Button
             >
           {/if}
           {#if disk && onopen}
-            <Button variant={atencion && alertId ? "secondary" : "primary"} onclick={() => onopen?.(disk.id)}
+            <Button variant={alertId ? "secondary" : "primary"} onclick={() => onopen?.(disk.id)}
               >{t("dashboard.hero.openDisk")}</Button
             >
           {/if}

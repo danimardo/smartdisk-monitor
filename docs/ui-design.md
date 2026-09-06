@@ -160,7 +160,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
 | `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
-| `CapacityBar` | ocupación de volumen | el color lo decide `capacityState()`, no el llamante |
+| `CapacityBar` | ocupación de volumen | el color lo decide `capacityBarTone()` —imita al Explorador de Windows: rojo cuando queda poco espacio (≥ 91 % ocupado), ámbar ≥ 85 %—, no el llamante ni la severidad de la alerta `capacity.*` |
 | `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante; prop `emphasis` (`inline` por defecto, `display` para la prueba en curso) |
 | `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
 | `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |

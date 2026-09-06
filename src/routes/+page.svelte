@@ -20,10 +20,10 @@
   import type { HealthState } from "$lib/design/types";
 
   /** El `state` que manda el backend solo mira la frescura de SMART; las alertas vigentes se funden
-   *  aquí (`estadoConAlertas`, `B.1`) antes de que nada lo lea —Hero, tarjetas, reparto—. */
-  const devices = $derived(
-    app.devices.map((d) => ({ ...d, state: estadoConAlertas(d, app.alerts, { paused: app.paused }) }))
-  );
+   *  aquí (`estadoConAlertas`, `B.1`) antes de que nada lo lea —Hero, tarjetas, reparto—. Un
+   *  `unknown` sigue siendo `unknown` (gris «sin datos SMART»); que cuente para «necesitan
+   *  atención» lo decide `estadoParaRecuento` en el chrome, no aquí. */
+  const devices = $derived(app.devices.map((d) => ({ ...d, state: estadoConAlertas(d, app.alerts) })));
   const ready = $derived(app.loadedAt !== null);
 
   /** Con más de 12 discos la `DiskCard` pierde la sparkline de cabecera (`ui-design.md` §7): con

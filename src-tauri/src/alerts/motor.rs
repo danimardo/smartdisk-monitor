@@ -29,6 +29,19 @@ pub fn resuelve_health_failed(serie: &[f64]) -> bool {
     primeras_n_cumplen(serie, 3, |v| v == 1.0)
 }
 
+/// `smart.unreadable`: la consulta a `smartctl` (`smart_query_ok`) falla **3 ciclos seguidos**.
+/// Solo advertencia, nunca crítico: un disco que no responde no dice que esté roto, solo que
+/// dejamos de poder mirarlo (`alert-rules.md`). La compuerta de «sí soportaba SMART» la aplica
+/// `alerts::evaluar_unreadable`, no esta función.
+pub fn evaluar_unreadable(serie: &[f64]) -> Option<AlertSeverity> {
+    primeras_n_cumplen(serie, 3, |v| v == 0.0).then_some(AlertSeverity::Warning)
+}
+
+/// Resolución de `smart.unreadable`: **una** lectura correcta (`alert-rules.md`).
+pub fn resuelve_unreadable(serie: &[f64]) -> bool {
+    primeras_n_cumplen(serie, 1, |v| v == 1.0)
+}
+
 /// `nvme.critical_warning`: inmediato, cualquier bit activo.
 pub fn evaluar_critical_warning(serie: &[f64]) -> Option<AlertSeverity> {
     primeras_n_cumplen(serie, 1, |v| v != 0.0).then_some(AlertSeverity::Critical)
@@ -211,6 +224,45 @@ mod tests {
     #[test]
     fn health_failed_no_resuelve_si_la_mas_reciente_vuelve_a_fallar() {
         assert!(!resuelve_health_failed(&[0.0, 1.0, 1.0]));
+    }
+
+    // ---- smart.unreadable ----
+
+    #[test]
+    fn unreadable_se_activa_con_tres_fallos_seguidos_y_no_con_dos() {
+        assert_eq!(
+            evaluar_unreadable(&[0.0, 0.0]),
+            None,
+            "dos fallos no bastan"
+        );
+        assert_eq!(
+            evaluar_unreadable(&[0.0, 0.0, 0.0]),
+            Some(AlertSeverity::Warning)
+        );
+    }
+
+    #[test]
+    fn unreadable_nunca_es_critico() {
+        assert_eq!(
+            evaluar_unreadable(&[0.0, 0.0, 0.0, 0.0]),
+            Some(AlertSeverity::Warning)
+        );
+    }
+
+    #[test]
+    fn unreadable_no_se_activa_sin_muestras() {
+        assert_eq!(evaluar_unreadable(&[]), None);
+    }
+
+    #[test]
+    fn unreadable_no_se_activa_si_una_de_las_tres_recientes_fue_correcta() {
+        assert_eq!(evaluar_unreadable(&[0.0, 1.0, 0.0]), None);
+    }
+
+    #[test]
+    fn unreadable_resuelve_con_una_sola_lectura_correcta() {
+        assert!(!resuelve_unreadable(&[0.0, 0.0]), "sigue sin poder leerse");
+        assert!(resuelve_unreadable(&[1.0, 0.0, 0.0]));
     }
 
     // ---- nvme.critical_warning ----

@@ -19,6 +19,27 @@ test.describe("alertas", () => {
     await expect(page.getByText(es["alert.fact.ruleKey"])).toBeVisible();
   });
 
+  test("las reglas capacity.low y smart.unreadable muestran su título traducido, no la clave", async ({
+    page
+  }) => {
+    const alerta = (id: string, ruleKey: string) => ({
+      ...alertaActiva,
+      id,
+      ruleKey,
+      deduplicationKey: `${ruleKey}|device:disk-0`
+    });
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_alert_groups: [alerta("a-cap", "capacity.low"), alerta("a-unr", "smart.unreadable")]
+    });
+    await page.goto("/alerts");
+
+    for (const key of ["alert.rule.capacity.low.title", "alert.rule.smart.unreadable.title"] as const) {
+      await expect(page.getByText(es[key]).first()).toBeVisible();
+    }
+    await expect(page.getByText(/^alert\.rule\./)).toHaveCount(0);
+  });
+
   test("cambiar al filtro de resueltas vacía la lista (la única alerta está activa)", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/alerts");

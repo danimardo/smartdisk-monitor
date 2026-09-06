@@ -1403,6 +1403,9 @@ fn build_smart_counters(
 
     Ok(muestras
         .into_iter()
+        // `smart_query_ok` es la señal interna de la regla `smart.unreadable`, no un atributo del
+        // disco: no va en el panel de contadores del detalle.
+        .filter(|m| m.metric_key != "smart_query_ok")
         .map(|m| SmartCounter {
             metric_key: m.metric_key,
             value: m.value_real,
@@ -2314,6 +2317,10 @@ fn persist_smart_reading(
         )?;
     }
 
+    // Este ciclo se pudo leer: 1.0. La rama de fallo de `refresh_smart` escribe 0.0. Es la serie que
+    // evalúa `alerts::evaluar_unreadable` (regla `smart.unreadable`).
+    registrar_legibilidad_smart(conn, device_id, sampled_at_utc, true)?;
+
     repo_metricas::insert_smart_snapshot(
         conn,
         device_id,
@@ -2328,6 +2335,55 @@ fn persist_smart_reading(
         None,
         None,
     )
+}
+
+/// Escribe la muestra `smart_query_ok` (1.0 pudo leerse / 0.0 falló) del ciclo actual. Es la serie
+/// sobre la que `alerts::evaluar_unreadable` decide la regla `smart.unreadable`.
+fn registrar_legibilidad_smart(
+    conn: &rusqlite::Connection,
+    device_id: &str,
+    sampled_at_utc: &str,
+    legible: bool,
+) -> rusqlite::Result<()> {
+    use crate::domain::tipos::{
+        MetricQuality, MetricSample, MetricSource, MetricTarget, Resolution,
+    };
+    repo_metricas::insert_sample(
+        conn,
+        &MetricSample {
+            target: MetricTarget::Device(device_id.to_string()),
+            metric_key: "smart_query_ok".to_string(),
+            value_real: Some(if legible { 1.0 } else { 0.0 }),
+            value_integer: None,
+            unit: "bool".to_string(),
+            sampled_at_utc: sampled_at_utc.to_string(),
+            source: MetricSource::Smartctl,
+            quality: MetricQuality::Exact,
+            resolution: Resolution::Raw,
+        },
+    )
+}
+
+/// Un ciclo de SMART que **no** pudo leer un disco: registra la ilegibilidad y evalúa
+/// `smart.unreadable`. Lo llaman las ramas de error de `refresh_smart`, donde no hay lectura que
+/// persistir pero la regla sí tiene que contar el fallo.
+fn registrar_ciclo_smart_fallido(
+    conn: &rusqlite::Connection,
+    device_id: &str,
+    ahora: &str,
+    transiciones: &mut Vec<(String, crate::alerts::agrupacion::Transicion)>,
+) {
+    if let Err(e) = registrar_legibilidad_smart(conn, device_id, ahora, false) {
+        tracing::warn!(disco = %device_id, error = ?e, "no se pudo registrar el ciclo SMART fallido");
+        return;
+    }
+    match crate::alerts::evaluar_unreadable(conn, device_id, ahora) {
+        Ok(Some(t)) => transiciones.push(t),
+        Ok(None) => {}
+        Err(e) => {
+            tracing::warn!(disco = %device_id, error = ?e, "no se pudo evaluar smart.unreadable")
+        }
+    }
 }
 
 /// Persiste una lectura de contadores de rendimiento (T058): un campo ausente se omite, nunca se
@@ -2505,6 +2561,7 @@ fn refresh_smart(
                         .retryable(),
                 );
                 tracing::warn!(disco = %d.id, error = ?e, "no se pudo consultar smartctl");
+                registrar_ciclo_smart_fallido(conn, &d.id, &ahora, &mut transiciones);
                 continue;
             }
         };
@@ -2528,6 +2585,7 @@ fn refresh_smart(
             }
             Err(e) => {
                 tracing::warn!(disco = %d.id, error = ?e, "smartctl devolvió un JSON irreconocible");
+                registrar_ciclo_smart_fallido(conn, &d.id, &ahora, &mut transiciones);
             }
         }
     }

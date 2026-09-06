@@ -72,11 +72,14 @@
   <svelte:element
     this={href ? "a" : "div"}
     href={href || undefined}
-    class="block text-left"
+    class="flex flex-col text-left"
     aria-label={href ? t("disk.open", { name: disk.alias ?? disk.model }) : undefined}
   >
-    <Card padding="none">
-      <div class="relative flex h-13 items-center gap-3 overflow-hidden px-4" style="background: {tone.soft}">
+    <Card padding="none" class="flex-1">
+      <div
+        class="relative flex h-[52px] items-center gap-3 overflow-hidden px-4"
+        style="background: {tone.soft}"
+      >
         {#if hayCurva}
           <div class="pointer-events-none absolute inset-0 opacity-[0.85]">
             <Sparkline points={temperatureSeries} color={tone.fg} height={52} strokeWidth={1.6} />
@@ -94,7 +97,10 @@
         </span>
       </div>
 
-      <div class="flex flex-col gap-3 px-4 pb-4 pt-3">
+      <!-- `flex-1` para llenar la tarjeta (que a su vez llena la celda de la rejilla): así las
+           cuatro tarjetas de una fila quedan a la misma altura y la barra de capacidad, con
+           `mt-auto`, se alinea abajo en todas aunque las magnitudes ocupen distinto. -->
+      <div class="flex flex-1 flex-col gap-3 px-4 pb-4 pt-3">
         <div class="flex min-w-0 flex-col gap-0.5">
           <span class="sdm-selectable sdm-display truncate text-base">{disk.alias ?? disk.model}</span>
           <span class="sdm-selectable truncate text-2xs text-fg-dim">{disk.model} · {disk.deviceType}</span>
@@ -107,28 +113,31 @@
                 <Icon name={m.icon} size={12} />
                 <span class="truncate">{m.label}</span>
               </span>
-              <!-- Sin SMART fresco las tres magnitudes van a «—», aunque quede en la base una
-                   lectura vieja o un contador de rendimiento en vivo (boceto §4): un dato caduco
-                   presentado como actual engaña. -->
-              {#if m.value === null || sinSmartFresco}
-                <span class="text-xs text-fg-dim" title={t("common.notAvailable")}>—</span>
-              {:else}
-                <span class="sdm-num sdm-display text-xl" style="color: {m.color}">{m.text}</span>
-              {/if}
+              <!-- Ranura de alto fijo: «—» y «48 °C» ocupan lo mismo, para que la fila no se
+                   descuadre. Sin SMART fresco las tres van a «—» aunque quede una lectura vieja
+                   o un contador en vivo (boceto §4): un dato caduco presentado como actual engaña. -->
+              <span class="flex h-[26px] items-end">
+                {#if m.value === null || sinSmartFresco}
+                  <span class="text-xs text-fg-dim" title={t("common.notAvailable")}>—</span>
+                {:else}
+                  <span class="sdm-num sdm-display text-xl" style="color: {m.color}">{m.text}</span>
+                {/if}
+              </span>
             </div>
           {/each}
         </div>
 
-        {#if volume}
-          <CapacityBar
-            label={`${volume.driveLetters.join(", ") || volume.label} · ${formatBytes(volume.capacityBytes)}`}
-            capacityBytes={volume.capacityBytes}
-            freeBytes={volume.freeBytes}
-          />
-        {:else}
-          <!-- Misma altura que la barra, para que la rejilla no se descuadre (`DiskCard.md`). -->
-          <span class="flex h-[38px] items-center text-2xs text-fg-faint">{t("disk.noVolumes")}</span>
-        {/if}
+        <div class="mt-auto">
+          {#if volume}
+            <CapacityBar
+              label={`${volume.driveLetters.join(", ") || volume.label} · ${formatBytes(volume.capacityBytes)}`}
+              capacityBytes={volume.capacityBytes}
+              freeBytes={volume.freeBytes}
+            />
+          {:else}
+            <span class="flex h-[38px] items-center text-2xs text-fg-faint">{t("disk.noVolumes")}</span>
+          {/if}
+        </div>
       </div>
     </Card>
   </svelte:element>

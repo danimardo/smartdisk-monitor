@@ -155,7 +155,39 @@ pub fn evaluar_smart(
         ahora_utc,
     )?);
 
+    // Este ciclo produjo una lectura correcta (llegamos aquí desde `persist_smart_reading`): si
+    // había un `smart.unreadable` abierto, esto lo resuelve.
+    if let Some(t) = evaluar_unreadable(conn, device_id, ahora_utc)? {
+        transiciones.push(t);
+    }
+
     Ok(transiciones)
+}
+
+/// `smart.unreadable` (`alert-rules.md` §2): la consulta a `smartctl` falla 3 ciclos seguidos en un
+/// disco que **sí** daba datos. Se evalúa aparte de `evaluar_smart` porque hay que evaluarla
+/// **también en los ciclos que fallan** —`commands::refresh_smart` la llama en sus ramas de error,
+/// donde no hay lectura que persistir—. Devuelve `None` si el disco nunca respondió: eso es «no
+/// compatible», no «dejó de responder».
+pub fn evaluar_unreadable(
+    conn: &Connection,
+    device_id: &str,
+    ahora_utc: &str,
+) -> rusqlite::Result<Option<(String, Transicion)>> {
+    if !repo_metricas::hubo_lectura_smart_correcta(conn, device_id)? {
+        return Ok(None);
+    }
+    let serie =
+        repo_metricas::latest_n_values(conn, device_id, "smart_query_ok", MUESTRAS_HISTERESIS)?;
+    Ok(Some(aplicar_simple(
+        conn,
+        device_id,
+        "smart.unreadable",
+        &serie,
+        motor::evaluar_unreadable,
+        Some(motor::resuelve_unreadable),
+        ahora_utc,
+    )?))
 }
 
 /// Evalúa `capacity.low` y `capacity.critical` para un volumen, sobre la serie de `volume_free_bytes`
@@ -325,6 +357,144 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    /// Marca que el disco `d1` sí respondió alguna vez (compuerta de `smart.unreadable`).
+    fn snapshot_ok(conn: &Connection, cuando: &str) {
+        repo_metricas::insert_smart_snapshot(conn, "d1", cuando, None, Some(0), "ok", None, None)
+            .unwrap();
+    }
+
+    /// Un ciclo de SMART fallido, tal cual lo hace `commands::refresh_smart`: registra la
+    /// ilegibilidad y evalúa la regla.
+    fn ciclo_fallido(conn: &Connection, cuando: &str) {
+        insertar(conn, "smart_query_ok", 0.0, cuando);
+        evaluar_unreadable(conn, "d1", cuando).unwrap();
+    }
+
+    #[test]
+    fn smart_unreadable_se_activa_tras_tres_ciclos_fallidos_en_un_disco_que_si_respondia() {
+        let conn = conn_de_prueba();
+        snapshot_ok(&conn, "2026-09-04T09:00:00Z");
+        for cuando in [
+            "2026-09-04T10:00:00Z",
+            "2026-09-04T10:05:00Z",
+            "2026-09-04T10:10:00Z",
+        ] {
+            ciclo_fallido(&conn, cuando);
+        }
+        let g = repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .expect("no se activó smart.unreadable");
+        assert_eq!(g.status, AlertStatus::Active);
+        assert_eq!(g.severity, AlertSeverity::Warning);
+    }
+
+    #[test]
+    fn smart_unreadable_no_se_activa_sin_ninguna_muestra() {
+        let conn = conn_de_prueba();
+        snapshot_ok(&conn, "2026-09-04T09:00:00Z");
+        evaluar_unreadable(&conn, "d1", "2026-09-04T10:00:00Z").unwrap();
+        assert!(repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn smart_unreadable_no_se_activa_en_un_disco_que_nunca_respondio() {
+        // Sin `snapshot_ok`: el disco tiene ruta de smartctl pero jamás dio datos. Eso es «no
+        // compatible», no «dejó de responder».
+        let conn = conn_de_prueba();
+        for cuando in [
+            "2026-09-04T10:00:00Z",
+            "2026-09-04T10:05:00Z",
+            "2026-09-04T10:10:00Z",
+        ] {
+            ciclo_fallido(&conn, cuando);
+        }
+        assert!(repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn smart_unreadable_resuelve_con_una_lectura_correcta_y_no_reabre_por_oscilar() {
+        let conn = conn_de_prueba();
+        snapshot_ok(&conn, "2026-09-04T09:00:00Z");
+        for cuando in [
+            "2026-09-04T10:00:00Z",
+            "2026-09-04T10:05:00Z",
+            "2026-09-04T10:10:00Z",
+        ] {
+            ciclo_fallido(&conn, cuando);
+        }
+        // Una lectura correcta: resuelve.
+        insertar(&conn, "smart_query_ok", 1.0, "2026-09-04T10:15:00Z");
+        evaluar_unreadable(&conn, "d1", "2026-09-04T10:15:00Z").unwrap();
+        let g = repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Resolved);
+
+        // Un fallo suelto no reabre (hacen falta 3 seguidos otra vez).
+        ciclo_fallido(&conn, "2026-09-04T10:20:00Z");
+        let g = repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            g.status,
+            AlertStatus::Resolved,
+            "un fallo aislado no reabre"
+        );
+    }
+
+    #[test]
+    fn smart_unreadable_deduplica_las_evaluaciones_equivalentes_en_un_solo_grupo() {
+        let conn = conn_de_prueba();
+        snapshot_ok(&conn, "2026-09-04T09:00:00Z");
+        for m in 0..5 {
+            ciclo_fallido(&conn, &format!("2026-09-04T10:{m:02}:00Z"));
+        }
+        let g = repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Active);
+        assert!(
+            g.occurrence_count >= 3,
+            "no deduplicó: {}",
+            g.occurrence_count
+        );
+    }
+
+    #[test]
+    fn smart_unreadable_al_recaer_incrementa_el_ciclo_y_conserva_el_contador() {
+        let conn = conn_de_prueba();
+        snapshot_ok(&conn, "2026-09-04T09:00:00Z");
+        // episodio 1
+        for m in ["00", "05", "10"] {
+            ciclo_fallido(&conn, &format!("2026-09-04T10:{m}:00Z"));
+        }
+        insertar(&conn, "smart_query_ok", 1.0, "2026-09-04T10:15:00Z");
+        evaluar_unreadable(&conn, "d1", "2026-09-04T10:15:00Z").unwrap();
+        let g1 = repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .unwrap();
+        let cuenta_1 = g1.occurrence_count;
+        assert_eq!(g1.status, AlertStatus::Resolved);
+
+        // episodio 2: recae
+        for m in ["20", "25", "30"] {
+            ciclo_fallido(&conn, &format!("2026-09-04T10:{m}:00Z"));
+        }
+        let g2 = repo_alertas::get_group(&conn, "smart.unreadable|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g2.status, AlertStatus::Active);
+        assert_eq!(g2.cycle, 2, "una recaída incrementa el ciclo");
+        assert!(
+            g2.occurrence_count > cuenta_1,
+            "el contador histórico se conserva y sigue subiendo"
+        );
     }
 
     #[test]

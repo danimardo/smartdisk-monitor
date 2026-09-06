@@ -66,10 +66,12 @@ test.describe("panel general v3", () => {
     await page.goto("/");
 
     await expect(page.getByText(disco.model).first()).toBeVisible();
+    // El chrome lo cuenta para «necesitan atención» (§B.5)...
     await expect(page.getByText(es["global.allGood"])).toHaveCount(0);
     await expect(page.getByText(es["global.needsAttention.one"]).first()).toBeVisible();
-    // Cuenta como «Advertencia» (concuerda con el reparto) y no enseña la temperatura vieja.
-    await expect(page.getByText(es["health.warn"]).first()).toBeVisible();
+    // ...pero la tarjeta y el Hero lo presentan como «Sin datos SMART» (gris), no como advertencia,
+    // y no enseñan la temperatura vieja.
+    await expect(page.getByText(es["disk.noSmartData"]).first()).toBeVisible();
     await expect(page.getByText("44 °C")).toHaveCount(0);
   });
 

@@ -1625,6 +1625,9 @@ Fichero de origen: `docs/data-model.md`
   discos con varias operaciones simultáneas supera el 100 % y no es un porcentaje real.
 - `volume_free_bytes`
 - `volume_free_percent`
+- `smart_query_ok` — 1.0 si `smartctl` pudo leer el disco ese ciclo, 0.0 si la consulta falló o
+  devolvió algo irreconocible. **No** es una medida del disco: es el resultado del intento de
+  consulta, y es la serie sobre la que se evalúa la regla `smart.unreadable` (`alert-rules.md`).
 
 Los campos no disponibles se omiten; no se almacenan como cero.
 
@@ -1890,14 +1893,17 @@ en la muestra es una buena noticia, no una señal de que no existan.
 
 ### 4. Textos
 
-Cada regla necesita cuatro claves i18n en `es.json` y `en.json`:
+Cada regla que el motor puede emitir necesita en `es.json` y `en.json`:
 
 ```
-alert.<rule_key>.title      Titular corto, sin jerga.
-alert.<rule_key>.summary    Una frase que explique qué significa y por qué importa.
-alert.<rule_key>.fact.*     Etiquetas de la rejilla de hechos del detalle.
-alert.<rule_key>.action     Qué puede hacer el usuario, si hay algo que hacer.
+alert.rule.<rule_key>.title      Titular corto, sin jerga.
+alert.rule.<rule_key>.summary    Una frase que explique qué significa y por qué importa.
 ```
+
+`AlertCard` y el detalle (`src/routes/alerts/+page.svelte`) resuelven el título y el resumen desde
+`ruleKey` (ADR-030). La rejilla de hechos del detalle usa `labelKey` que **manda el backend**
+(`alert.fact.*`), no una clave por regla. Un `.action` por regla queda pendiente para cuando haya
+acciones concretas que ofrecer.
 
 Norma de redacción: el titular dice **qué pasa**, no qué contador se ha movido. "El disco reserva
 menos bloques de repuesto de los que su fabricante considera seguros" es un titular; "available
@@ -4883,27 +4889,28 @@ Un dispositivo que declara no soportar SMART (`unsupported`) es normalidad y no 
   habido lecturas y dejaron de llegar. Ahora, si hay al menos una muestra histórica y la última no
   es fresca, el motivo es `unreadable` («dejó de responder»). El caso `not-yet-sampled` queda solo
   para un disco que nunca ha devuelto nada.
-- `unknownContributesWarning()` era **código muerto**. Ahora lo aplica `estadoConAlertas()`
-  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se eleva a `warn`
-  —salvo con la monitorización en pausa, donde el estado de pausa manda—. En consecuencia su
-  píldora dice **«Advertencia»** (no «Sin datos SMART») y cuenta en la fila «Advertencia» del
-  reparto, de modo que tarjeta y reparto concuerdan; el «por qué» (sin lectura SMART) lo llevan
-  las magnitudes en «—» y, si es el protagonista, el texto del Hero. «Sin datos SMART» queda solo
-  para el `unknown` que de verdad no lo soporta (`unsupported`) o aún no ha medido
-  (`not-yet-sampled`), que siguen en gris.
+- `unknownContributesWarning()` era **código muerto**. **Dónde se aplica** (decisión del usuario,
+  tras verlo): un disco `unknown` se presenta siempre como **«Sin datos SMART» en gris** —en la
+  tarjeta, el Hero y la fila del reparto—, sea cual sea el motivo. Que un `unknown` por
+  `unreadable`/`collector-error` **cuente para «N necesitan atención»** y el color de la bandeja lo
+  decide `estadoParaRecuento()` (solo lo usa el chrome), no `estadoConAlertas()` (que lo usan las
+  tarjetas y se queda en `unknown`). Con la monitorización en pausa tampoco cuenta. Así el reparto
+  es una partición limpia (Correcto + Advertencia + Crítico + Sin datos SMART = total) y el usuario
+  ve el mismo texto y color en todas partes; la urgencia del disco que dejó de responder vive en el
+  recuento de arriba, en la notificación y en el grupo de alerta `smart.unreadable`.
 - `selectHeroDisk()` gana un criterio intermedio: sin alerta de dispositivo, protagoniza el disco
-  con el peor `state` (ya fundido) antes que el de sistema, para que el Hero no muestre «Todo en
-  orden» habiendo un disco en `warn`/`crit` por un volumen lleno o un SMART ilegible. El
-  `HeroPanel` estrena un texto genérico («Este disco necesita atención…») para ese caso sin alerta
-  con clave i18n propia.
+  con problema —`crit`, luego `warn`, luego un `unknown` que cuenta como degradación— antes que el
+  de sistema, para que el Hero no muestre «Todo en orden» habiendo un disco en apuros. El
+  `HeroPanel` estrena un texto genérico («Este disco necesita atención…») para el caso sin alerta.
 
-**Pendiente (`PENDIENTE`):** el **grupo de alerta** `smart.unreadable` (documentado en
-`alert-rules.md`: «consulta fallida 3 ciclos seguidos → advertencia») sigue **sin implementar**. El
-colector descarta el fallo por disco (`commands/mod.rs`, `refresh_smart` hace `continue` sin
-registrar nada) y el motor nunca lo evalúa. Enfoque propuesto: registrar el fallo como un
-`smart_snapshots` con `query_status='error'` y contar 3 seguidos en el motor, con resolución a la
-primera lectura correcta. Hasta entonces, un disco ilegible se ve como advertencia (arriba) pero
-no genera un grupo de alerta con su cronología ni su notificación.
+*Grupo de alerta `smart.unreadable` — hecho (2026-09-06):* cada ciclo de SMART escribe la métrica
+`smart_query_ok` (1.0 leído / 0.0 falló), incluidos los ciclos que fallan
+(`commands::registrar_ciclo_smart_fallido`, que ya no hace solo `continue`). `alerts::evaluar_unreadable`
+la evalúa con el motor de siempre: 3 ceros seguidos → advertencia, una lectura correcta la resuelve,
+cooldown 6 h. La compuerta «un disco que **sí** respondía» la da `repo_metricas::hubo_lectura_smart_correcta`
+(un `smart_snapshots` con `query_status` de éxito): un disco que nunca dio datos es «no compatible»,
+no «ilegible», y no dispara la regla. Cinco pruebas en `alerts/mod.rs` (`alert-rules.md` §5). El
+disco ilegible ahora **sí** aparece en la pantalla de Alertas con su cronología y notifica.
 
 #### B.6 · Cambio de severidad de un grupo ya reconocido · `PROPUESTO`
 
@@ -6164,7 +6171,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
 | `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
-| `CapacityBar` | ocupación de volumen | el color lo decide `capacityState()`, no el llamante |
+| `CapacityBar` | ocupación de volumen | el color lo decide `capacityBarTone()` —imita al Explorador de Windows: rojo cuando queda poco espacio (≥ 91 % ocupado), ámbar ≥ 85 %—, no el llamante ni la severidad de la alerta `capacity.*` |
 | `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante; prop `emphasis` (`inline` por defecto, `display` para la prueba en curso) |
 | `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
 | `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |
@@ -7396,8 +7403,8 @@ export function deviceState(
   return hasFreshData ? "ok" : "unknown";
 }
 
-/** Estado **presentable** de un disco en el chrome y en el panel: su `state` de SMART (frescura),
- *  elevado a la peor severidad de sus alertas `active`/`acknowledged`.
+/** Estado **presentable** de un disco en las tarjetas, el Hero y el reparto: su `state` de SMART
+ *  (frescura), elevado a la peor severidad de sus alertas `active`/`acknowledged`.
  *
  *  Existe porque `B.1` (`docs/open-questions.md`) está a medio conectar: el backend nunca funde las
  *  alertas en `DiskSummary.state` (`enrich_with_smart_data` siempre pasa `None` a `device_state`),
@@ -7408,20 +7415,17 @@ export function deviceState(
  *  suyo** (`…|volume:<id>`): un volumen lleno es un problema del disco que lo contiene, no una
  *  categoría aparte.
  *
- *  Además, un `unknown` cuya causa **debería** funcionar —`unreadable` (dejó de responder),
- *  `collector-error`— se presenta como advertencia (`unknownContributesWarning`, §B.5), salvo con
- *  la monitorización en pausa: ahí el `state` de pausa manda y esto no debe teñir las tarjetas.
- *  Si no hay nada de esto, se conserva el `state` de SMART tal cual (`ok` / `unknown`): no saber
- *  que un disco está bien no es saber que lo está. */
+ *  **Un `unknown` se queda `unknown`**, sea cual sea el motivo: un disco sin datos SMART se
+ *  presenta como «sin datos SMART» (gris), no como advertencia, aunque haya dejado de responder.
+ *  Que eso cuente para «N necesitan atención» y el color de la bandeja lo decide aparte
+ *  `estadoParaRecuento`; el color de la tarjeta no. */
 export function estadoConAlertas(
   disk: {
     id: string;
     state: HealthState;
-    unknownReason?: UnknownReason | null;
     volumes?: readonly { id: string }[];
   },
-  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[],
-  opts: { paused?: boolean } = {}
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[]
 ): HealthState {
   const suyas = alerts.filter(
     (a) =>
@@ -7431,15 +7435,34 @@ export function estadoConAlertas(
   );
   if (suyas.some((a) => a.severity === "crit")) return "crit";
   if (suyas.some((a) => a.severity === "warn")) return "warn";
+  return disk.state;
+}
+
+/** Estado de un disco **solo para el recuento global** (píldora de la `Toolbar`, pie del riel,
+ *  icono de la bandeja): como `estadoConAlertas`, pero además un `unknown` por `unreadable` o
+ *  `collector-error` cuenta como advertencia (`unknownContributesWarning`, §B.5) —una fuente que
+ *  debería funcionar y no funciona es una degradación real—, salvo con la monitorización en pausa,
+ *  donde el estado de pausa manda. **No** se usa para pintar tarjetas: ahí un `unknown` es gris. */
+export function estadoParaRecuento(
+  disk: {
+    id: string;
+    state: HealthState;
+    unknownReason?: UnknownReason | null;
+    volumes?: readonly { id: string }[];
+  },
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[],
+  opts: { paused?: boolean } = {}
+): HealthState {
+  const s = estadoConAlertas(disk, alerts);
   if (
+    s === "unknown" &&
     !opts.paused &&
-    disk.state === "unknown" &&
     disk.unknownReason != null &&
     unknownContributesWarning(disk.unknownReason)
   ) {
     return "warn";
   }
-  return disk.state;
+  return s;
 }
 
 /** Severidad máxima de una lista. `unknown` no gana nunca a un estado conocido:
@@ -7480,10 +7503,10 @@ export function globalStatus(input: {
  *
  *   1. el disco con la alerta que cuenta para la salud (`active`/`acknowledged`) de mayor severidad;
  *      empate → la de ocurrencia más reciente;
- *   2. si no hay ninguna, el disco con el **peor `state`** (crit sobre warn) — así el protagonista
- *      nunca es un disco sano habiendo uno con problema, aunque ese problema venga de un volumen
- *      lleno o de un SMART ilegible y no de una alerta dirigida al dispositivo; empate → orden de
- *      inventario;
+ *   2. si no hay ninguna, el disco que no está sano —crit, luego warn, luego un `unknown` que
+ *      cuenta como degradación (`unreadable`/`collector-error`)—, para que el protagonista nunca
+ *      sea un disco sano habiendo uno con problema, aunque venga de un volumen lleno o de un SMART
+ *      que dejó de responder y no de una alerta de dispositivo; empate → orden de inventario;
  *   3. si todos van bien, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
  *   4. si no se sabe, el primero del inventario;
  *   5. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
@@ -7529,10 +7552,17 @@ export function selectHeroDisk<
     return puntuados[0].disk;
   }
 
-  // Sin alerta de dispositivo, pero el `state` ya trae fundidas las alertas de volumen y el SMART
-  // ilegible: si algún disco no está sano, protagoniza él, no el de sistema.
+  // Sin alerta de dispositivo, pero el `state` ya trae fundidas las alertas de volumen: si algún
+  // disco no está sano —o dejó de responder a SMART—, protagoniza él, no el de sistema.
   const conProblema =
-    elegibles.find((d) => d.state === "crit") ?? elegibles.find((d) => d.state === "warn");
+    elegibles.find((d) => d.state === "crit") ??
+    elegibles.find((d) => d.state === "warn") ??
+    elegibles.find(
+      (d) =>
+        d.state === "unknown" &&
+        d.unknownReason != null &&
+        unknownContributesWarning(d.unknownReason)
+    );
   if (conProblema) return conProblema;
 
   return elegibles.find((d) => d.volumes?.some((v) => v.isSystemVolume)) ?? elegibles[0];
@@ -7606,6 +7636,17 @@ export function capacityState(
 
   if (pct < 5 || (applyAbsolute && freeBytes < 10 * GB)) return "crit";
   if (pct < 10 || (applyAbsolute && freeBytes < 20 * GB)) return "warn";
+  return "ok";
+}
+
+/** Color de la **barra** de ocupación de un volumen (no de la alerta). Imita al Explorador de
+ *  Windows: rojo cuando queda poco espacio. Umbrales del boceto (`smartdisk-v3.html`,
+ *  `bar = u => u >= 91 ? crit : u >= 85 ? warn : ok`): ≥ 91 % ocupado → rojo, ≥ 85 % → ámbar, por
+ *  debajo → verde. La regla de alerta `capacity.*` es otra cosa y la decide `capacityState()`. */
+export function capacityBarTone(usedPercent: number | null): HealthState {
+  if (usedPercent === null) return "unknown";
+  if (usedPercent >= 91) return "crit";
+  if (usedPercent >= 85) return "warn";
   return "ok";
 }
 ```
@@ -8260,6 +8301,14 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alert.rule.temp.above_configured_warn.summary": "La temperatura lleva varios ciclos por encima de 70 °C.",
   "alert.rule.temp.above_configured_crit.title": "Temperatura crítica",
   "alert.rule.temp.above_configured_crit.summary": "La temperatura ha alcanzado 80 °C o más.",
+  "alert.rule.temp.above_vendor_limit.title": "Temperatura por encima del límite del fabricante",
+  "alert.rule.temp.above_vendor_limit.summary": "La temperatura lleva varios ciclos por encima del límite que marca el fabricante del disco.",
+  "alert.rule.capacity.low.title": "Poco espacio libre",
+  "alert.rule.capacity.low.summary": "Al volumen le queda poco espacio libre.",
+  "alert.rule.capacity.critical.title": "Espacio libre crítico",
+  "alert.rule.capacity.critical.summary": "El volumen está a punto de quedarse sin espacio.",
+  "alert.rule.smart.unreadable.title": "El disco no responde a las consultas SMART",
+  "alert.rule.smart.unreadable.summary": "Varios ciclos seguidos sin poder leer los datos SMART de un disco que sí los daba. Se sigue vigilando su capacidad y los sucesos de Windows.",
   "alert.fact.ruleKey": "Regla",
   "alert.fact.lastValue": "Último valor",
   "tray.open": "Abrir SmartDisk Monitor",
@@ -8685,6 +8734,14 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alert.rule.temp.above_configured_warn.summary": "Temperature has stayed above 70 °C for several cycles.",
   "alert.rule.temp.above_configured_crit.title": "Critical temperature",
   "alert.rule.temp.above_configured_crit.summary": "Temperature has reached 80 °C or higher.",
+  "alert.rule.temp.above_vendor_limit.title": "Above the vendor temperature limit",
+  "alert.rule.temp.above_vendor_limit.summary": "The temperature has stayed above the disk vendor's limit for several cycles.",
+  "alert.rule.capacity.low.title": "Low free space",
+  "alert.rule.capacity.low.summary": "This volume is running low on free space.",
+  "alert.rule.capacity.critical.title": "Critical free space",
+  "alert.rule.capacity.critical.summary": "This volume is about to run out of space.",
+  "alert.rule.smart.unreadable.title": "The disk is not answering SMART queries",
+  "alert.rule.smart.unreadable.summary": "Several cycles in a row without being able to read SMART data from a disk that used to provide it. Its capacity and Windows events are still watched.",
   "alert.fact.ruleKey": "Rule",
   "alert.fact.lastValue": "Last value",
   "tray.open": "Open SmartDisk Monitor",

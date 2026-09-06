@@ -192,6 +192,9 @@
   discos con varias operaciones simultáneas supera el 100 % y no es un porcentaje real.
 - `volume_free_bytes`
 - `volume_free_percent`
+- `smart_query_ok` — 1.0 si `smartctl` pudo leer el disco ese ciclo, 0.0 si la consulta falló o
+  devolvió algo irreconocible. **No** es una medida del disco: es el resultado del intento de
+  consulta, y es la serie sobre la que se evalúa la regla `smart.unreadable` (`alert-rules.md`).
 
 Los campos no disponibles se omiten; no se almacenan como cero.
 

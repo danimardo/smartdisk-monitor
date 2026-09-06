@@ -233,14 +233,17 @@ en la muestra es una buena noticia, no una señal de que no existan.
 
 ## 4. Textos
 
-Cada regla necesita cuatro claves i18n en `es.json` y `en.json`:
+Cada regla que el motor puede emitir necesita en `es.json` y `en.json`:
 
 ```
-alert.<rule_key>.title      Titular corto, sin jerga.
-alert.<rule_key>.summary    Una frase que explique qué significa y por qué importa.
-alert.<rule_key>.fact.*     Etiquetas de la rejilla de hechos del detalle.
-alert.<rule_key>.action     Qué puede hacer el usuario, si hay algo que hacer.
+alert.rule.<rule_key>.title      Titular corto, sin jerga.
+alert.rule.<rule_key>.summary    Una frase que explique qué significa y por qué importa.
 ```
+
+`AlertCard` y el detalle (`src/routes/alerts/+page.svelte`) resuelven el título y el resumen desde
+`ruleKey` (ADR-030). La rejilla de hechos del detalle usa `labelKey` que **manda el backend**
+(`alert.fact.*`), no una clave por regla. Un `.action` por regla queda pendiente para cuando haya
+acciones concretas que ofrecer.
 
 Norma de redacción: el titular dice **qué pasa**, no qué contador se ha movido. "El disco reserva
 menos bloques de repuesto de los que su fabricante considera seguros" es un titular; "available

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  capacityBarTone,
   capacityState,
   classifyAgainstThresholds,
   deviceState,
   estadoConAlertas,
+  estadoParaRecuento,
   globalStatus,
   selectHeroDisk,
   temperatureThresholds,
@@ -102,24 +104,34 @@ describe("estadoConAlertas — B.1 conectado de punta a punta (el backend no fun
     expect(estadoConAlertas(disco("unknown"), [alerta("warn", "x|device:d1|")])).toBe("warn");
   });
 
-  it("un disco que dejó de responder a SMART (unreadable) cuenta como advertencia, sin alerta", () => {
-    expect(estadoConAlertas(disco("unknown", [], "unreadable"), [])).toBe("warn");
-    expect(estadoConAlertas(disco("unknown", [], "collector-error"), [])).toBe("warn");
-  });
-
-  it("un disco sin SMART por diseño (unsupported) o aún sin medir NO cuenta como advertencia", () => {
+  it("un `unknown` se queda `unknown` sea cual sea el motivo: la tarjeta es gris «sin datos SMART»", () => {
+    expect(estadoConAlertas(disco("unknown", [], "unreadable"), [])).toBe("unknown");
+    expect(estadoConAlertas(disco("unknown", [], "collector-error"), [])).toBe("unknown");
     expect(estadoConAlertas(disco("unknown", [], "unsupported"), [])).toBe("unknown");
-    expect(estadoConAlertas(disco("unknown", [], "not-yet-sampled"), [])).toBe("unknown");
   });
 
-  it("con la monitorización en pausa, un unreadable no salta a ámbar (el estado de pausa manda)", () => {
-    expect(estadoConAlertas(disco("unknown", [], "unreadable"), [], { paused: true })).toBe("unknown");
-  });
-
-  it("una alerta crítica gana a la promoción por unreadable", () => {
+  it("una alerta crítica gana a un `unknown`", () => {
     expect(
       estadoConAlertas(disco("unknown", [], "unreadable"), [alerta("crit", "x|device:d1|")])
     ).toBe("crit");
+  });
+});
+
+describe("estadoParaRecuento — un disco ilegible SÍ cuenta para «N necesitan atención» (§B.5)", () => {
+  const disco = (
+    unknownReason: "unsupported" | "unreadable" | "collector-error" | "not-yet-sampled" | null
+  ) => ({ id: "d1", state: "unknown" as HealthState, unknownReason, volumes: [] });
+  const noAlertas = [] as { severity: "warn" | "crit"; status: "active"; deduplicationKey: string }[];
+
+  it("unreadable / collector-error → warn; unsupported / not-yet-sampled → unknown", () => {
+    expect(estadoParaRecuento(disco("unreadable"), noAlertas)).toBe("warn");
+    expect(estadoParaRecuento(disco("collector-error"), noAlertas)).toBe("warn");
+    expect(estadoParaRecuento(disco("unsupported"), noAlertas)).toBe("unknown");
+    expect(estadoParaRecuento(disco("not-yet-sampled"), noAlertas)).toBe("unknown");
+  });
+
+  it("con la monitorización en pausa, ni siquiera un unreadable cuenta (el estado de pausa manda)", () => {
+    expect(estadoParaRecuento(disco("unreadable"), noAlertas, { paused: true })).toBe("unknown");
   });
 });
 
@@ -153,6 +165,20 @@ describe("capacityState — el suelo absoluto solo aplica a volúmenes grandes (
   it("un dato ausente es desconocido, nunca cero", () => {
     expect(capacityState(null, 100 * GB)).toBe("unknown");
     expect(capacityState(10 * GB, null)).toBe("unknown");
+  });
+});
+
+describe("capacityBarTone — color de la barra, imita al Explorador de Windows", () => {
+  it("rojo a partir del 91 % ocupado, ámbar a partir del 85 %, verde por debajo", () => {
+    expect(capacityBarTone(84)).toBe("ok");
+    expect(capacityBarTone(85)).toBe("warn");
+    expect(capacityBarTone(90)).toBe("warn");
+    expect(capacityBarTone(91)).toBe("crit");
+    expect(capacityBarTone(99)).toBe("crit");
+  });
+
+  it("sin dato, desconocido", () => {
+    expect(capacityBarTone(null)).toBe("unknown");
   });
 });
 
@@ -331,6 +357,17 @@ describe("selectHeroDisk — quién protagoniza el panel (HeroPanel.md)", () => 
   it("un crit sin alerta de dispositivo gana a un warn", () => {
     const r = selectHeroDisk([disco("w", { state: "warn" }), disco("c", { state: "crit" })], []);
     expect(r?.id).toBe("c");
+  });
+
+  it("un disco `unknown` por ilegible protagoniza antes que el de sistema, aunque no haya alerta todavía", () => {
+    const r = selectHeroDisk(
+      [
+        disco("sys", { volumes: [{ isSystemVolume: true }] }),
+        disco("ilegible", { state: "unknown", unknownReason: "unreadable" })
+      ],
+      []
+    );
+    expect(r?.id).toBe("ilegible");
   });
 
   it("una alerta solo reconocida sigue eligiendo su disco (cuenta para la salud)", () => {

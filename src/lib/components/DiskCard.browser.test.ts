@@ -70,14 +70,14 @@ describe("DiskCard", () => {
     await expect.element(page.getByText("Sin datos SMART")).toBeInTheDocument();
   });
 
-  it("un disco que dejó de responder: píldora «Advertencia» y sin enseñar la lectura vieja", async () => {
-    // `estadoConAlertas` ya elevó el `state` a `warn`; `unknownReason` sigue puesto. La píldora
-    // dice «Advertencia» (concuerda con el reparto) y las magnitudes van a «—» (boceto §4), aunque
-    // el backend conserve la última lectura.
+  it("un disco que dejó de responder: píldora «Sin datos SMART» (gris) y sin enseñar la lectura vieja", async () => {
+    // Un `unknown` es «sin datos SMART», sea cual sea el motivo; que cuente para «necesitan
+    // atención» lo decide el chrome, no la tarjeta. Magnitudes a «—» aunque el backend conserve
+    // la última lectura (boceto §4).
     const { container } = await render(DiskCard, {
       props: {
         disk: discoBase({
-          state: "warn",
+          state: "unknown",
           unknownReason: "unreadable",
           temperatureC: 41,
           percentageUsed: 3,
@@ -86,7 +86,7 @@ describe("DiskCard", () => {
         href: "/disks/d1"
       }
     });
-    await expect.element(page.getByText("Advertencia")).toBeInTheDocument();
+    await expect.element(page.getByText("Sin datos SMART")).toBeInTheDocument();
     expect(container.textContent).not.toContain("41 °C");
     await expect.element(page.getByText("—").first()).toBeInTheDocument();
   });

@@ -37,8 +37,8 @@ export function deviceState(
   return hasFreshData ? "ok" : "unknown";
 }
 
-/** Estado **presentable** de un disco en el chrome y en el panel: su `state` de SMART (frescura),
- *  elevado a la peor severidad de sus alertas `active`/`acknowledged`.
+/** Estado **presentable** de un disco en las tarjetas, el Hero y el reparto: su `state` de SMART
+ *  (frescura), elevado a la peor severidad de sus alertas `active`/`acknowledged`.
  *
  *  Existe porque `B.1` (`docs/open-questions.md`) está a medio conectar: el backend nunca funde las
  *  alertas en `DiskSummary.state` (`enrich_with_smart_data` siempre pasa `None` a `device_state`),
@@ -49,20 +49,17 @@ export function deviceState(
  *  suyo** (`…|volume:<id>`): un volumen lleno es un problema del disco que lo contiene, no una
  *  categoría aparte.
  *
- *  Además, un `unknown` cuya causa **debería** funcionar —`unreadable` (dejó de responder),
- *  `collector-error`— se presenta como advertencia (`unknownContributesWarning`, §B.5), salvo con
- *  la monitorización en pausa: ahí el `state` de pausa manda y esto no debe teñir las tarjetas.
- *  Si no hay nada de esto, se conserva el `state` de SMART tal cual (`ok` / `unknown`): no saber
- *  que un disco está bien no es saber que lo está. */
+ *  **Un `unknown` se queda `unknown`**, sea cual sea el motivo: un disco sin datos SMART se
+ *  presenta como «sin datos SMART» (gris), no como advertencia, aunque haya dejado de responder.
+ *  Que eso cuente para «N necesitan atención» y el color de la bandeja lo decide aparte
+ *  `estadoParaRecuento`; el color de la tarjeta no. */
 export function estadoConAlertas(
   disk: {
     id: string;
     state: HealthState;
-    unknownReason?: UnknownReason | null;
     volumes?: readonly { id: string }[];
   },
-  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[],
-  opts: { paused?: boolean } = {}
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[]
 ): HealthState {
   const suyas = alerts.filter(
     (a) =>
@@ -72,15 +69,34 @@ export function estadoConAlertas(
   );
   if (suyas.some((a) => a.severity === "crit")) return "crit";
   if (suyas.some((a) => a.severity === "warn")) return "warn";
+  return disk.state;
+}
+
+/** Estado de un disco **solo para el recuento global** (píldora de la `Toolbar`, pie del riel,
+ *  icono de la bandeja): como `estadoConAlertas`, pero además un `unknown` por `unreadable` o
+ *  `collector-error` cuenta como advertencia (`unknownContributesWarning`, §B.5) —una fuente que
+ *  debería funcionar y no funciona es una degradación real—, salvo con la monitorización en pausa,
+ *  donde el estado de pausa manda. **No** se usa para pintar tarjetas: ahí un `unknown` es gris. */
+export function estadoParaRecuento(
+  disk: {
+    id: string;
+    state: HealthState;
+    unknownReason?: UnknownReason | null;
+    volumes?: readonly { id: string }[];
+  },
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string }[],
+  opts: { paused?: boolean } = {}
+): HealthState {
+  const s = estadoConAlertas(disk, alerts);
   if (
+    s === "unknown" &&
     !opts.paused &&
-    disk.state === "unknown" &&
     disk.unknownReason != null &&
     unknownContributesWarning(disk.unknownReason)
   ) {
     return "warn";
   }
-  return disk.state;
+  return s;
 }
 
 /** Severidad máxima de una lista. `unknown` no gana nunca a un estado conocido:
@@ -121,10 +137,10 @@ export function globalStatus(input: {
  *
  *   1. el disco con la alerta que cuenta para la salud (`active`/`acknowledged`) de mayor severidad;
  *      empate → la de ocurrencia más reciente;
- *   2. si no hay ninguna, el disco con el **peor `state`** (crit sobre warn) — así el protagonista
- *      nunca es un disco sano habiendo uno con problema, aunque ese problema venga de un volumen
- *      lleno o de un SMART ilegible y no de una alerta dirigida al dispositivo; empate → orden de
- *      inventario;
+ *   2. si no hay ninguna, el disco que no está sano —crit, luego warn, luego un `unknown` que
+ *      cuenta como degradación (`unreadable`/`collector-error`)—, para que el protagonista nunca
+ *      sea un disco sano habiendo uno con problema, aunque venga de un volumen lleno o de un SMART
+ *      que dejó de responder y no de una alerta de dispositivo; empate → orden de inventario;
  *   3. si todos van bien, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
  *   4. si no se sabe, el primero del inventario;
  *   5. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
@@ -170,10 +186,17 @@ export function selectHeroDisk<
     return puntuados[0].disk;
   }
 
-  // Sin alerta de dispositivo, pero el `state` ya trae fundidas las alertas de volumen y el SMART
-  // ilegible: si algún disco no está sano, protagoniza él, no el de sistema.
+  // Sin alerta de dispositivo, pero el `state` ya trae fundidas las alertas de volumen: si algún
+  // disco no está sano —o dejó de responder a SMART—, protagoniza él, no el de sistema.
   const conProblema =
-    elegibles.find((d) => d.state === "crit") ?? elegibles.find((d) => d.state === "warn");
+    elegibles.find((d) => d.state === "crit") ??
+    elegibles.find((d) => d.state === "warn") ??
+    elegibles.find(
+      (d) =>
+        d.state === "unknown" &&
+        d.unknownReason != null &&
+        unknownContributesWarning(d.unknownReason)
+    );
   if (conProblema) return conProblema;
 
   return elegibles.find((d) => d.volumes?.some((v) => v.isSystemVolume)) ?? elegibles[0];
@@ -247,5 +270,16 @@ export function capacityState(
 
   if (pct < 5 || (applyAbsolute && freeBytes < 10 * GB)) return "crit";
   if (pct < 10 || (applyAbsolute && freeBytes < 20 * GB)) return "warn";
+  return "ok";
+}
+
+/** Color de la **barra** de ocupación de un volumen (no de la alerta). Imita al Explorador de
+ *  Windows: rojo cuando queda poco espacio. Umbrales del boceto (`smartdisk-v3.html`,
+ *  `bar = u => u >= 91 ? crit : u >= 85 ? warn : ok`): ≥ 91 % ocupado → rojo, ≥ 85 % → ámbar, por
+ *  debajo → verde. La regla de alerta `capacity.*` es otra cosa y la decide `capacityState()`. */
+export function capacityBarTone(usedPercent: number | null): HealthState {
+  if (usedPercent === null) return "unknown";
+  if (usedPercent >= 91) return "crit";
+  if (usedPercent >= 85) return "warn";
   return "ok";
 }

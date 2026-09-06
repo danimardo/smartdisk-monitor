@@ -28,7 +28,7 @@ fn cooldown_de(rule_key: &str) -> Option<Duration> {
     match rule_key {
         "smart.health.failed" | "nvme.critical_warning" => None,
         "smart.media_errors" | "smart.error_log" => Some(Duration::hours(1)),
-        "smart.spare_below_threshold" => Some(Duration::hours(6)),
+        "smart.spare_below_threshold" | "smart.unreadable" => Some(Duration::hours(6)),
         "smart.wear_high" => Some(Duration::days(7)),
         "temp.above_configured_warn" => Some(Duration::minutes(30)),
         "temp.above_configured_crit" => Some(Duration::minutes(15)),
@@ -149,6 +149,11 @@ mod tests {
     #[test]
     fn wear_high_tiene_cooldown_de_siete_dias() {
         assert_eq!(cooldown_de("smart.wear_high"), Some(Duration::days(7)));
+    }
+
+    #[test]
+    fn smart_unreadable_tiene_cooldown_de_seis_horas() {
+        assert_eq!(cooldown_de("smart.unreadable"), Some(Duration::hours(6)));
     }
 
     #[test]

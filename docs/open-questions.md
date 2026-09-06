@@ -103,27 +103,28 @@ Un dispositivo que declara no soportar SMART (`unsupported`) es normalidad y no 
   habido lecturas y dejaron de llegar. Ahora, si hay al menos una muestra histórica y la última no
   es fresca, el motivo es `unreadable` («dejó de responder»). El caso `not-yet-sampled` queda solo
   para un disco que nunca ha devuelto nada.
-- `unknownContributesWarning()` era **código muerto**. Ahora lo aplica `estadoConAlertas()`
-  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se eleva a `warn`
-  —salvo con la monitorización en pausa, donde el estado de pausa manda—. En consecuencia su
-  píldora dice **«Advertencia»** (no «Sin datos SMART») y cuenta en la fila «Advertencia» del
-  reparto, de modo que tarjeta y reparto concuerdan; el «por qué» (sin lectura SMART) lo llevan
-  las magnitudes en «—» y, si es el protagonista, el texto del Hero. «Sin datos SMART» queda solo
-  para el `unknown` que de verdad no lo soporta (`unsupported`) o aún no ha medido
-  (`not-yet-sampled`), que siguen en gris.
+- `unknownContributesWarning()` era **código muerto**. **Dónde se aplica** (decisión del usuario,
+  tras verlo): un disco `unknown` se presenta siempre como **«Sin datos SMART» en gris** —en la
+  tarjeta, el Hero y la fila del reparto—, sea cual sea el motivo. Que un `unknown` por
+  `unreadable`/`collector-error` **cuente para «N necesitan atención»** y el color de la bandeja lo
+  decide `estadoParaRecuento()` (solo lo usa el chrome), no `estadoConAlertas()` (que lo usan las
+  tarjetas y se queda en `unknown`). Con la monitorización en pausa tampoco cuenta. Así el reparto
+  es una partición limpia (Correcto + Advertencia + Crítico + Sin datos SMART = total) y el usuario
+  ve el mismo texto y color en todas partes; la urgencia del disco que dejó de responder vive en el
+  recuento de arriba, en la notificación y en el grupo de alerta `smart.unreadable`.
 - `selectHeroDisk()` gana un criterio intermedio: sin alerta de dispositivo, protagoniza el disco
-  con el peor `state` (ya fundido) antes que el de sistema, para que el Hero no muestre «Todo en
-  orden» habiendo un disco en `warn`/`crit` por un volumen lleno o un SMART ilegible. El
-  `HeroPanel` estrena un texto genérico («Este disco necesita atención…») para ese caso sin alerta
-  con clave i18n propia.
+  con problema —`crit`, luego `warn`, luego un `unknown` que cuenta como degradación— antes que el
+  de sistema, para que el Hero no muestre «Todo en orden» habiendo un disco en apuros. El
+  `HeroPanel` estrena un texto genérico («Este disco necesita atención…») para el caso sin alerta.
 
-**Pendiente (`PENDIENTE`):** el **grupo de alerta** `smart.unreadable` (documentado en
-`alert-rules.md`: «consulta fallida 3 ciclos seguidos → advertencia») sigue **sin implementar**. El
-colector descarta el fallo por disco (`commands/mod.rs`, `refresh_smart` hace `continue` sin
-registrar nada) y el motor nunca lo evalúa. Enfoque propuesto: registrar el fallo como un
-`smart_snapshots` con `query_status='error'` y contar 3 seguidos en el motor, con resolución a la
-primera lectura correcta. Hasta entonces, un disco ilegible se ve como advertencia (arriba) pero
-no genera un grupo de alerta con su cronología ni su notificación.
+*Grupo de alerta `smart.unreadable` — hecho (2026-09-06):* cada ciclo de SMART escribe la métrica
+`smart_query_ok` (1.0 leído / 0.0 falló), incluidos los ciclos que fallan
+(`commands::registrar_ciclo_smart_fallido`, que ya no hace solo `continue`). `alerts::evaluar_unreadable`
+la evalúa con el motor de siempre: 3 ceros seguidos → advertencia, una lectura correcta la resuelve,
+cooldown 6 h. La compuerta «un disco que **sí** respondía» la da `repo_metricas::hubo_lectura_smart_correcta`
+(un `smart_snapshots` con `query_status` de éxito): un disco que nunca dio datos es «no compatible»,
+no «ilegible», y no dispara la regla. Cinco pruebas en `alerts/mod.rs` (`alert-rules.md` §5). El
+disco ilegible ahora **sí** aparece en la pantalla de Alertas con su cronología y notifica.
 
 ### B.6 · Cambio de severidad de un grupo ya reconocido · `PROPUESTO`
 

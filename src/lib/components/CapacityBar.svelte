@@ -1,13 +1,13 @@
 <script lang="ts">
-  /** Barra de ocupación de un volumen. El color lo decide capacityState(), no el llamante. */
-  import { capacityState } from "$lib/design/health";
-  import { healthToken } from "$lib/design/health";
+  /** Barra de ocupación de un volumen. El color lo decide `capacityBarTone()` (imita al Explorador
+   *  de Windows: rojo cuando queda poco espacio), no el llamante ni la severidad de la alerta. */
+  import { capacityBarTone, healthToken } from "$lib/design/health";
   import { formatBytes, usedPercent, NOT_AVAILABLE } from "$lib/design/format";
 
   let { label = "", capacityBytes = null as number | null, freeBytes = null as number | null } = $props();
 
   const pct = $derived(usedPercent(capacityBytes, freeBytes));
-  const tone = $derived(healthToken[capacityState(freeBytes, capacityBytes)]);
+  const tone = $derived(healthToken[capacityBarTone(pct)]);
 </script>
 
 <div class="flex flex-col gap-2">

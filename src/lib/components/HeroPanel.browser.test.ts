@@ -66,16 +66,22 @@ describe("HeroPanel", () => {
     expect(page.getByText(es["dashboard.hero.collecting"]).query()).toBeNull();
   });
 
-  it("disco que dejó de responder: píldora «Advertencia», no «Sin datos SMART»", async () => {
+  it("disco que dejó de responder: píldora «Sin datos SMART», explica que dejó de responder, cifra «No disponible»", async () => {
     await render(HeroPanel, {
       props: {
-        disk: discoBase({ state: "warn", unknownReason: "unreadable", temperatureC: 41 }),
-        series: []
+        disk: discoBase({ state: "unknown", unknownReason: "unreadable", temperatureC: 41 }),
+        series: [],
+        alertId: "a1",
+        onviewalert: () => {}
       }
     });
-    await expect.element(page.getByText(es["health.warn"])).toBeInTheDocument();
+    await expect.element(page.getByText(es["disk.noSmartData"])).toBeInTheDocument();
     await expect.element(page.getByText(es["disk.noSmartUnreadable"])).toBeInTheDocument();
     expect(page.getByText("41 °C").query()).toBeNull();
+    // Aunque sea gris, con una alerta activa ofrece verla.
+    await expect
+      .element(page.getByRole("button", { name: es["dashboard.hero.viewAlert"] }))
+      .toBeInTheDocument();
   });
 
   it("disco sin SMART: explica por qué y no muestra la temperatura como cifra", async () => {

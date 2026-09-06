@@ -51,7 +51,7 @@
 </script>
 
 <aside
-  class="sdm-material-chrome flex w-rail flex-none flex-col items-center gap-1 border-r border-hairline py-3"
+  class="sdm-material-chrome flex w-rail flex-none flex-col items-center gap-2 border-r border-hairline py-4"
 >
   <a
     href="/"
@@ -62,7 +62,7 @@
     <Icon name="diskStack" size={18} />
   </a>
 
-  <nav class="flex flex-col items-center gap-1" aria-label={t("nav.monitoring")}>
+  <nav class="flex flex-col items-center gap-2" aria-label={t("nav.monitoring")}>
     {#each sections as s (s.id)}
       <a
         class={btn(active === s.id)}

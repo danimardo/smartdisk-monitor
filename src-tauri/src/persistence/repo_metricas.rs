@@ -266,6 +266,23 @@ pub fn latest_samples_by_source(
     Ok(resultado)
 }
 
+/// ¿Alguna vez `smartctl` leyó bien este disco? Se usa para no disparar `smart.unreadable` en un
+/// disco que **nunca** respondió —eso es «no compatible», no «dejó de responder»
+/// (`alert-rules.md`)—. `smart_snapshots` no se poda, así que la señal es estable en el tiempo.
+///
+/// Cuentan los dos `query_status` de éxito que escribe `persist_smart_reading` (`ok` y
+/// `no_health_field` — este último es un disco que da SMART pero sin campo de autoevaluación); no
+/// los de fallo (`error`, `unparseable`).
+pub fn hubo_lectura_smart_correcta(conn: &Connection, device_id: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM smart_snapshots
+         WHERE device_id = ?1 AND query_status IN ('ok', 'no_health_field'))",
+        params![device_id],
+        |r| r.get::<_, i64>(0),
+    )
+    .map(|n| n != 0)
+}
+
 /// Registra una captura completa de `smartctl`, con su procedencia y el JSON crudo cuando exista.
 #[allow(clippy::too_many_arguments)]
 pub fn insert_smart_snapshot(
@@ -385,6 +402,44 @@ mod tests {
         assert!(latest_n_values(&conn, "d1", "temperature_celsius", 3)
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn hubo_lectura_smart_correcta_distingue_un_snapshot_ok_de_uno_fallido() {
+        let conn = conn_de_prueba();
+        assert!(
+            !hubo_lectura_smart_correcta(&conn, "d1").unwrap(),
+            "sin snapshots, no"
+        );
+
+        insert_smart_snapshot(
+            &conn,
+            "d1",
+            "2026-09-04T10:00:00Z",
+            None,
+            Some(1),
+            "error",
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            !hubo_lectura_smart_correcta(&conn, "d1").unwrap(),
+            "un snapshot fallido no cuenta"
+        );
+
+        insert_smart_snapshot(
+            &conn,
+            "d1",
+            "2026-09-04T10:05:00Z",
+            None,
+            Some(0),
+            "ok",
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(hubo_lectura_smart_correcta(&conn, "d1").unwrap());
     }
 
     #[test]

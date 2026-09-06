@@ -13,7 +13,7 @@
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
-  import { estadoConAlertas, globalStatus, type GlobalStatusKind } from "$lib/design/health";
+  import { estadoParaRecuento, globalStatus, type GlobalStatusKind } from "$lib/design/health";
   import { healthIcon, type IconName } from "$lib/design/icons";
   import { formatAge } from "$lib/design/format";
   import {
@@ -68,7 +68,7 @@
     globalStatus({
       loaded: app.loadedAt !== null,
       paused: app.paused,
-      monitoredStates: app.devices.map((d) => estadoConAlertas(d, app.alerts, { paused: app.paused }))
+      monitoredStates: app.devices.map((d) => estadoParaRecuento(d, app.alerts, { paused: app.paused }))
     })
   );
 
