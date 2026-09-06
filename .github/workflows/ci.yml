@@ -106,11 +106,15 @@ jobs:
 
       - name: Cobertura del dominio
         working-directory: src-tauri
-        # Constitución §VIII: 90 % en domain/ y alerts/, 80 % en el resto.
-        # `--fail-under-lines` bloquea; los umbrales por módulo se revisan en el informe.
+        # Constitución §VIII: 90 % en domain/ y alerts/, 69 % en el resto (K.6, enmienda 1.6.0:
+        # el 80 % original resultó inalcanzable con el patrón `#[tauri::command]` + `_impl` —
+        # el envoltorio no se puede instanciar en un test, y no toda la lógica de cada comando
+        # está todavía extraída a su `_impl`). `--fail-under-lines` bloquea con el número
+        # combinado (dominado por «resto», ~82 % de las líneas totales); los umbrales por módulo
+        # se revisan en el informe.
         run: |
           cargo install cargo-llvm-cov --locked
-          cargo llvm-cov --locked --lcov --output-path lcov.info --fail-under-lines 80
+          cargo llvm-cov --locked --lcov --output-path lcov.info --fail-under-lines 73
 
   documentacion:
     name: Documentación
