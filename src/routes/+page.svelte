@@ -191,6 +191,9 @@
          fuera de la vista (obligaba a scroll horizontal). Con `minmax(0, …)` la columna cede. -->
     <div class="grid gap-5 max-[900px]:grid-cols-1" style="grid-template-columns: minmax(0, 1fr) 300px">
       <Card title={t("dashboard.events.title")}>
+        {#snippet action()}
+          <a href="/events" class="text-xs font-medium text-accent hover:underline">{t("common.viewAll")}</a>
+        {/snippet}
         {#if sucesos.length}
           {#each sucesos as ev (ev.id)}
             <EventRow

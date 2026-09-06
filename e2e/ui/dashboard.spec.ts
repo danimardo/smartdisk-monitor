@@ -68,8 +68,8 @@ test.describe("panel general v3", () => {
     await expect(page.getByText(disco.model).first()).toBeVisible();
     await expect(page.getByText(es["global.allGood"])).toHaveCount(0);
     await expect(page.getByText(es["global.needsAttention.one"]).first()).toBeVisible();
-    // Sigue diciendo «Sin datos SMART» (el texto explica), y no enseña la temperatura vieja.
-    await expect(page.getByText(es["disk.noSmartData"]).first()).toBeVisible();
+    // Cuenta como «Advertencia» (concuerda con el reparto) y no enseña la temperatura vieja.
+    await expect(page.getByText(es["health.warn"]).first()).toBeVisible();
     await expect(page.getByText("44 °C")).toHaveCount(0);
   });
 

@@ -99,6 +99,12 @@
   );
 
   const freshness = $derived.by(() => {
+    if (!app.loadedAt) return "";
+    // Por debajo de 10 s, «hace un momento» en vez del «hace ahora» que sale de `Intl` con
+    // `numeric: "auto"`, que en la barra queda raro.
+    if (Date.now() - new Date(app.loadedAt).getTime() < 10_000) {
+      return t("common.updatedAgo", { value: t("common.moment") });
+    }
     const age = formatAge(app.loadedAt);
     return age ? t("common.updatedAgo", { value: age }) : "";
   });
@@ -116,6 +122,14 @@
     typeof page.data?.title === "string" && page.data.title ? page.data.title : null
   );
   const routeSubtitle = $derived(typeof page.data?.subtitle === "string" ? page.data.subtitle : "");
+  /** El subtítulo sale de la ruta; y en el panel general, a falta de uno, el recuento de discos
+   *  monitorizados (boceto). El recuento es dinámico y vive en el store, no en el `load`. */
+  const screenSubtitle = $derived(
+    routeSubtitle ||
+      (activeSection === "/" && app.loadedAt && app.devices.length > 0
+        ? tp("dashboard.deviceCount", app.devices.length)
+        : "")
+  );
   const screenTitle = $derived(
     routeTitle ?? t(SECTIONS.find((s) => s.id === activeSection)?.key ?? "nav.dashboard")
   );
@@ -278,7 +292,7 @@
     {#snippet toolbar()}
       <Toolbar
         title={screenTitle}
-        subtitle={routeSubtitle}
+        subtitle={screenSubtitle}
         globalState={status.state}
         {globalLabel}
         {freshness}

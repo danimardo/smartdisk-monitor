@@ -33,6 +33,9 @@ const serie = [
   { t: 3_000, v: 44 }
 ];
 
+/** Seis puntos que abarcan 25 min: suficiente para dibujar una onda. */
+const serieDensa = Array.from({ length: 6 }, (_, i) => ({ t: i * 300_000, v: 42 + (i % 3) }));
+
 describe("HeroPanel", () => {
   it("cargando: muestra el esqueleto de la cifra, no un valor", async () => {
     await render(HeroPanel, { props: { disk: discoBase(), series: serie, loading: true } });
@@ -48,6 +51,31 @@ describe("HeroPanel", () => {
   it("sin serie de temperatura: lo dice explícitamente en vez de dejar el hueco mudo", async () => {
     await render(HeroPanel, { props: { disk: discoBase(), series: [] } });
     await expect.element(page.getByText(es["dashboard.hero.noSeries"])).toBeInTheDocument();
+  });
+
+  it("con pocas muestras (app recién abierta): «Recopilando datos», no una rayita casi plana", async () => {
+    await render(HeroPanel, { props: { disk: discoBase(), series: serie } });
+    await expect.element(page.getByText(es["dashboard.hero.collecting"])).toBeInTheDocument();
+  });
+
+  it("con muestras suficientes: el pie dice la ventana y no «Recopilando datos»", async () => {
+    await render(HeroPanel, {
+      props: { disk: discoBase(), series: serieDensa, windowLabel: "Ventana: 25 min" }
+    });
+    await expect.element(page.getByText("Ventana: 25 min")).toBeInTheDocument();
+    expect(page.getByText(es["dashboard.hero.collecting"]).query()).toBeNull();
+  });
+
+  it("disco que dejó de responder: píldora «Advertencia», no «Sin datos SMART»", async () => {
+    await render(HeroPanel, {
+      props: {
+        disk: discoBase({ state: "warn", unknownReason: "unreadable", temperatureC: 41 }),
+        series: []
+      }
+    });
+    await expect.element(page.getByText(es["health.warn"])).toBeInTheDocument();
+    await expect.element(page.getByText(es["disk.noSmartUnreadable"])).toBeInTheDocument();
+    expect(page.getByText("41 °C").query()).toBeNull();
   });
 
   it("disco sin SMART: explica por qué y no muestra la temperatura como cifra", async () => {

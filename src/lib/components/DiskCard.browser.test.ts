@@ -70,13 +70,14 @@ describe("DiskCard", () => {
     await expect.element(page.getByText("Sin datos SMART")).toBeInTheDocument();
   });
 
-  it("con SMART caducado (unknownReason presente) no enseña la última lectura vieja como si fuera de ahora", async () => {
-    // El backend deja `temperatureC` con la última muestra aunque ya no sea fresca; la tarjeta no
-    // debe presentarla como actual. Las tres magnitudes van a «—» (boceto §4).
+  it("un disco que dejó de responder: píldora «Advertencia» y sin enseñar la lectura vieja", async () => {
+    // `estadoConAlertas` ya elevó el `state` a `warn`; `unknownReason` sigue puesto. La píldora
+    // dice «Advertencia» (concuerda con el reparto) y las magnitudes van a «—» (boceto §4), aunque
+    // el backend conserve la última lectura.
     const { container } = await render(DiskCard, {
       props: {
         disk: discoBase({
-          state: "unknown",
+          state: "warn",
           unknownReason: "unreadable",
           temperatureC: 41,
           percentageUsed: 3,
@@ -85,6 +86,7 @@ describe("DiskCard", () => {
         href: "/disks/d1"
       }
     });
+    await expect.element(page.getByText("Advertencia")).toBeInTheDocument();
     expect(container.textContent).not.toContain("41 °C");
     await expect.element(page.getByText("—").first()).toBeInTheDocument();
   });

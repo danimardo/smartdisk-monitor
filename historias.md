@@ -4884,9 +4884,13 @@ Un dispositivo que declara no soportar SMART (`unsupported`) es normalidad y no 
   es fresca, el motivo es `unreadable` («dejó de responder»). El caso `not-yet-sampled` queda solo
   para un disco que nunca ha devuelto nada.
 - `unknownContributesWarning()` era **código muerto**. Ahora lo aplica `estadoConAlertas()`
-  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se presenta como
-  advertencia en el panel y cuenta para «necesitan atención» —salvo con la monitorización en
-  pausa, donde el estado de pausa manda—.
+  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se eleva a `warn`
+  —salvo con la monitorización en pausa, donde el estado de pausa manda—. En consecuencia su
+  píldora dice **«Advertencia»** (no «Sin datos SMART») y cuenta en la fila «Advertencia» del
+  reparto, de modo que tarjeta y reparto concuerdan; el «por qué» (sin lectura SMART) lo llevan
+  las magnitudes en «—» y, si es el protagonista, el texto del Hero. «Sin datos SMART» queda solo
+  para el `unknown` que de verdad no lo soporta (`unsupported`) o aún no ha medido
+  (`not-yet-sampled`), que siguen en gris.
 - `selectHeroDisk()` gana un criterio intermedio: sin alerta de dispositivo, protagoniza el disco
   con el peor `state` (ya fundido) antes que el de sistema, para que el Hero no muestre «Todo en
   orden» habiendo un disco en `warn`/`crit` por un volumen lleno o un SMART ilegible. El
@@ -5046,9 +5050,13 @@ hay: un minuto de datos → ventana de un minuto (**sin mínimo de zoom**, decis
   reales (no la mediana: con pocas muestras y un parón, media serie *es* el parón). Un ciclo
   perdido no abre tramo nuevo; un parón de horas sí.
 - El pie del Hero muestra la ventana real («Ventana: 8 min» / «Ventana: 24 h», `formatSpanShort`).
+- **Recién abierta la app** hay una o dos muestras y no da para una onda: por debajo de **4 puntos
+  o minuto y medio** de ventana el Hero no dibuja la rayita casi plana —parecía un fallo—, pone
+  «Recopilando datos…» y se rellena solo en unos minutos.
 - **No afecta** al detalle de disco (`/disks/[id]`): ahí el `SegmentedControl` de intervalo y los
   ejes son la interfaz, y la ventana la elige el usuario.
-- Los factores (4×, p25) son de afinado; si un histórico real se ve mal, se ajustan aquí.
+- Los factores (4×, p25, umbral de «recopilando») son de afinado; si un histórico real se ve mal,
+  se ajustan aquí.
 
 ---
 
@@ -8070,6 +8078,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "common.technicalDetail": "Detalle técnico",
   "common.viewAll": "Ver todos",
   "common.updatedAgo": "hace {value}",
+  "common.moment": "un momento",
   "health.ok": "Correcto",
   "health.warn": "Advertencia",
   "health.crit": "Crítico",
@@ -8087,8 +8096,11 @@ Fichero de origen: `src/lib/i18n/es.json`
   "nav.pause": "Pausar recopilación",
   "nav.resume": "Reanudar recopilación",
   "disk.temperature": "Temperatura",
+  "disk.temperatureShort": "Temp.",
   "disk.wear": "Desgaste",
+  "disk.wearShort": "Desg.",
   "disk.activity": "Actividad",
+  "disk.activityShort": "Act.",
   "disk.powerOnHours": "Horas encendido",
   "disk.firmwareHealth": "Salud del firmware",
   "disk.firmwareHealthOk": "Correcta",
@@ -8158,6 +8170,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "dashboard.noDevices": "No hay discos monitorizados",
   "dashboard.noDevicesHint": "Comprueba que la aplicación se está ejecutando con privilegios de administrador.",
   "dashboard.noDevicesCta": "Buscar dispositivos otra vez",
+  "dashboard.deviceCount.one": "1 disco monitorizado",
+  "dashboard.deviceCount.other": "{count} discos monitorizados",
   "dashboard.hero.allGood": "Todo en orden",
   "dashboard.hero.allGoodBody": "Ningún disco necesita atención ahora mismo.",
   "dashboard.hero.attentionBody": "Este disco necesita atención. Ábrelo para ver el detalle.",
@@ -8166,6 +8180,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "dashboard.hero.lastValid": "último dato válido a las {time}",
   "dashboard.hero.noSeries": "Sin muestras recientes",
   "dashboard.hero.window": "Ventana: {span}",
+  "dashboard.hero.collecting": "Recopilando datos…",
   "dashboard.spread.title": "Reparto de estados",
   "dashboard.events.title": "Sucesos del sistema",
   "dashboard.events.empty": "Sin sucesos recientes",
@@ -8488,6 +8503,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "common.technicalDetail": "Technical detail",
   "common.viewAll": "View all",
   "common.updatedAgo": "{value} ago",
+  "common.moment": "a moment",
   "health.ok": "Healthy",
   "health.warn": "Warning",
   "health.crit": "Critical",
@@ -8505,8 +8521,11 @@ Fichero de origen: `src/lib/i18n/en.json`
   "nav.pause": "Pause collection",
   "nav.resume": "Resume collection",
   "disk.temperature": "Temperature",
+  "disk.temperatureShort": "Temp.",
   "disk.wear": "Wear",
+  "disk.wearShort": "Wear",
   "disk.activity": "Activity",
+  "disk.activityShort": "Act.",
   "disk.powerOnHours": "Power-on hours",
   "disk.firmwareHealth": "Firmware health",
   "disk.firmwareHealthOk": "Passed",
@@ -8576,6 +8595,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "dashboard.noDevices": "No monitored disks",
   "dashboard.noDevicesHint": "Check that the application is running with administrator privileges.",
   "dashboard.noDevicesCta": "Look for devices again",
+  "dashboard.deviceCount.one": "1 monitored disk",
+  "dashboard.deviceCount.other": "{count} monitored disks",
   "dashboard.hero.allGood": "All good",
   "dashboard.hero.allGoodBody": "No disk needs attention right now.",
   "dashboard.hero.attentionBody": "This disk needs attention. Open it for details.",
@@ -8584,6 +8605,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "dashboard.hero.lastValid": "last valid reading at {time}",
   "dashboard.hero.noSeries": "No recent samples",
   "dashboard.hero.window": "Window: {span}",
+  "dashboard.hero.collecting": "Collecting data…",
   "dashboard.spread.title": "Status spread",
   "dashboard.events.title": "System events",
   "dashboard.events.empty": "No recent events",

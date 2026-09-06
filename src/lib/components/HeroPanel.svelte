@@ -57,12 +57,24 @@
     sinSmartFresco || disk?.temperatureC == null ? NOT_AVAILABLE() : formatTemperature(disk.temperatureC)
   );
   const identidad = $derived(disk ? `${disk.model} · ${disk.deviceType}` : "");
-  const hayCurva = $derived(!sinSmartFresco && series.some((p) => p.v !== null));
 
-  /** Etiqueta de la píldora: el texto dice **por qué** (sin datos SMART), el color —del `state`—
-   *  dice si eso cuenta como aviso. Nunca el color solo. */
+  /** Puntos con valor y cuánto tiempo abarcan. Con menos de cuatro o menos de minuto y medio no
+   *  hay onda que dibujar (la app se acaba de abrir): mejor decir «recopilando datos» que enseñar
+   *  una rayita casi plana que parece un fallo. */
+  const puntosValidos = $derived(series.filter((p) => p.v !== null));
+  const spanMs = $derived(puntosValidos.length >= 2 ? puntosValidos.at(-1)!.t - puntosValidos.at(0)!.t : 0);
+  const hayCurva = $derived(!sinSmartFresco && puntosValidos.length >= 4 && spanMs >= 90_000);
+  const recopilando = $derived(!sinSmartFresco && !hayCurva && puntosValidos.length > 0);
+
+  /** Etiqueta de la píldora: sigue al `state` ya fundido. Un disco que dejó de responder es
+   *  `warn` → «Advertencia» (concuerda con el reparto); «Sin datos SMART» solo para el que de
+   *  verdad no lo soporta, que sigue en `unknown`. */
   const etiquetaPildora = $derived(
-    sinSmartFresco ? t("disk.noSmartData") : atencion ? t(`health.${state}`) : t("dashboard.hero.allGood")
+    state === "unknown"
+      ? t("disk.noSmartData")
+      : atencion
+        ? t(`health.${state}`)
+        : t("dashboard.hero.allGood")
   );
 
   /** Explicación humana del «sin datos SMART», por causa. */
@@ -111,10 +123,14 @@
 
         {#if lastValidAt}
           <span class="text-2xs text-warn">{t("dashboard.hero.lastValid", { time: lastValidAt })}</span>
-        {:else if !hayCurva && !sinSmartFresco && !loading}
-          <span class="text-2xs text-fg-faint">{t("dashboard.hero.noSeries")}</span>
-        {:else if hayCurva && windowLabel && !loading}
-          <span class="text-2xs text-fg-faint">{windowLabel}</span>
+        {:else if !loading && !sinSmartFresco}
+          {#if recopilando}
+            <span class="text-2xs text-fg-faint">{t("dashboard.hero.collecting")}</span>
+          {:else if !hayCurva}
+            <span class="text-2xs text-fg-faint">{t("dashboard.hero.noSeries")}</span>
+          {:else if windowLabel}
+            <span class="text-2xs text-fg-faint">{windowLabel}</span>
+          {/if}
         {/if}
 
         <p class="m-0 max-w-[520px] text-sm text-fg-dim" style="text-wrap: pretty">
@@ -143,11 +159,15 @@
         </div>
       </div>
 
-      <div class="flex w-[290px] flex-none flex-col justify-center gap-2 max-[1100px]:hidden">
+      <!-- `grid-rows-4`: cuatro filas de la misma altura que reparten **exactamente** el alto del
+           Hero. Con `flex-col` los chips se desbordaban y `overflow-hidden` recortaba el primero y
+           el último. `bg-glass-2` (no `-3`): la curva pasa por detrás y con `-3` (10 % de opacidad)
+           los cuadros no se leían. -->
+      <div class="grid w-[290px] flex-none grid-rows-4 gap-2.5 max-[1100px]:hidden">
         {#each facts as fact}
-          <div class="flex items-center gap-3 rounded-inner bg-glass-3 p-3">
+          <div class="flex items-center gap-2.5 overflow-hidden rounded-inner bg-glass-2 px-3">
             <span
-              class="grid size-8 shrink-0 place-items-center rounded-nav"
+              class="grid size-7 shrink-0 place-items-center rounded-nav"
               style="background: {(fact.state
                 ? healthToken[fact.state]
                 : { soft: 'var(--sdm-accent-soft)', fg: 'var(--sdm-accent-fg)' }

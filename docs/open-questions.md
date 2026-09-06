@@ -104,9 +104,13 @@ Un dispositivo que declara no soportar SMART (`unsupported`) es normalidad y no 
   es fresca, el motivo es `unreadable` («dejó de responder»). El caso `not-yet-sampled` queda solo
   para un disco que nunca ha devuelto nada.
 - `unknownContributesWarning()` era **código muerto**. Ahora lo aplica `estadoConAlertas()`
-  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se presenta como
-  advertencia en el panel y cuenta para «necesitan atención» —salvo con la monitorización en
-  pausa, donde el estado de pausa manda—.
+  (`src/lib/design/health.ts`): un `unknown` por `unreadable`/`collector-error` se eleva a `warn`
+  —salvo con la monitorización en pausa, donde el estado de pausa manda—. En consecuencia su
+  píldora dice **«Advertencia»** (no «Sin datos SMART») y cuenta en la fila «Advertencia» del
+  reparto, de modo que tarjeta y reparto concuerdan; el «por qué» (sin lectura SMART) lo llevan
+  las magnitudes en «—» y, si es el protagonista, el texto del Hero. «Sin datos SMART» queda solo
+  para el `unknown` que de verdad no lo soporta (`unsupported`) o aún no ha medido
+  (`not-yet-sampled`), que siguen en gris.
 - `selectHeroDisk()` gana un criterio intermedio: sin alerta de dispositivo, protagoniza el disco
   con el peor `state` (ya fundido) antes que el de sistema, para que el Hero no muestre «Todo en
   orden» habiendo un disco en `warn`/`crit` por un volumen lleno o un SMART ilegible. El
@@ -266,9 +270,13 @@ hay: un minuto de datos → ventana de un minuto (**sin mínimo de zoom**, decis
   reales (no la mediana: con pocas muestras y un parón, media serie *es* el parón). Un ciclo
   perdido no abre tramo nuevo; un parón de horas sí.
 - El pie del Hero muestra la ventana real («Ventana: 8 min» / «Ventana: 24 h», `formatSpanShort`).
+- **Recién abierta la app** hay una o dos muestras y no da para una onda: por debajo de **4 puntos
+  o minuto y medio** de ventana el Hero no dibuja la rayita casi plana —parecía un fallo—, pone
+  «Recopilando datos…» y se rellena solo en unos minutos.
 - **No afecta** al detalle de disco (`/disks/[id]`): ahí el `SegmentedControl` de intervalo y los
   ejes son la interfaz, y la ventana la elige el usuario.
-- Los factores (4×, p25) son de afinado; si un histórico real se ve mal, se ajustan aquí.
+- Los factores (4×, p25, umbral de «recopilando») son de afinado; si un histórico real se ve mal,
+  se ajustan aquí.
 
 ---
 

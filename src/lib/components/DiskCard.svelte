@@ -29,11 +29,12 @@
   const tone = $derived(healthToken[state]);
   /** No hay lectura SMART reciente: el bus no la expone, dejó de responder, o aún no ha llegado la
    *  primera. El backend lo marca poniendo `unknownReason` (lo deja en `null` en cuanto la lectura
-   *  es fresca). Independiente del color: un disco puede contar como advertencia (`state` ya
-   *  elevado por `estadoConAlertas`) *y* no tener SMART fresco a la vez. */
+   *  es fresca). Se usa para vaciar magnitudes y quitar la curva; **no** para la píldora. */
   const sinSmartFresco = $derived(disk?.unknownReason != null);
-  /** El texto de la píldora dice **por qué** (sin datos SMART); el color lo pone `state`. */
-  const label = $derived(sinSmartFresco ? t("disk.noSmartData") : t(`health.${state}`));
+  /** La píldora sigue al `state` (ya fundido por `estadoConAlertas`): un disco que dejó de
+   *  responder es `warn` → «Advertencia», y así concuerda con «Reparto de estados». «Sin datos
+   *  SMART» queda solo para el que de verdad no lo soporta, que sigue en `unknown`. */
+  const label = $derived(state === "unknown" ? t("disk.noSmartData") : t(`health.${state}`));
   const overTempLimit = $derived(
     !!disk?.temperatureC && !!disk?.vendorTempLimitC && disk.temperatureC >= disk.vendorTempLimitC
   );
@@ -45,21 +46,21 @@
   const magnitudes = $derived([
     {
       icon: "temp" as const,
-      label: t("disk.temperature"),
+      label: t("disk.temperatureShort"),
       value: disk?.temperatureC ?? null,
       text: disk ? formatTemperature(disk.temperatureC) : "",
       color: overTempLimit ? "var(--sdm-warn)" : "var(--sdm-text)"
     },
     {
       icon: "wear" as const,
-      label: t("disk.wear"),
+      label: t("disk.wearShort"),
       value: disk?.percentageUsed ?? null,
       text: disk ? formatPercent(disk.percentageUsed) : "",
       color: "var(--sdm-text)"
     },
     {
       icon: "pulse" as const,
-      label: t("disk.activity"),
+      label: t("disk.activityShort"),
       value: disk?.activityPercent ?? null,
       text: disk ? formatPercent(disk.activityPercent) : "",
       color: "var(--sdm-text)"
