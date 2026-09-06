@@ -126,7 +126,7 @@
   "onboarding.welcome.test": "Ejecuta pruebas de disco solo cuando se lo pides",
   "onboarding.disks.title": "Hemos encontrado {count} discos en este equipo",
   "onboarding.disks.body": "Puedes dejar fuera los que no te interesen y ponerles un nombre reconocible. Todo esto se cambia después en Ajustes, y ningún disco se modifica: SmartDisk solo lee.",
-  "onboarding.disks.aliasLabel": "Nombre para esta aplicación",
+  "onboarding.disks.aliasLabel": "Ponle un nombre",
   "onboarding.disks.usbNote": "El disco externo por USB no expone datos SMART: su puente no reenvía esos comandos. Eso no es una avería. Si lo dejas marcado, vigilaremos su capacidad y los sucesos de Windows que lo mencionen, pero no verás temperatura ni desgaste.",
   "onboarding.disks.cta": "Continuar con las alertas",
   "onboarding.disks.empty": "No se ha detectado ningún disco en este equipo",

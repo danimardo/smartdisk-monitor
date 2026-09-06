@@ -126,7 +126,7 @@
   "onboarding.welcome.test": "Runs disk tests only when you ask",
   "onboarding.disks.title": "We found {count} disks on this PC",
   "onboarding.disks.body": "You can leave out the ones you don't care about and give them a recognisable name. All of this can be changed later in Settings, and no disk is modified: SmartDisk only reads.",
-  "onboarding.disks.aliasLabel": "Name inside this app",
+  "onboarding.disks.aliasLabel": "Give it a name",
   "onboarding.disks.usbNote": "The external USB disk does not expose SMART data: its bridge does not forward those commands. That is not a fault. If you leave it checked we will watch its capacity and the Windows events that mention it, but you will not see temperature or wear.",
   "onboarding.disks.cta": "Continue to alerts",
   "onboarding.disks.empty": "No disks detected on this PC",

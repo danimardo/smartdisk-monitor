@@ -4613,6 +4613,60 @@ comando y se verifica a mano, igual que J.28 y `platform/sistema.rs`.
   elevación; y el plugin es dependencia nueva sin justificación (límite duro de `AGENTS.md`).
 - **Carpeta «Inicio» del menú**: mismo problema de elevación que `Run`.
 
+### ADR-039 — Ilustraciones del asistente inicial: SVG propio con tokens, no recurso empaquetado
+
+Estado: aceptada. Fecha: 2026-09-06. Extiende `docs/ui-design.md` §3 (catálogo). Origen: revisión
+de las capturas del asistente sobre un Windows real.
+
+#### El problema
+
+Los cuatro pasos del asistente inicial (US-002) tenían huecos donde el diseño pedía una figura y
+solo había un cuadrado de `Icon` diminuto —cuando llegaba a verse: el sprite se montaba solo en
+`AppShell`, que esta ruta no usa (corregido aparte: `IconSprite` en `+layout.svelte`)—. Un icono de
+18 px no llena una pantalla de bienvenida a ancho completo. El asistente es la primera impresión del
+producto y quedaba pobre.
+
+#### La decisión
+
+Un componente nuevo, **`OnboardingArt`**, con **cuatro escenas** (`welcome`, `disks`, `alerts`,
+`done`), una por paso. Son **SVG en línea escritos a mano**, planas, estilo «Corporate Memphis /
+Alegría» adaptado a la «escena de datos» de v3: formas geométricas rotundas, **sin figuras
+humanas** (el motivo es siempre el hardware y su vigilancia — y así no hace falta un tono de piel,
+que no es un token).
+
+Reglas que cumple, como cualquier pieza del catálogo:
+
+- **Solo `currentColor` y `var(--sdm-*)`.** Ni un color literal; lo verifica `pnpm verify:tokens`.
+  Por eso funciona en tema claro y oscuro **sin una sola condicional**. Las coordenadas y los
+  `stroke-width` del dibujo son geometría, no valores de tema (misma consideración que el sprite de
+  `IconSprite`).
+- **Decorativa**: sale `aria-hidden`, sin nombre accesible. El texto de cada paso ya lo dice todo;
+  un `role="img"` sin contenido informativo sería peor (`ui-design.md` §6).
+- La paleta del dibujo es sobre todo **acento + neutro**; el verde `ok` solo aparece donde refuerza
+  el mensaje real del producto (el latido de «constantes vitales» del paso 1, el sello de
+  conformidad del paso 4). El acento **no** codifica salud aquí: es identidad visual.
+- Exportada en el barrel; `width` como única prop (el alto sale de la proporción 8:5).
+
+#### Alternativas descartadas
+
+- **Empaquetar PNG/SVG generados con una herramienta de ilustración**: un binario más en un
+  instalador privilegiado, con su hash que mantener (constitución §III y §IX), y un recurso que no
+  reacciona al tema — habría que entregar dos juegos (claro/oscuro) y conmutarlos. El SVG con
+  tokens se adapta solo.
+- **Seguir con cuadros de `Icon`**: no es una ilustración, es un pictograma; no llena la pantalla
+  ni da carácter a la primera impresión.
+- **Ilustración con personajes al estilo Corporate Memphis puro**: obliga a decidir tonos de piel
+  sin un token que los represente, y desentona con una aplicación de sistema. Se conserva el
+  lenguaje de formas, no las figuras.
+
+#### Consecuencias
+
+- El catálogo suma `OnboardingArt`. Su uso está acotado al asistente; no es un patrón general de
+  «mete una ilustración donde quieras».
+- `docs/ui-design.md` §3 lo recoge y §7.6 (asistente) menciona la escena por paso.
+- Si en el futuro otra pantalla quiere una ilustración, se decide entonces con el criterio de
+  `ui-design.md` §3, no por analogía con esta.
+
 
 ---
 
@@ -5779,7 +5833,7 @@ ninguna de estas rutas.
 | Tipos, formato, salud, iconos, tema y acento | `src/lib/design/` (incluye `icons.ts`) |
 | Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
 | Tipografía empotrada | `src/design-system/fonts/` |
-| Juego de iconos de línea (sprite, 15 símbolos) | montado en `src/lib/components/AppShell.svelte`; se usa vía `<Icon name="…" />` |
+| Juego de iconos de línea (sprite, 15 símbolos) | `src/lib/components/IconSprite.svelte`, montado una vez en `src/routes/+layout.svelte` (fuera de `AppShell`, para que resuelva también en `/onboarding`); se usa vía `<Icon name="…" />` |
 | **Boceto aprobado v3** (4 pantallas, ambos temas) | `design/propuesta-redisenov2/mockups/smartdisk-v3.html` |
 | Hoja de contacto de los iconos | `design/propuesta-redisenov2/mockups/icons-hoja-de-contacto.html` |
 | Fichas de cambio del rediseño v3 | `design/propuesta-redisenov2/cambios/` · spec: `specs/002-rediseno-v3/` |
@@ -5901,6 +5955,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un `polyline` por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
+| `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
 | `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
@@ -6084,7 +6139,9 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
 6. **Asistente inicial** (`/onboarding`, US-002, v3) — **sin `AppShell`**: `+layout.svelte` omite el
    riel y la barra de herramientas en esta ruta. Cabecera propia de 56 px (logo, indicador de paso,
    «Omitir y usar los valores de fábrica» siempre visible), cuerpo `max-w-[1000px]` centrado, pie de
-   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla. El
+   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla, cada uno
+   con su escena de `OnboardingArt` (ADR-039): `welcome` y `done` centradas sobre el título;
+   `disks` y `alerts` compactas junto al encabezado, ocultas por debajo de 720 px de cuerpo. El
    guardián de redirección vive en `+layout.ts` (`open-questions.md` §V).
 7. **Informes**: hereda tokens; sin composición nueva.
 
@@ -6939,6 +6996,8 @@ export { default as FilterBar } from "./FilterBar.svelte";
 export { default as VirtualList } from "./VirtualList.svelte";
 
 export { default as Icon } from "./Icon.svelte";
+export { default as IconSprite } from "./IconSprite.svelte";
+export { default as OnboardingArt } from "./OnboardingArt.svelte";
 export { default as StatusPill } from "./StatusPill.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";
 export { default as MetricCard } from "./MetricCard.svelte";
@@ -7850,7 +7909,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "onboarding.welcome.test": "Ejecuta pruebas de disco solo cuando se lo pides",
   "onboarding.disks.title": "Hemos encontrado {count} discos en este equipo",
   "onboarding.disks.body": "Puedes dejar fuera los que no te interesen y ponerles un nombre reconocible. Todo esto se cambia después en Ajustes, y ningún disco se modifica: SmartDisk solo lee.",
-  "onboarding.disks.aliasLabel": "Nombre para esta aplicación",
+  "onboarding.disks.aliasLabel": "Ponle un nombre",
   "onboarding.disks.usbNote": "El disco externo por USB no expone datos SMART: su puente no reenvía esos comandos. Eso no es una avería. Si lo dejas marcado, vigilaremos su capacidad y los sucesos de Windows que lo mencionen, pero no verás temperatura ni desgaste.",
   "onboarding.disks.cta": "Continuar con las alertas",
   "onboarding.disks.empty": "No se ha detectado ningún disco en este equipo",
@@ -8262,7 +8321,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "onboarding.welcome.test": "Runs disk tests only when you ask",
   "onboarding.disks.title": "We found {count} disks on this PC",
   "onboarding.disks.body": "You can leave out the ones you don't care about and give them a recognisable name. All of this can be changed later in Settings, and no disk is modified: SmartDisk only reads.",
-  "onboarding.disks.aliasLabel": "Name inside this app",
+  "onboarding.disks.aliasLabel": "Give it a name",
   "onboarding.disks.usbNote": "The external USB disk does not expose SMART data: its bridge does not forward those commands. That is not a fault. If you leave it checked we will watch its capacity and the Windows events that mention it, but you will not see temperature or wear.",
   "onboarding.disks.cta": "Continue to alerts",
   "onboarding.disks.empty": "No disks detected on this PC",

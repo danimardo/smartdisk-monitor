@@ -14,6 +14,8 @@ export { default as FilterBar } from "./FilterBar.svelte";
 export { default as VirtualList } from "./VirtualList.svelte";
 
 export { default as Icon } from "./Icon.svelte";
+export { default as IconSprite } from "./IconSprite.svelte";
+export { default as OnboardingArt } from "./OnboardingArt.svelte";
 export { default as StatusPill } from "./StatusPill.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";
 export { default as MetricCard } from "./MetricCard.svelte";

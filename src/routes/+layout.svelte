@@ -9,7 +9,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { page } from "$app/state";
-  import { AppShell, ConfirmDialog, Sidebar, Toolbar } from "$lib/components";
+  import { AppShell, ConfirmDialog, IconSprite, Sidebar, Toolbar } from "$lib/components";
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
@@ -215,6 +215,10 @@
 <svelte:head>
   <title>{screenTitle} · SmartDisk Monitor</title>
 </svelte:head>
+
+<!-- Sprite de iconos: una sola vez, fuera de toda rama, para que `<Icon>` resuelva también en
+     `/onboarding` (que se pinta sin `AppShell`). -->
+<IconSprite />
 
 {#if startupError && !ready}
   <div class="flex h-screen items-center justify-center p-6">

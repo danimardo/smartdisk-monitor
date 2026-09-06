@@ -34,7 +34,7 @@ ninguna de estas rutas.
 | Tipos, formato, salud, iconos, tema y acento | `src/lib/design/` (incluye `icons.ts`) |
 | Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
 | Tipografía empotrada | `src/design-system/fonts/` |
-| Juego de iconos de línea (sprite, 15 símbolos) | montado en `src/lib/components/AppShell.svelte`; se usa vía `<Icon name="…" />` |
+| Juego de iconos de línea (sprite, 15 símbolos) | `src/lib/components/IconSprite.svelte`, montado una vez en `src/routes/+layout.svelte` (fuera de `AppShell`, para que resuelva también en `/onboarding`); se usa vía `<Icon name="…" />` |
 | **Boceto aprobado v3** (4 pantallas, ambos temas) | `design/propuesta-redisenov2/mockups/smartdisk-v3.html` |
 | Hoja de contacto de los iconos | `design/propuesta-redisenov2/mockups/icons-hoja-de-contacto.html` |
 | Fichas de cambio del rediseño v3 | `design/propuesta-redisenov2/cambios/` · spec: `specs/002-rediseno-v3/` |
@@ -156,6 +156,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un `polyline` por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
+| `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
 | `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
@@ -339,7 +340,9 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
 6. **Asistente inicial** (`/onboarding`, US-002, v3) — **sin `AppShell`**: `+layout.svelte` omite el
    riel y la barra de herramientas en esta ruta. Cabecera propia de 56 px (logo, indicador de paso,
    «Omitir y usar los valores de fábrica» siempre visible), cuerpo `max-w-[1000px]` centrado, pie de
-   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla. El
+   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla, cada uno
+   con su escena de `OnboardingArt` (ADR-039): `welcome` y `done` centradas sobre el título;
+   `disks` y `alerts` compactas junto al encabezado, ocultas por debajo de 720 px de cuerpo. El
    guardián de redirección vive en `+layout.ts` (`open-questions.md` §V).
 7. **Informes**: hereda tokens; sin composición nueva.
 

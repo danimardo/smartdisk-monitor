@@ -11,6 +11,7 @@
     Card,
     EmptyState,
     Icon,
+    OnboardingArt,
     ProgressBar,
     StatusPill,
     Switch,
@@ -187,6 +188,7 @@
 
     {#if paso === 1}
       <div class="mx-auto flex max-w-[620px] flex-col items-center gap-4 py-6 text-center">
+        <OnboardingArt name="welcome" />
         <h1 class="sdm-display m-0 text-2xl">{t("onboarding.welcome.title")}</h1>
         <p class="m-0 text-sm text-fg-dim" style="text-wrap: pretty">{t("onboarding.welcome.body")}</p>
         <p
@@ -208,11 +210,14 @@
         {/each}
       </div>
     {:else if paso === 2}
-      <div class="flex flex-col gap-1">
-        <h1 class="sdm-display m-0 text-2xl">
-          {t("onboarding.disks.title", { count: discos.length })}
-        </h1>
-        <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">{t("onboarding.disks.body")}</p>
+      <div class="flex items-center gap-6">
+        <div class="flex flex-col gap-1">
+          <h1 class="sdm-display m-0 text-2xl">
+            {t("onboarding.disks.title", { count: discos.length })}
+          </h1>
+          <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">{t("onboarding.disks.body")}</p>
+        </div>
+        <div class="ml-auto shrink-0 max-[720px]:hidden"><OnboardingArt name="disks" width={150} /></div>
       </div>
 
       {#if data.error}
@@ -254,8 +259,12 @@
                 <span class="sdm-selectable text-2xs text-fg-dim">{d.deviceType}</span>
               </div>
               <div class="w-48">
+                <!-- Sin etiqueta visible: con la etiqueta encima, la fila dejaba de centrarse y la
+                     píldora de estado quedaba descolocada. El texto va como marcador y como nombre
+                     accesible; el intro de la sección ya explica para qué es el campo. -->
                 <TextField
-                  label={t("onboarding.disks.aliasLabel")}
+                  ariaLabel={t("onboarding.disks.aliasLabel")}
+                  placeholder={t("onboarding.disks.aliasLabel")}
                   value={alias[d.id] ?? ""}
                   oninput={(v: string) => (alias[d.id] = v)}
                 />
@@ -286,7 +295,10 @@
         {/if}
       {/if}
     {:else if paso === 3}
-      <h1 class="sdm-display m-0 text-2xl">{t("onboarding.alerts.title")}</h1>
+      <div class="flex items-center gap-6">
+        <h1 class="sdm-display m-0 text-2xl">{t("onboarding.alerts.title")}</h1>
+        <div class="ml-auto shrink-0 max-[720px]:hidden"><OnboardingArt name="alerts" width={150} /></div>
+      </div>
 
       <div class="flex flex-col gap-2" role="radiogroup" aria-label={t("onboarding.alerts.title")}>
         {#each perfilRadio as p (p.id)}
@@ -336,9 +348,7 @@
       </div>
     {:else}
       <div class="mx-auto flex max-w-[560px] flex-col items-center gap-4 py-6 text-center">
-        <span class="grid size-12 place-items-center rounded-nav bg-ok-soft text-ok">
-          <Icon name="check" size={26} label={t("onboarding.done.title")} />
-        </span>
+        <OnboardingArt name="done" />
         <h1 class="sdm-display m-0 text-2xl">{t("onboarding.done.title")}</h1>
         <p class="m-0 text-sm text-fg-dim">
           {t("onboarding.done.watching", {

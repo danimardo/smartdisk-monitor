@@ -97,7 +97,7 @@ Si research.md D12 introduce reglas nuevas: sus `alert.rule.<key>.title` / `.sum
 | `onboarding.welcome.cta` | Buscar mis discos | Find my disks |
 | `onboarding.disks.title` | Hemos encontrado {count} discos en este equipo | We found {count} disks on this PC |
 | `onboarding.disks.body` | *(ver RESUMEN.md)* | |
-| `onboarding.disks.aliasLabel` | Nombre para esta aplicación | Name inside this app |
+| `onboarding.disks.aliasLabel` | Ponle un nombre | Give it a name |
 | `onboarding.disks.usbNote` | *(ver RESUMEN.md)* | |
 | `onboarding.disks.cta` | Continuar con las alertas | Continue to alerts |
 | `onboarding.selectedCount` | {selected} de {total} discos seleccionados | {selected} of {total} disks selected |

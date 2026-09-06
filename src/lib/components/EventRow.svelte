@@ -41,7 +41,7 @@
   >
     <Icon name={eventLevelIcon[level]} size={15} label={etiquetaNivel} />
   </span>
-  <span class="flex-1 truncate text-sm">{message}</span>
+  <span class="min-w-0 flex-1 truncate text-sm">{message}</span>
   {#if mappingConfidence !== "exact"}
     <span class="rounded-pill bg-unknown-soft px-2 py-0.5 text-2xs text-unknown"
       >{t("events.inferredMapping")}</span

@@ -4,6 +4,9 @@
   let {
     value = "",
     label = "",
+    /** Nombre accesible cuando no hay etiqueta visible (fila del asistente inicial). Si no se pasa,
+     *  se usa `label`. Un `<input>` sin ninguno de los dos no tiene nombre y eso incumple §VII. */
+    ariaLabel = "",
     hint = "",
     error = "",
     type = "text" as "text" | "number",
@@ -32,7 +35,7 @@
       {min}
       {max}
       {step}
-      aria-label={label}
+      aria-label={ariaLabel || label}
       aria-invalid={!!error}
       oninput={(e) => oninput?.(e.currentTarget.value)}
     />

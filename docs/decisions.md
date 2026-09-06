@@ -1099,3 +1099,57 @@ comando y se verifica a mano, igual que J.28 y `platform/sistema.rs`.
 - **Clave `Run` de HKCU** (y `tauri-plugin-autostart`, que la usa): UAC en cada login por la
   elevación; y el plugin es dependencia nueva sin justificación (límite duro de `AGENTS.md`).
 - **Carpeta «Inicio» del menú**: mismo problema de elevación que `Run`.
+
+## ADR-039 — Ilustraciones del asistente inicial: SVG propio con tokens, no recurso empaquetado
+
+Estado: aceptada. Fecha: 2026-09-06. Extiende `docs/ui-design.md` §3 (catálogo). Origen: revisión
+de las capturas del asistente sobre un Windows real.
+
+### El problema
+
+Los cuatro pasos del asistente inicial (US-002) tenían huecos donde el diseño pedía una figura y
+solo había un cuadrado de `Icon` diminuto —cuando llegaba a verse: el sprite se montaba solo en
+`AppShell`, que esta ruta no usa (corregido aparte: `IconSprite` en `+layout.svelte`)—. Un icono de
+18 px no llena una pantalla de bienvenida a ancho completo. El asistente es la primera impresión del
+producto y quedaba pobre.
+
+### La decisión
+
+Un componente nuevo, **`OnboardingArt`**, con **cuatro escenas** (`welcome`, `disks`, `alerts`,
+`done`), una por paso. Son **SVG en línea escritos a mano**, planas, estilo «Corporate Memphis /
+Alegría» adaptado a la «escena de datos» de v3: formas geométricas rotundas, **sin figuras
+humanas** (el motivo es siempre el hardware y su vigilancia — y así no hace falta un tono de piel,
+que no es un token).
+
+Reglas que cumple, como cualquier pieza del catálogo:
+
+- **Solo `currentColor` y `var(--sdm-*)`.** Ni un color literal; lo verifica `pnpm verify:tokens`.
+  Por eso funciona en tema claro y oscuro **sin una sola condicional**. Las coordenadas y los
+  `stroke-width` del dibujo son geometría, no valores de tema (misma consideración que el sprite de
+  `IconSprite`).
+- **Decorativa**: sale `aria-hidden`, sin nombre accesible. El texto de cada paso ya lo dice todo;
+  un `role="img"` sin contenido informativo sería peor (`ui-design.md` §6).
+- La paleta del dibujo es sobre todo **acento + neutro**; el verde `ok` solo aparece donde refuerza
+  el mensaje real del producto (el latido de «constantes vitales» del paso 1, el sello de
+  conformidad del paso 4). El acento **no** codifica salud aquí: es identidad visual.
+- Exportada en el barrel; `width` como única prop (el alto sale de la proporción 8:5).
+
+### Alternativas descartadas
+
+- **Empaquetar PNG/SVG generados con una herramienta de ilustración**: un binario más en un
+  instalador privilegiado, con su hash que mantener (constitución §III y §IX), y un recurso que no
+  reacciona al tema — habría que entregar dos juegos (claro/oscuro) y conmutarlos. El SVG con
+  tokens se adapta solo.
+- **Seguir con cuadros de `Icon`**: no es una ilustración, es un pictograma; no llena la pantalla
+  ni da carácter a la primera impresión.
+- **Ilustración con personajes al estilo Corporate Memphis puro**: obliga a decidir tonos de piel
+  sin un token que los represente, y desentona con una aplicación de sistema. Se conserva el
+  lenguaje de formas, no las figuras.
+
+### Consecuencias
+
+- El catálogo suma `OnboardingArt`. Su uso está acotado al asistente; no es un patrón general de
+  «mete una ilustración donde quieras».
+- `docs/ui-design.md` §3 lo recoge y §7.6 (asistente) menciona la escena por paso.
+- Si en el futuro otra pantalla quiere una ilustración, se decide entonces con el criterio de
+  `ui-design.md` §3, no por analogía con esta.

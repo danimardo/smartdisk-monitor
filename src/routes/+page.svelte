@@ -167,7 +167,10 @@
       {/each}
     </div>
 
-    <div class="grid gap-5 max-[900px]:grid-cols-1" style="grid-template-columns: 1fr 300px">
+    <!-- `minmax(0, 1fr)` y no `1fr`: con `1fr` (= `minmax(auto, 1fr)`) el `min-content` de un mensaje
+         de suceso largo fuerza la columna más ancha que la ventana y empuja «Reparto de estados»
+         fuera de la vista (obligaba a scroll horizontal). Con `minmax(0, …)` la columna cede. -->
+    <div class="grid gap-5 max-[900px]:grid-cols-1" style="grid-template-columns: minmax(0, 1fr) 300px">
       <Card title={t("dashboard.events.title")}>
         {#if sucesos.length}
           {#each sucesos as ev (ev.id)}
