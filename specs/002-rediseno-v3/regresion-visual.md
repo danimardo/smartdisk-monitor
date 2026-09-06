@@ -277,9 +277,10 @@ UAC):
 - [ ] Icono provisional de «Acerca de» (`tag`) y de «horas encendido» (`clock`): confirmar o
       cambiar (son props, sin tocar estructura).
 
-## Pendiente con autorización del usuario
+## Pendiente
 
-- **T007** — nota al pie de la constitución §VI apuntando a ADR-035. `.specify/memory/constitution.md`
-  está protegida por hook; además tiene cambios sin commitear de K.6 (no del rediseño). Requiere
-  que el usuario lo pida explícitamente.
+- **T007 — HECHO** (2026-09-06, autorizado por el usuario): constitución **1.7.0**, viñeta del
+  acento de §VI precisada (ADR-035). El fichero lleva también los cambios sin commitear de K.6
+  (cobertura 80→69 %, fila 1.6.0) — no son del rediseño; el usuario decide cómo separarlos al
+  commitear.
 - **Archivar `design/propuesta-rediseno/`** (v1, superada). Sin trackear por ahora.

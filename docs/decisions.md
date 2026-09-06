@@ -951,7 +951,8 @@ fábrica de `true` a `false`, implantado en PR 8 de `specs/002-rediseno-v3/`). A
 **La parte técnica de ADR-017 se conserva entera**: cuando el interruptor está encendido, el acento
 del usuario sigue pasando por `accessibleAccent()` / `accentOnSurface()` para no bajar de AA en
 ningún tema. El acento sigue sin comunicar salud y sigue siendo acción/selección: no se toca ningún
-principio de la constitución §VI, solo se precisa que la herencia es opcional (nota al pie de §VI).
+principio de la constitución §VI, solo se precisa que la herencia es opcional. La viñeta del acento
+de §VI se ajustó en consecuencia (constitución 1.7.0, 2026-09-06).
 
 ### Alternativas descartadas
 

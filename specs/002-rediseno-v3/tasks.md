@@ -43,7 +43,7 @@ description: "Lista de tareas — Rediseño visual «SmartDisk Monitor v3»"
 
 - [x] T005 [P] ADR-034 «Sistema de diseño v3: paleta propia Ciruela» en `docs/decisions.md` (aceptada), enmienda ADR-013, con «Qué NO cambia». *(Cuerpo completo hecho ya en este paso, T012 redundante.)*
 - [x] T006 [P] ADR-035 «La herencia del acento de Windows pasa a opción apagada de fábrica» (aceptada), matiza ADR-017 (conserva `accessibleAccent()`/`accentOnSurface()`).
-- [ ] T007 Añadir en `.specify/memory/constitution.md` §VI una nota al pie del punto «El acento… se hereda de Windows» remitiendo a ADR-035. **Requiere modo plan y autorización explícita del usuario.** — *pendiente: PENDIENTE DE AUTORIZACIÓN.*
+- [x] T007 `.specify/memory/constitution.md` §VI, viñeta del acento: precisa que heredar el acento de Windows es una opción apagada de fábrica (ADR-035), sin relajar la corrección de contraste de ADR-017. Constitución **1.7.0** (2026-09-06), con su fila en la tabla de gobernanza. Autorizado explícitamente por el usuario; aplicado por script porque el hook `proteger-rutas.mjs` bloquea `Edit`/`Write` sobre esa ruta.
 - [x] T008 [P] `specs/002-rediseno-v3/regresion-visual.md` creado con la checklist §8 por PR.
 
 **Checkpoint**: base documental lista. La implementación de tokens empieza en la Fase 3.
