@@ -18,10 +18,23 @@
     Switch,
     TextField
   } from "$lib/components";
-  import { deleteAllData, openLogFolder, resetSettings, setLogLevel, setSetting, toAppError } from "$lib/api";
+  import {
+    deleteAllData,
+    getSettings,
+    openLogFolder,
+    pauseMonitoring,
+    resetSettings,
+    resumeMonitoring,
+    setLogLevel,
+    setSetting,
+    toAppError
+  } from "$lib/api";
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent, clearSystemAccent } from "$lib/design/accent";
+  import { PERFILES, perfilLabelKey, type PerfilAlerta } from "$lib/design/perfiles";
+  import { goto } from "$app/navigation";
   import { formatBytes } from "$lib/design/format";
+  import { app } from "$lib/stores/app.svelte";
   import { i18n, t, type Locale } from "$lib/i18n";
   import type { SettingsShape } from "$lib/api/schemas";
   import type { AppError } from "$lib/design/types";
@@ -36,7 +49,11 @@
    *  `app.loadedAt`. */
   let settings = $state<SettingsShape | null>(null);
   $effect(() => {
-    if (settings === null) settings = data.settings;
+    if (settings === null) {
+      settings = data.settings;
+      // El acento del sistema no tiene store propio: se toma aquí del `load`, en el mismo momento.
+      useSystemAccent = data.appearance.useSystemAccent;
+    }
   });
 
   let saveError = $state<AppError | null>(null);
@@ -45,7 +62,8 @@
 
   let themePref = $state(theme.preference);
   let languagePref = $state<Locale>(i18n.locale);
-  let useSystemAccent = $state(true);
+  /** De fábrica apagado (v3, ADR-035); el valor real llega del `load` en el `$effect` de arriba. */
+  let useSystemAccent = $state(false);
 
   const opcionesTema = [
     { id: "light", label: t("settings.appearance.theme.light") },
@@ -88,11 +106,25 @@
     }
   }
 
-  async function cambiarSonido(activo: boolean) {
+  async function cambiarNotificacion(campo: "soundEnabled" | "enabled", clave: string, activo: boolean) {
     if (!settings) return;
     try {
-      await setSetting("notifications.sound_enabled", activo);
-      settings = { ...settings, notifications: { soundEnabled: activo } };
+      await setSetting(clave, activo);
+      settings = { ...settings, notifications: { ...settings.notifications, [campo]: activo } };
+    } catch (cause) {
+      saveError = toAppError(cause);
+    }
+  }
+
+  async function cambiarLifecycleBool(
+    campo: "startWithSystem" | "closeActionRemembered",
+    clave: string,
+    activo: boolean
+  ) {
+    if (!settings) return;
+    try {
+      await setSetting(clave, activo);
+      settings = { ...settings, lifecycle: { ...settings.lifecycle, [campo]: activo } };
     } catch (cause) {
       saveError = toAppError(cause);
     }
@@ -165,7 +197,39 @@
     saveError = null;
     try {
       await setSetting(clave, valor);
-      settings = { ...settings, alerts: { ...settings.alerts, [campo]: valor } };
+      // Editar cualquier umbral a mano rompe el perfil: el backend lo pasa a `custom` (ADR-036).
+      settings = {
+        ...settings,
+        alerts: { ...settings.alerts, [campo]: valor, profile: "custom" }
+      };
+    } catch (cause) {
+      saveError = toAppError(cause);
+    }
+  }
+
+  /** El «Personalizado (a partir de X)» necesita recordar el último perfil concreto elegido: el
+   *  backend solo guarda `custom`, no de cuál se partió. Se guarda en memoria. */
+  let ultimoPerfilConcreto = $state<PerfilAlerta>("balanced");
+  $effect(() => {
+    const p = settings?.alerts.profile;
+    if (p && p !== "custom") ultimoPerfilConcreto = p;
+  });
+
+  const perfilRadio = $derived(PERFILES.map((p) => ({ id: p.id, label: t(p.label), hint: t(p.hint) })));
+
+  const perfilActual = $derived(
+    settings?.alerts.profile === "custom"
+      ? t("settings.alerts.profile.custom", { base: t(perfilLabelKey(ultimoPerfilConcreto)) })
+      : ""
+  );
+
+  async function cambiarPerfil(id: string) {
+    if (!settings) return;
+    saveError = null;
+    try {
+      await setSetting("alerts.profile", id);
+      // Un perfil concreto reescribe los doce umbrales: se recargan de la única fuente.
+      settings = await getSettings();
     } catch (cause) {
       saveError = toAppError(cause);
     }
@@ -183,6 +247,22 @@
   }
 
   /* --------------------------------------------------------------------------------- registro */
+
+  /** El botón de pausa vivía en el pie de la `Sidebar` (v2); en v3 el riel no tiene sitio y la
+   *  acción vive aquí y en el menú de la bandeja (`Sidebar.md`). El estado real llega por eventos
+   *  (`app.paused`), no se guarda en `settings`: una pausa nunca sobrevive a un reinicio. */
+  let cambiandoPausa = $state(false);
+  async function cambiarRecopilacion(activa: boolean) {
+    cambiandoPausa = true;
+    saveError = null;
+    try {
+      await (activa ? resumeMonitoring() : pauseMonitoring());
+    } catch (cause) {
+      saveError = toAppError(cause);
+    } finally {
+      cambiandoPausa = false;
+    }
+  }
 
   async function cambiarModoDetallado(activo: boolean) {
     if (!settings) return;
@@ -231,6 +311,19 @@
         ...settings,
         lifecycle: { ...settings.lifecycle, closeAction: next as "minimize" | "exit" }
       };
+    } catch (cause) {
+      saveError = toAppError(cause);
+    }
+  }
+
+  /* --------------------------------------------------------------------- asistente inicial (US-002) */
+
+  async function repetirAsistente() {
+    saveError = null;
+    try {
+      // Solo pone la marca a nulo: no borra discos, alias ni umbrales (FR-037).
+      await setSetting("settings.onboarding.completed_at", null);
+      await goto("/onboarding");
     } catch (cause) {
       saveError = toAppError(cause);
     }
@@ -298,10 +391,16 @@
         onchange={cambiarAcentoSistema}
       />
       <Switch
+        checked={settings.notifications.enabled}
+        label={t("onboarding.alerts.notifyWindows")}
+        hint={t("onboarding.alerts.notifyWindowsHint")}
+        onchange={(v: boolean) => cambiarNotificacion("enabled", "notifications.enabled", v)}
+      />
+      <Switch
         checked={settings.notifications.soundEnabled}
         label={t("settings.notifications.sound.label")}
         hint={t("settings.notifications.sound.hint")}
-        onchange={cambiarSonido}
+        onchange={(v: boolean) => cambiarNotificacion("soundEnabled", "notifications.sound_enabled", v)}
       />
     </Card>
 
@@ -336,6 +435,15 @@
           {t("settings.cta.restoreDefaults")}
         </Button>
       {/snippet}
+      <RadioGroup
+        label={t("settings.alerts.profile.title")}
+        options={perfilRadio}
+        value={settings.alerts.profile === "custom" ? "" : settings.alerts.profile}
+        onchange={cambiarPerfil}
+      />
+      <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">
+        {perfilActual || t("settings.alerts.profile.hint")}
+      </p>
       <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">{t("settings.alerts.tempPrecedence")}</p>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
@@ -388,6 +496,80 @@
             const n = Number(v);
             if (Number.isFinite(n))
               void cambiarAlerta("capacityCritPercent", "alerts.capacity_crit_percent", n);
+          }}
+        />
+        <TextField
+          type="number"
+          label={t("settings.alerts.wearWarn")}
+          value={String(settings.alerts.wearWarnPercent)}
+          min={50}
+          max={99}
+          suffix="%"
+          oninput={(v: string) => {
+            const n = Number(v);
+            if (Number.isFinite(n)) void cambiarAlerta("wearWarnPercent", "alerts.wear_warn_percent", n);
+          }}
+        />
+        <TextField
+          type="number"
+          label={t("settings.alerts.wearCrit")}
+          value={String(settings.alerts.wearCritPercent)}
+          min={50}
+          max={100}
+          suffix="%"
+          oninput={(v: string) => {
+            const n = Number(v);
+            if (Number.isFinite(n)) void cambiarAlerta("wearCritPercent", "alerts.wear_crit_percent", n);
+          }}
+        />
+        <TextField
+          type="number"
+          label={t("settings.alerts.mediaErrorsWarn")}
+          hint={t("settings.alerts.mediaErrorsHint")}
+          value={String(settings.alerts.mediaErrorsWarnPer24h)}
+          min={1}
+          max={1000}
+          oninput={(v: string) => {
+            const n = Number(v);
+            if (Number.isFinite(n))
+              void cambiarAlerta("mediaErrorsWarnPer24h", "alerts.media_errors_warn_per24h", n);
+          }}
+        />
+        <TextField
+          type="number"
+          label={t("settings.alerts.mediaErrorsCrit")}
+          value={String(settings.alerts.mediaErrorsCritPer24h)}
+          min={1}
+          max={1000}
+          oninput={(v: string) => {
+            const n = Number(v);
+            if (Number.isFinite(n))
+              void cambiarAlerta("mediaErrorsCritPer24h", "alerts.media_errors_crit_per24h", n);
+          }}
+        />
+        <TextField
+          type="number"
+          label={t("settings.alerts.driverRetryWarn")}
+          hint={t("settings.alerts.driverRetryHint")}
+          value={String(settings.alerts.driverRetryWarnPer24h)}
+          min={1}
+          max={1000}
+          oninput={(v: string) => {
+            const n = Number(v);
+            if (Number.isFinite(n))
+              void cambiarAlerta("driverRetryWarnPer24h", "alerts.driver_retry_warn_per24h", n);
+          }}
+        />
+        <TextField
+          type="number"
+          label={t("settings.alerts.driverRetryCrit")}
+          value={String(settings.alerts.driverRetryCritPer24h)}
+          min={1}
+          max={1000}
+          oninput={(v: string) => {
+            const n = Number(v);
+            if (Number.isFinite(n))
+              void cambiarAlerta("driverRetryCritPer24h", "alerts.driver_retry_crit_per24h", n);
           }}
         />
       </div>
@@ -449,6 +631,13 @@
 
     <Card title={t("settings.logging.title")}>
       <Switch
+        checked={!app.paused}
+        label={t("settings.collection.label")}
+        hint={t("settings.collection.hint")}
+        disabled={cambiandoPausa}
+        onchange={cambiarRecopilacion}
+      />
+      <Switch
         checked={settings.logging.verbose}
         label={t("settings.logging.verbose.label")}
         hint={t("settings.logging.verbose.hint")}
@@ -466,32 +655,50 @@
         value={settings.lifecycle.closeAction}
         onchange={cambiarAccionCierre}
       />
+      <Switch
+        checked={settings.lifecycle.startWithSystem}
+        label={t("onboarding.alerts.startWithSystem")}
+        hint={t("onboarding.alerts.startWithSystemHint")}
+        onchange={(v: boolean) => cambiarLifecycleBool("startWithSystem", "lifecycle.start_with_system", v)}
+      />
     </Card>
 
-    <Card title={t("settings.dangerZone.title")}>
+    <Card title={t("settings.onboarding.repeat")}>
       <p class="m-0 text-xs leading-relaxed text-fg-dim" style="text-wrap: pretty">
-        {t("settings.dangerZone.desc")}
+        {t("settings.onboarding.repeatHint")}
       </p>
-      {#if borradoOk}
-        <div class="rounded-inner bg-ok-soft p-4 text-sm text-fg">
-          {t("settings.dangerZone.done")}
-        </div>
-      {:else}
-        <TextField
-          label={t("settings.dangerZone.confirmPhraseLabel", { phrase: FRASE_ESPERADA })}
-          value={fraseEscrita}
-          oninput={(v: string) => (fraseEscrita = v)}
-          disabled={borrando}
-        />
-        <Button
-          variant="danger"
-          disabled={fraseEscrita !== FRASE_ESPERADA}
-          onclick={() => (dialogoBorrarAbierto = true)}
-        >
-          {t("settings.dangerZone.cta")}
-        </Button>
-      {/if}
+      <Button variant="secondary" onclick={repetirAsistente}>
+        {t("settings.onboarding.repeat")}
+      </Button>
     </Card>
+
+    <!-- Separada del resto (`06-ajustes.md`): 12 px extra sobre el `gap-5` del contenedor ≈ 32 px. -->
+    <div class="mt-3">
+      <Card title={t("settings.dangerZone.title")} border="crit">
+        <p class="m-0 text-xs leading-relaxed text-fg-dim" style="text-wrap: pretty">
+          {t("settings.dangerZone.desc")}
+        </p>
+        {#if borradoOk}
+          <div class="rounded-inner bg-ok-soft p-4 text-sm text-fg">
+            {t("settings.dangerZone.done")}
+          </div>
+        {:else}
+          <TextField
+            label={t("settings.dangerZone.confirmPhraseLabel", { phrase: FRASE_ESPERADA })}
+            value={fraseEscrita}
+            oninput={(v: string) => (fraseEscrita = v)}
+            disabled={borrando}
+          />
+          <Button
+            variant="danger"
+            disabled={fraseEscrita !== FRASE_ESPERADA}
+            onclick={() => (dialogoBorrarAbierto = true)}
+          >
+            {t("settings.dangerZone.cta")}
+          </Button>
+        {/if}
+      </Card>
+    </div>
   {/if}
 </div>
 

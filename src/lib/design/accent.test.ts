@@ -95,3 +95,20 @@ describe("accentOnSurface — el acento como texto sobre el material", () => {
     }
   });
 });
+
+describe("US9 — activar el acento del sistema con un acento claro de prueba (ADR-035)", () => {
+  // El interruptor «Usar el color de acento de Windows» está apagado de fábrica; al activarlo, un
+  // acento claro como el ámbar de Windows (#ffb900) tiene que seguir cumpliendo AA en los dos temas,
+  // tanto de fondo (botón primario) como de texto (enlaces, selección).
+  const AMBAR = "#ffb900";
+
+  it("de fondo: el par acento/texto cumple AA", () => {
+    const { accent, onAccent } = accessibleAccent(AMBAR);
+    expect(contrast(toRgb(accent), toRgb(onAccent))).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("de texto: cumple AA sobre el material claro y sobre el oscuro", () => {
+    expect(contrast(toRgb(accentOnSurface(AMBAR, LIGHT)), LIGHT)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(toRgb(accentOnSurface(AMBAR, DARK)), DARK)).toBeGreaterThanOrEqual(AA);
+  });
+});

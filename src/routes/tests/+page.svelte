@@ -11,7 +11,16 @@
    *  en el historial para no ofrecer una acción que el backend va a rechazar.
    */
   import { onMount } from "svelte";
-  import { Button, Card, ConfirmDialog, EmptyState, ProgressBar, Select, StatusPill } from "$lib/components";
+  import {
+    Button,
+    Card,
+    ConfirmDialog,
+    EmptyState,
+    Icon,
+    ProgressBar,
+    Select,
+    StatusPill
+  } from "$lib/components";
   import {
     cancelTest,
     getDeviceDetail,
@@ -22,6 +31,8 @@
     toAppError
   } from "$lib/api";
   import { formatDateTime, formatLatency, formatTemperature, formatThroughput } from "$lib/design/format";
+  import { healthToken } from "$lib/design/health";
+  import { healthIcon, testIcon, type IconName } from "$lib/design/icons";
   import { t } from "$lib/i18n";
   import { app } from "$lib/stores/app.svelte";
   import type { TestRun } from "$lib/api";
@@ -199,6 +210,14 @@
     smart_short: "tests.type.autotest"
   };
 
+  /** Icono del cuadrado de cada tarjeta de prueba (`04-pruebas.md` §3). Las tarjetas se distinguen
+   *  hoy solo por el título; el cuadrado da un ancla visual. */
+  const ICONO_TARJETA: Record<TipoPrueba, IconName> = {
+    benchmark: "flask",
+    chkdsk: "shield",
+    autotest: "bolt"
+  };
+
   function objetivoLabel(r: TestRun): string {
     if (r.volumeId) {
       const v = app.devices.flatMap((d) => d.volumes).find((vol) => vol.id === r.volumeId);
@@ -231,6 +250,23 @@
       ? t("tests.active.indeterminate")
       : t("tests.active.progress", { percent: pruebaActiva.progressPercent });
   });
+
+  /** Las cinco métricas del benchmark en curso como cuadros `bg-glass-3` con icono + cifra
+   *  `.sdm-display` (`04-pruebas.md` §3). Los formateadores ya incluyen la unidad. */
+  function metricasBenchmark(
+    r: NonNullable<TestRun["result"]>
+  ): { icon: IconName; label: string; value: string }[] {
+    return [
+      { icon: "pulse", label: t("tests.metrics.write"), value: formatThroughput(r.writeBytesPerSecond) },
+      { icon: "pulse", label: t("tests.metrics.read"), value: formatThroughput(r.readBytesPerSecond) },
+      { icon: "clock", label: t("tests.metrics.latency"), value: formatLatency(r.readLatencyMs) },
+      {
+        icon: "temp",
+        label: t("tests.metrics.temperature"),
+        value: formatTemperature(r.maxTemperatureC)
+      }
+    ];
+  }
 </script>
 
 <div class="flex flex-col gap-5 p-5">
@@ -265,8 +301,76 @@
       </div>
     {/if}
 
+    {#if pruebaActiva}
+      <Card padding="md">
+        <div class="flex flex-wrap items-center gap-3">
+          <span
+            class="grid size-[38px] shrink-0 place-items-center rounded-inner bg-accent-soft text-accent-fg"
+          >
+            <Icon name={testIcon[pruebaActiva.type] ?? "flask"} size={20} />
+          </span>
+          <div class="flex min-w-0 flex-col gap-0.5">
+            <StatusPill state="unknown" label={t("tests.active.title")} />
+            <span class="sdm-display truncate text-2xl"
+              >{t(TIPO_LABEL_KEY[pruebaActiva.type] ?? "common.notAvailable")}</span
+            >
+          </div>
+          <div class="flex-1"></div>
+          {#if pruebaActiva.progressPercent !== null}
+            <span class="sdm-num sdm-display text-metric leading-none min-[1100px]:text-display">
+              {pruebaActiva.progressPercent}<span class="text-xl text-fg-faint">%</span>
+            </span>
+          {/if}
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={pruebaActiva.status === "cancelling"}
+            disabledReason={pruebaActiva.status === "cancelling" ? t("tests.status.cancelling") : ""}
+            onclick={() => cancelar(pruebaActiva.id)}
+          >
+            {t("tests.active.cancel")}
+          </Button>
+        </div>
+
+        <span class="text-xs text-fg-dim">{objetivoLabel(pruebaActiva)}</span>
+
+        <ProgressBar
+          emphasis="display"
+          value={pruebaActiva.progressPercent ?? 0}
+          indeterminate={pruebaActiva.progressPercent === null}
+          caption={pruebaActiva.status === "cancelling"
+            ? t("tests.status.cancelling")
+            : t(TIPO_LABEL_KEY[pruebaActiva.type] ?? "common.notAvailable")}
+          trailing={progresoActivoTexto}
+        />
+
+        {#if pruebaActiva.type === "benchmark" && pruebaActiva.result}
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {#each metricasBenchmark(pruebaActiva.result) as m}
+              <div class="flex flex-col gap-1 rounded-inner bg-glass-3 p-3">
+                <span class="flex items-center gap-1.5 text-2xs font-medium text-fg-faint">
+                  <Icon name={m.icon} size={12} />{m.label}
+                </span>
+                <span class="sdm-num sdm-display text-metric">{m.value}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="flex gap-3 rounded-inner bg-warn-soft p-4">
+          <span class="shrink-0 text-warn"><Icon name="alert" size={16} /></span>
+          <span class="text-xs leading-normal" style="text-wrap: pretty">{t("tests.active.warning")}</span>
+        </div>
+      </Card>
+    {/if}
+
     <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
       <Card title={t("tests.cards.benchmark.title")}>
+        {#snippet leading()}
+          <span class="grid size-[38px] shrink-0 place-items-center rounded-inner bg-glass-3 text-fg-dim">
+            <Icon name={ICONO_TARJETA.benchmark} size={19} />
+          </span>
+        {/snippet}
         <p class="m-0 min-h-[58px] text-xs leading-relaxed text-fg-dim" style="text-wrap: pretty">
           {t("tests.cards.benchmark.desc")}
         </p>
@@ -285,6 +389,11 @@
       </Card>
 
       <Card title={t("tests.cards.chkdsk.title")}>
+        {#snippet leading()}
+          <span class="grid size-[38px] shrink-0 place-items-center rounded-inner bg-glass-3 text-fg-dim">
+            <Icon name={ICONO_TARJETA.chkdsk} size={19} />
+          </span>
+        {/snippet}
         <p class="m-0 min-h-[58px] text-xs leading-relaxed text-fg-dim" style="text-wrap: pretty">
           {t("tests.cards.chkdsk.desc")}
         </p>
@@ -309,6 +418,11 @@
       </Card>
 
       <Card title={t("tests.cards.autotest.title")}>
+        {#snippet leading()}
+          <span class="grid size-[38px] shrink-0 place-items-center rounded-inner bg-glass-3 text-fg-dim">
+            <Icon name={ICONO_TARJETA.autotest} size={19} />
+          </span>
+        {/snippet}
         <p class="m-0 min-h-[58px] text-xs leading-relaxed text-fg-dim" style="text-wrap: pretty">
           {t("tests.cards.autotest.desc")}
         </p>
@@ -330,76 +444,28 @@
       </Card>
     </div>
 
-    {#if pruebaActiva}
-      <Card title={t("tests.active.title")}>
-        {#snippet action()}
-          <Button variant="danger" size="sm" onclick={() => cancelar(pruebaActiva!.id)}>
-            {t("tests.active.cancel")}
-          </Button>
-        {/snippet}
-        <span class="text-xs text-fg-dim">{objetivoLabel(pruebaActiva)}</span>
-        <ProgressBar
-          value={pruebaActiva.progressPercent ?? 0}
-          indeterminate={pruebaActiva.progressPercent === null}
-          caption={t(TIPO_LABEL_KEY[pruebaActiva.type] ?? "common.notAvailable")}
-          trailing={progresoActivoTexto}
-        />
-        {#if pruebaActiva.type === "benchmark" && pruebaActiva.result}
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <div class="flex flex-col gap-1 rounded-inner bg-glass-3 p-3">
-              <span class="text-2xs font-medium text-fg-faint">{t("tests.metrics.write")}</span>
-              <span class="text-sm font-semibold tabular-nums"
-                >{formatThroughput(pruebaActiva.result.writeBytesPerSecond)}</span
-              >
-            </div>
-            <div class="flex flex-col gap-1 rounded-inner bg-glass-3 p-3">
-              <span class="text-2xs font-medium text-fg-faint">{t("tests.metrics.read")}</span>
-              <span class="text-sm font-semibold tabular-nums"
-                >{formatThroughput(pruebaActiva.result.readBytesPerSecond)}</span
-              >
-            </div>
-            <div class="flex flex-col gap-1 rounded-inner bg-glass-3 p-3">
-              <span class="text-2xs font-medium text-fg-faint">{t("tests.metrics.latency")}</span>
-              <span class="text-sm font-semibold tabular-nums"
-                >{formatLatency(pruebaActiva.result.readLatencyMs)}</span
-              >
-            </div>
-            <div class="flex flex-col gap-1 rounded-inner bg-glass-3 p-3">
-              <span class="text-2xs font-medium text-fg-faint">{t("tests.metrics.temperature")}</span>
-              <span class="text-sm font-semibold tabular-nums"
-                >{formatTemperature(pruebaActiva.result.maxTemperatureC)}</span
-              >
-            </div>
-          </div>
-        {/if}
-        <div class="flex gap-3 rounded-inner bg-warn-soft p-4">
-          <span
-            class="grid size-[18px] shrink-0 place-items-center rounded-pill bg-warn text-2xs font-semibold text-white"
-            >!</span
-          >
-          <span class="text-xs leading-normal" style="text-wrap: pretty">{t("tests.active.warning")}</span>
-        </div>
-      </Card>
-    {/if}
-
     <Card title={t("tests.history.title")}>
       {#if historialOrdenado.length === 0}
         <span class="text-xs text-fg-dim">{t("tests.history.empty")}</span>
       {:else}
         <div class="flex flex-col">
           {#each historialOrdenado as run (run.id)}
+            {@const salud = ESTADO_A_SALUD[run.status] ?? "unknown"}
             <div
-              class="grid grid-cols-[118px_1fr_1fr_1fr_auto] items-center gap-4 border-t border-hairline py-2 first:border-t-0"
+              class="grid grid-cols-[28px_118px_1fr_1fr_1fr_auto] items-center gap-4 border-t border-hairline py-2 first:border-t-0"
             >
+              <span
+                class="grid size-[28px] shrink-0 place-items-center rounded-nav"
+                style="background: {healthToken[salud].soft}; color: {healthToken[salud].fg}"
+              >
+                <Icon name={healthIcon[salud]} size={14} label={t(`tests.status.${run.status}`)} />
+              </span>
               <span class="text-xs tabular-nums text-fg-dim">{formatDateTime(run.startedAt)}</span>
               <span class="text-xs font-semibold">{t(TIPO_LABEL_KEY[run.type] ?? "common.notAvailable")}</span
               >
               <span class="text-xs text-fg-dim">{objetivoLabel(run)}</span>
               <span class="text-xs text-fg-dim">{resultadoLabel(run)}</span>
-              <StatusPill
-                state={ESTADO_A_SALUD[run.status] ?? "unknown"}
-                label={t(`tests.status.${run.status}`)}
-              />
+              <StatusPill state={salud} label={t(`tests.status.${run.status}`)} />
             </div>
           {/each}
         </div>

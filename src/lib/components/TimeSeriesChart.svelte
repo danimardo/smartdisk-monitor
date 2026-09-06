@@ -1,128 +1,104 @@
 <script lang="ts">
-  /** Serie temporal (US-020). Reglas duras:
+  /** Serie temporal (US-020), v3. Reglas duras:
    *  - **el eje X es tiempo real, no el índice de la muestra**: dos muestras separadas dos horas
-   *    ocupan dos horas de ancho. Las series de esta aplicación no son equiespaciadas (huecos,
-   *    pausa, reducción de frecuencia en batería, cambios de ajustes), así que repartir por índice
-   *    falsearía la cronología, que es justo lo que se está investigando;
-   *  - un hueco de datos se dibuja como hueco (banda gris), nunca como 0 ni interpolado;
-   *  - el dominio del eje es el intervalo **pedido** (`from`/`to`), no el de los datos recibidos:
-   *    si se piden 7 días y solo hay 2, los 5 restantes se ven vacíos;
-   *  - `warnThreshold`/`critThreshold` (docs/open-questions.md J.46) se pintan como dos zonas de
-   *    fondo (no solo una línea): así se ve de un vistazo si un valor está en zona segura, de
-   *    aviso o crítica, sin tener que leer la cifra y compararla mentalmente contra un límite;
-   *  - el eje X va en hora local y todo texto pasa por i18n.
+   *    ocupan dos horas de ancho. Las series de esta aplicación no son equiespaciadas, así que
+   *    repartir por índice falsearía la cronología, que es justo lo que se está investigando;
+   *  - un hueco de datos se dibuja como hueco (banda gris **con su leyenda `sin datos HH:MM–HH:MM`**),
+   *    nunca como 0 ni interpolado;
+   *  - el dominio del eje es el intervalo **pedido** (`from`/`to`), no el de los datos recibidos;
+   *  - **eje Y** de 34 px con cuatro marcas, fuera del área de trazo, para saber a qué altura está
+   *    cada valor y dónde queda el límite;
+   *  - `warnThreshold`/`critThreshold` se pintan como zonas de fondo **y** como discontinua con
+   *    leyenda propia;
+   *  - el trazo comparte con `Sparkline` la lógica de tramos y huecos (`$lib/design/series.ts`): «un
+   *    hueco es un hueco» se implementa una sola vez;
+   *  - el eje X y las leyendas van en hora local y todo texto pasa por i18n.
    */
+  import { cadencia, huecos, rangoConAire, tramos } from "$lib/design/series";
   import { formatDateTime, formatTime } from "$lib/design/format";
-  import { i18n, t, tp } from "$lib/i18n";
+  import { i18n, t } from "$lib/i18n";
 
   const formatNumber = (v: number) => v.toLocaleString(i18n.formatLocale, { maximumFractionDigits: 2 });
 
   let {
     /** `t` en milisegundos epoch UTC; `v` null = sin dato. Debe venir ordenado por `t`. */
     points = [] as { t: number; v: number | null }[],
-    min = 0,
-    max = 100,
+    min = null as number | null,
+    max = null as number | null,
     /** Dominio temporal pedido. Si se omite, se usa el que cubran los datos. */
     from = null as number | null,
     to = null as number | null,
-    /** Cadencia esperada entre muestras (ms). Una separación mayor que 1,5× se dibuja como hueco.
-     *  Si se omite, se infiere de la mediana de las separaciones observadas. */
+    /** Cadencia esperada entre muestras (ms). Una separación mayor que 1,5× se dibuja como hueco. */
     expectedIntervalMs = null as number | null,
-    /** Umbral de aviso/crítico, en el mismo dominio que `points`. Sin ninguno de los dos, el
-     *  gráfico no pinta ninguna zona (métricas sin un "bueno/malo" conocido, p. ej. actividad %). */
     warnThreshold = null as number | null,
     warnLabel = "",
     critThreshold = null as number | null,
     critLabel = "",
     height = 220,
     unit = "",
-    /** Resolución servida por el backend; se muestra al usuario para que sepa que está viendo
-     *  agregados y no muestras crudas (véase la tabla intervalo→resolución de la especificación). */
+    /** Color de la serie (`var(--sdm-*)`). Sigue el estado: `--sdm-warn` en advertencia térmica,
+     *  `--sdm-accent` cuando el disco está correcto. */
+    color = "var(--sdm-accent)",
+    /** Resolución servida por el backend; se muestra para que el usuario sepa que ve agregados. */
     resolutionLabel = "" as string
   } = $props();
 
+  const GUTTER = 34; // ancho del eje Y, fuera del área de trazo
+  const PAD_R = 2;
+
   /** Ancho real en píxeles CSS: el SVG no se deforma, se redibuja. */
   let width = $state(780);
+  const plotW = $derived(Math.max(1, width - GUTTER - PAD_R));
 
-  const PAD_R = 1; // medio trazo, para que la línea no se corte en el borde
   const t0 = $derived(from ?? points.at(0)?.t ?? Date.now());
   const t1 = $derived(to ?? points.at(-1)?.t ?? Date.now());
   const span = $derived(Math.max(1, t1 - t0));
 
-  const scaleX = (time: number) => ((time - t0) / span) * (width - PAD_R * 2) + PAD_R;
-  const scaleY = (v: number) => height - ((v - min) / (max - min || 1)) * height;
-  /** Recortada al lienzo: un umbral fuera del dominio pedido (`min`/`max`) no debe dibujar una
-   *  zona invertida ni salirse del SVG. */
+  const rango = $derived(rangoConAire(points, min, max));
+  const step = $derived(cadencia(points, expectedIntervalMs));
+
+  const scaleX = (time: number) => GUTTER + ((time - t0) / span) * plotW;
+  const scaleY = (v: number) => height - ((v - rango.min) / (rango.max - rango.min || 1)) * height;
   const scaleYClamped = (v: number) => Math.max(0, Math.min(height, scaleY(v)));
 
-  /** Zonas de fondo aviso/crítico, ordenadas de abajo (segura) hacia arriba (peor): el crítico es
-   *  siempre la banda más alta (valor más alto) y no se superpone a la de aviso. */
   const warnZoneY = $derived(warnThreshold !== null ? scaleYClamped(warnThreshold) : null);
   const critZoneY = $derived(critThreshold !== null ? scaleYClamped(critThreshold) : null);
 
-  /** Cadencia de referencia: la mediana de las separaciones reales, salvo que la indique el llamante. */
-  const step = $derived.by(() => {
-    if (expectedIntervalMs) return expectedIntervalMs;
-    if (points.length < 2) return span;
-    const deltas = points
-      .slice(1)
-      .map((p, i) => p.t - points[i].t)
-      .sort((a, b) => a - b);
-    return deltas[Math.floor(deltas.length / 2)] || span;
-  });
+  /** Cuatro marcas del eje Y, repartidas por el rango real. */
+  const yTicks = $derived(
+    [0, 1, 2, 3].map((i) => {
+      const v = rango.min + ((rango.max - rango.min) * (3 - i)) / 3;
+      return { v, y: scaleY(v) };
+    })
+  );
 
-  /** Tramos continuos. Corta la línea en un `null` explícito y también en un salto temporal
-   *  mayor que 1,5× la cadencia: la ausencia de muestra es tan informativa como un null. */
-  const runs = $derived.by(() => {
-    const out: { x: number; y: number }[][] = [];
-    let current: { x: number; y: number }[] = [];
-    let prevT: number | null = null;
-    for (const p of points) {
-      const broken = p.v === null || (prevT !== null && p.t - prevT > step * 1.5);
-      if (broken && current.length) {
-        out.push(current);
-        current = [];
-      }
-      if (p.v !== null) {
-        current.push({ x: scaleX(p.t), y: scaleY(p.v) });
-        prevT = p.t;
-      } else {
-        prevT = p.t;
-      }
-    }
-    if (current.length) out.push(current);
-    return out;
-  });
+  const runs = $derived(
+    tramos(points, step).map((run) => run.map((p) => ({ x: scaleX(p.t), y: scaleY(p.v) })))
+  );
 
-  /** Bandas de ausencia de datos, en coordenadas de tiempo real (incluidos los extremos:
-   *  si la serie empieza después de `from`, ese tramo inicial también es un hueco). */
-  const gaps = $derived.by(() => {
-    const known = points.filter((p) => p.v !== null);
-    if (!known.length) return [{ x: scaleX(t0), w: scaleX(t1) - scaleX(t0) }];
-    const out: { x: number; w: number }[] = [];
-    const push = (a: number, b: number) => {
-      if (b - a > step * 1.5) out.push({ x: scaleX(a), w: scaleX(b) - scaleX(a) });
-    };
-    push(t0, known[0].t);
-    for (let i = 1; i < known.length; i++) push(known[i - 1].t, known[i].t);
-    push(known.at(-1)!.t, t1);
-    return out;
-  });
+  const gaps = $derived(
+    huecos(points, step, t0, t1).map((g) => ({
+      x: scaleX(g.from),
+      w: scaleX(g.to) - scaleX(g.from),
+      from: g.from,
+      to: g.to
+    }))
+  );
 
-  const path = (run: { x: number; y: number }[]) =>
+  const linea = (run: { x: number; y: number }[]) =>
     run.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  const area = (run: { x: number; y: number }[]) =>
-    `${run[0].x.toFixed(1)},${height} ${path(run)} ${run.at(-1)!.x.toFixed(1)},${height}`;
+  const relleno = (run: { x: number; y: number }[]) =>
+    `${run[0].x.toFixed(1)},${height} ${linea(run)} ${run.at(-1)!.x.toFixed(1)},${height}`;
 
-  /* ---- Cursor de lectura: ratón y teclado (AGENTS.md §6 exige teclado en toda interacción) ---- */
-  let cursor = $state<number | null>(null); // índice dentro de `points`
+  /* ---- Cursor de lectura: ratón y teclado (constitución §VII exige teclado en toda interacción) -- */
+  let cursor = $state<number | null>(null);
   const readable = $derived(points.map((p, i) => ({ ...p, i })).filter((p) => p.v !== null));
   const hovered = $derived(cursor === null ? null : (points[cursor] ?? null));
 
   function nearestIndex(clientX: number, el: SVGSVGElement): number | null {
     if (!readable.length) return null;
     const rect = el.getBoundingClientRect();
-    const time = t0 + ((clientX - rect.left) / rect.width) * span;
+    const time = t0 + ((clientX - rect.left - GUTTER) / (rect.width - GUTTER)) * span;
     let best = readable[0];
     for (const p of readable) if (Math.abs(p.t - time) < Math.abs(best.t - time)) best = p;
     return best.i;
@@ -151,7 +127,7 @@
     } else if (e.key === "Escape") cursor = null;
   }
 
-  /** Lectura textual equivalente exigida por AGENTS.md §6: rango, extremos y huecos. */
+  /** Lectura textual equivalente exigida por la constitución §VII: rango, extremos y huecos. */
   const summary = $derived.by(() => {
     const vals = readable.map((p) => p.v as number);
     if (!vals.length) return t("chart.emptyLabel");
@@ -164,18 +140,21 @@
       to: formatDateTime(new Date(t1).toISOString())
     });
   });
+
+  const hayMuestras = $derived(readable.length > 0);
+  const gid = `tsc-${crypto.randomUUID()}`;
 </script>
 
 <figure class="m-0 flex flex-col gap-3">
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <!-- La gráfica es interactiva a propósito: cursor de lectura con ratón y teclado, como exige
-       AGENTS.md §6. Ver docs/known-issues.md #3 -->
+  <!-- La gráfica es interactiva a propósito: cursor de lectura con ratón y teclado, como exige la
+       constitución §VII. Ver docs/known-issues.md #3 -->
   <svg
     bind:clientWidth={width}
     viewBox="0 0 {width} {height}"
     class="block w-full rounded-inner"
-    style="height: {height}px"
+    style="height: {height}px; color: {color}"
     role="img"
     tabindex="0"
     aria-label={summary}
@@ -183,18 +162,35 @@
     onmouseleave={() => (cursor = null)}
     onkeydown={onKey}
   >
-    {#each [0.25, 0.5, 0.75] as g}
-      <line x1="0" y1={height * g} x2={width} y2={height * g} stroke="var(--sdm-hairline)" stroke-width="1" />
+    <defs>
+      <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="currentColor" stop-opacity="0.32" />
+        <stop offset="1" stop-color="currentColor" stop-opacity="0" />
+      </linearGradient>
+    </defs>
+
+    <!-- Eje Y: cuatro marcas y sus líneas de rejilla, fuera del área de trazo -->
+    {#each yTicks as tick}
+      <line x1={GUTTER} y1={tick.y} x2={width} y2={tick.y} stroke="var(--sdm-hairline)" stroke-width="1" />
+      <text
+        x={GUTTER - 6}
+        y={Math.max(9, Math.min(height - 2, tick.y + 3))}
+        text-anchor="end"
+        class="sdm-num text-2xs"
+        style="fill: var(--sdm-text-faint)"
+      >
+        {formatNumber(tick.v)}
+      </text>
     {/each}
 
     {#if critZoneY !== null}
-      <rect x="0" y="0" {width} height={critZoneY} fill="var(--sdm-crit-soft)" />
+      <rect x={GUTTER} y="0" width={width - GUTTER} height={critZoneY} fill="var(--sdm-crit-soft)" />
     {/if}
     {#if warnZoneY !== null}
       <rect
-        x="0"
+        x={GUTTER}
         y={critZoneY ?? 0}
-        {width}
+        width={width - GUTTER}
         height={Math.max(0, warnZoneY - (critZoneY ?? 0))}
         fill="var(--sdm-warn-soft)"
       />
@@ -206,7 +202,7 @@
 
     {#if warnThreshold !== null}
       <line
-        x1="0"
+        x1={GUTTER}
         y1={scaleYClamped(warnThreshold)}
         x2={width}
         y2={scaleYClamped(warnThreshold)}
@@ -217,7 +213,7 @@
     {/if}
     {#if critThreshold !== null}
       <line
-        x1="0"
+        x1={GUTTER}
         y1={scaleYClamped(critThreshold)}
         x2={width}
         y2={scaleYClamped(critThreshold)}
@@ -229,19 +225,31 @@
 
     {#each runs as run}
       {#if run.length > 1}
-        <polygon points={area(run)} fill="var(--sdm-accent)" opacity="0.12" />
+        <polygon points={relleno(run)} fill="url(#{gid})" />
         <polyline
-          points={path(run)}
+          points={linea(run)}
           fill="none"
-          stroke="var(--sdm-accent)"
-          stroke-width="2.5"
+          stroke="currentColor"
+          stroke-width="2.6"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
-      {:else}
-        <circle cx={run[0].x} cy={run[0].y} r="2.5" fill="var(--sdm-accent)" />
+      {:else if run.length === 1}
+        <circle cx={run[0].x} cy={run[0].y} r="2.6" fill="currentColor" />
       {/if}
     {/each}
+
+    {#if !hayMuestras}
+      <text
+        x={GUTTER + (width - GUTTER) / 2}
+        y={height / 2}
+        text-anchor="middle"
+        class="text-xs"
+        style="fill: var(--sdm-text-dim)"
+      >
+        {t("chart.noSamples")}
+      </text>
+    {/if}
 
     {#if hovered && hovered.v !== null}
       <line
@@ -249,7 +257,7 @@
         y1="0"
         x2={scaleX(hovered.t)}
         y2={height}
-        stroke="var(--sdm-accent)"
+        stroke="currentColor"
         stroke-width="1"
         opacity="0.45"
       />
@@ -257,7 +265,7 @@
         cx={scaleX(hovered.t)}
         cy={scaleY(hovered.v)}
         r="4"
-        fill="var(--sdm-accent)"
+        fill="currentColor"
         stroke="var(--sdm-solid)"
         stroke-width="2"
       />
@@ -272,8 +280,15 @@
         >{formatTime(new Date(hovered.t).toISOString())} · {formatNumber(hovered.v)} {unit}</span
       >
     {:else}
-      <span class="flex gap-3">
-        {#if gaps.length}<span>{tp("chart.gaps", gaps.length)}</span>{/if}
+      <span class="flex flex-wrap gap-3">
+        {#each gaps.slice(0, 2) as gap}
+          <span>
+            {t("chart.gapRange", {
+              from: formatTime(new Date(gap.from).toISOString()),
+              to: formatTime(new Date(gap.to).toISOString())
+            })}
+          </span>
+        {/each}
         {#if resolutionLabel}<span>{resolutionLabel}</span>{/if}
       </span>
     {/if}

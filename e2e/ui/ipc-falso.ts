@@ -32,6 +32,17 @@ export async function instalarIpcFalso(page: Page, respuestas: Record<string, un
     // tener que silenciar una regla del análisis estático.
     function invoke(cmd: string, args: unknown): Promise<unknown> {
       llamadas.push({ comando: cmd, args });
+
+      // La marca del asistente inicial (US-002) es lo único que el guardián de `+layout.ts` vuelve
+      // a leer tras escribirla: se refleja en `get_settings` para que un `goto("/")` después de
+      // terminar el asistente no rebote otra vez a `/onboarding`.
+      if (cmd === "set_setting") {
+        const a = args as { key?: string; value?: unknown };
+        const s = tabla.get_settings as { onboarding?: { completedAt: unknown } } | undefined;
+        if (a.key === "settings.onboarding.completed_at" && s && typeof s === "object") {
+          s.onboarding = { completedAt: a.value ?? null };
+        }
+      }
       // El plugin de eventos habla por el mismo canal. Sin esto, `subscribe()` del layout raíz
       // rechazaría y la aplicación arrancaría en estado de error.
       if (cmd === "plugin:event|listen") {

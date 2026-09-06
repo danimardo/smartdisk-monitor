@@ -7,7 +7,7 @@
    *  El destino de cada exportación lo elige el usuario con el diálogo nativo de guardado
    *  (ADR-031, `chooseSavePath`), nunca una ruta que construya esta pantalla.
    */
-  import { Button, Card, DateRangePicker, EmptyState, SegmentedControl, Switch } from "$lib/components";
+  import { Button, Card, DateRangePicker, EmptyState, Icon, SegmentedControl, Switch } from "$lib/components";
   import {
     chooseSavePath,
     createDiagnosticZip,
@@ -269,10 +269,7 @@
       />
       {#if includeIdentifiers}
         <div class="flex gap-3 rounded-inner bg-warn-soft p-4">
-          <span
-            class="grid size-[18px] shrink-0 place-items-center rounded-pill bg-warn text-2xs font-semibold text-white"
-            >!</span
-          >
+          <span class="shrink-0 text-warn"><Icon name="alert" size={16} /></span>
           <span class="text-xs leading-normal" style="text-wrap: pretty">
             {t("reports.diagnostic.includeIdentifiers.warning")}
           </span>

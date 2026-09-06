@@ -6,6 +6,7 @@
 //! probar el motor de alertas y las reglas de estado con fixtures y sin hardware.
 
 pub mod ajustes;
+pub mod capacidad;
 pub mod correlacion;
 pub mod espacio;
 pub mod estado;

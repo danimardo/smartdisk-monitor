@@ -3,6 +3,7 @@
    *  Nunca muestres la clave de deduplicación aquí; va en el detalle. */
   import StatusPill from "./StatusPill.svelte";
   import { severityToHealth } from "$lib/design/health";
+  import { severityIcon } from "$lib/design/icons";
   import { formatTime } from "$lib/design/format";
   import { t } from "$lib/i18n";
   import type { AlertGroup } from "$lib/design/types";
@@ -29,7 +30,11 @@
     onclick={() => onselect?.(alert.id)}
   >
     <div class="flex items-center gap-3">
-      <StatusPill state={severityToHealth[alert.severity]} label={etiquetaSeveridad} />
+      <StatusPill
+        state={severityToHealth[alert.severity]}
+        label={etiquetaSeveridad}
+        icon={severityIcon[alert.severity]}
+      />
       <span class="flex-1 truncate text-sm font-semibold">{titulo}</span>
       <span class="sdm-num text-xs font-semibold text-fg-dim">×{alert.count}</span>
     </div>

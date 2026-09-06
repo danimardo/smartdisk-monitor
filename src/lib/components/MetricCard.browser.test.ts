@@ -32,4 +32,28 @@ describe("MetricCard", () => {
     await render(MetricCard, { props: { label: "Temperatura", value: "42 °C" } });
     expect(page.getByText("·").query()).toBeNull();
   });
+
+  it("v3: pinta el icono pedido referenciando su símbolo del sprite", async () => {
+    const { container } = await render(MetricCard, {
+      props: { label: "Temperatura", value: "42 °C", icon: "temp" }
+    });
+    expect(container.querySelector('use[href="#i-temp"]')).not.toBeNull();
+  });
+
+  it("v3: con serie de valores dibuja la sparkline; sin valor no la dibuja", async () => {
+    const serie = [
+      { t: 1, v: 40 },
+      { t: 2, v: 42 },
+      { t: 3, v: 41 }
+    ];
+    const conValor = await render(MetricCard, {
+      props: { label: "Temperatura", value: "42 °C", series: serie }
+    });
+    expect(conValor.container.querySelector("svg polyline, svg path")).not.toBeNull();
+
+    const ausente = await render(MetricCard, {
+      props: { label: "Temperatura", value: null, series: serie }
+    });
+    expect(ausente.container.querySelector("svg polyline, svg path")).toBeNull();
+  });
 });

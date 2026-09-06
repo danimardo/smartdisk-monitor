@@ -227,10 +227,7 @@ mod tests {
 
     #[test]
     fn el_resumen_pausado_ignora_los_dispositivos() {
-        assert_eq!(
-            texto_resumen("es", true, &[HealthState::Crit]),
-            "Monitorización pausada"
-        );
+        assert_eq!(texto_resumen("es", true, &[HealthState::Crit]), "En pausa");
     }
 
     #[test]

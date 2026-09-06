@@ -70,7 +70,10 @@ export const volumeSummary = z.object({
   freeBytes: nullableNumber,
   mappingConfidence,
   /** `chkdsk /scan` solo existe en NTFS: la decisión la toma el backend, no se repite aquí. */
-  chkdskAvailable: z.boolean()
+  chkdskAvailable: z.boolean(),
+  /** `true` para el volumen donde vive Windows (v3, ADR-036). Lo calcula el backend; la interfaz
+   *  no lo infiere. Lo consume `selectHeroDisk()`. */
+  isSystemVolume: z.boolean()
 });
 
 export const diskSummary = z.object({
@@ -254,13 +257,29 @@ export const settings = z.object({
     discoverySeconds: z.number().int()
   }),
   alerts: z.object({
+    /** `cautious` | `balanced` | `quiet` | `custom` (v3, ADR-036). `custom` = un umbral se editó a mano. */
+    profile: z.enum(["cautious", "balanced", "quiet", "custom"]),
     tempConfiguredWarnC: z.number(),
     tempConfiguredCritC: z.number(),
+    wearWarnPercent: z.number(),
+    wearCritPercent: z.number(),
     capacityWarnPercent: z.number(),
     capacityCritPercent: z.number(),
     capacityAbsoluteFloorMinCapacityBytes: z.number().int(),
     capacityAbsoluteFloorWarnBytes: z.number().int(),
-    capacityAbsoluteFloorCritBytes: z.number().int()
+    capacityAbsoluteFloorCritBytes: z.number().int(),
+    /** Nombre histórico (`Per24h`): la semántica real es el umbral sobre la magnitud del incremento
+     *  de `media_errors_total` por ciclo (clarify Q1), no una ventana de 24 h. */
+    mediaErrorsWarnPer24h: z.number().int(),
+    mediaErrorsCritPer24h: z.number().int(),
+    /** Aún sin consumidor en el motor: la regla `events.*` necesita el colector de eventos. Se
+     *  guarda para que un perfil escriba el juego completo de 12 valores. */
+    driverRetryWarnPer24h: z.number().int(),
+    driverRetryCritPer24h: z.number().int()
+  }),
+  onboarding: z.object({
+    /** Marca de que el asistente inicial terminó (PR 9). `null` = mostrarlo al arrancar. */
+    completedAt: isoUtc.nullable()
   }),
   retention: z.object({
     rawDays: z.number().int(),
@@ -271,10 +290,14 @@ export const settings = z.object({
   }),
   lifecycle: z.object({
     closeAction: z.enum(["minimize", "exit"]),
-    closeActionRemembered: z.boolean()
+    closeActionRemembered: z.boolean(),
+    /** Autoarranque con el sistema (tarea programada elevada, v3 ADR-038). Fábrica: `false`. */
+    startWithSystem: z.boolean()
   }),
   notifications: z.object({
-    soundEnabled: z.boolean()
+    soundEnabled: z.boolean(),
+    /** Mostrar (o no) el toast nativo, aparte de pausar (v3 ADR-037). Fábrica: `true`. */
+    enabled: z.boolean()
   }),
   logging: z.object({
     verbose: z.boolean()

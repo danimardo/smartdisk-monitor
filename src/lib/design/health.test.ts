@@ -3,10 +3,13 @@ import {
   capacityState,
   classifyAgainstThresholds,
   deviceState,
+  globalStatus,
+  selectHeroDisk,
   temperatureThresholds,
   trayState,
   worstState
 } from "./health";
+import type { HealthState } from "./types";
 
 /** Estas pruebas fijan decisiones de producto, no detalles de implementación. Cada una
  *  corresponde a una entrada de `docs/open-questions.md`: si alguna falla, es que se ha cambiado
@@ -134,5 +137,113 @@ describe("worstState", () => {
 
   it("sin nada que mostrar, desconocido", () => {
     expect(worstState([])).toBe("unknown");
+  });
+});
+
+describe("globalStatus — una sola fuente, dos presentaciones (09-chrome-y-estados)", () => {
+  it("mientras no ha cargado el inventario, no dice 'sin discos'", () => {
+    const r = globalStatus({ loaded: false, paused: false, monitoredStates: [] });
+    expect(r.kind).toBe("loading");
+  });
+
+  it("cargado y sin discos: 'sin discos monitorizados', nunca en rojo", () => {
+    const r = globalStatus({ loaded: true, paused: false, monitoredStates: [] });
+    expect(r.kind).toBe("noDevices");
+    expect(r.state).toBe("unknown");
+  });
+
+  it("en pausa manda sobre el estado de los discos para el texto", () => {
+    const r = globalStatus({ loaded: true, paused: true, monitoredStates: ["warn"] });
+    expect(r.kind).toBe("paused");
+  });
+
+  it("ningún disco en warn/crit: todo en orden", () => {
+    const r = globalStatus({ loaded: true, paused: false, monitoredStates: ["ok", "ok", "unknown"] });
+    expect(r).toEqual({ kind: "ok", state: "ok", count: 0 });
+  });
+
+  it("N en warn o crit: cuenta y peor estado", () => {
+    const r = globalStatus({
+      loaded: true,
+      paused: false,
+      monitoredStates: ["ok", "warn", "crit", "unknown"]
+    });
+    expect(r).toEqual({ kind: "attention", state: "crit", count: 2 });
+  });
+
+  it("un disco sin SMART (unknown) no cuenta como que necesita atención", () => {
+    const r = globalStatus({ loaded: true, paused: false, monitoredStates: ["ok", "unknown"] });
+    expect(r.kind).toBe("ok");
+    expect(r.count).toBe(0);
+  });
+});
+
+describe("selectHeroDisk — quién protagoniza el panel (HeroPanel.md)", () => {
+  const disco = (id: string, over: Partial<Parameters<typeof selectHeroDisk>[0][number]> = {}) => ({
+    id,
+    state: "ok" as HealthState,
+    unknownReason: null,
+    volumes: [{ isSystemVolume: false }],
+    ...over
+  });
+  const alerta = (deviceId: string, severity: "warn" | "crit", when: string) => ({
+    severity,
+    status: "active" as const,
+    deduplicationKey: `temp.x|device:${deviceId}|`,
+    lastOccurredAt: when
+  });
+
+  it("sin discos devuelve null", () => {
+    expect(selectHeroDisk([], [])).toBeNull();
+  });
+
+  it("elige el disco con la alerta de mayor severidad", () => {
+    const r = selectHeroDisk(
+      [disco("a"), disco("b"), disco("c")],
+      [alerta("a", "warn", "2026-09-06T10:00:00Z"), alerta("c", "crit", "2026-09-06T09:00:00Z")]
+    );
+    expect(r?.id).toBe("c");
+  });
+
+  it("empate de severidad: gana la ocurrencia más reciente", () => {
+    const r = selectHeroDisk(
+      [disco("a"), disco("b")],
+      [alerta("a", "warn", "2026-09-06T08:00:00Z"), alerta("b", "warn", "2026-09-06T11:00:00Z")]
+    );
+    expect(r?.id).toBe("b");
+  });
+
+  it("sin alertas, elige el disco de sistema", () => {
+    const r = selectHeroDisk(
+      [disco("a"), disco("sys", { volumes: [{ isSystemVolume: true }] }), disco("c")],
+      []
+    );
+    expect(r?.id).toBe("sys");
+  });
+
+  it("sin alertas y sin disco de sistema conocido, el primero del inventario", () => {
+    const r = selectHeroDisk([disco("a"), disco("b")], []);
+    expect(r?.id).toBe("a");
+  });
+
+  it("un disco sin SMART nunca protagoniza si hay otro", () => {
+    const r = selectHeroDisk(
+      [disco("usb", { state: "unknown", unknownReason: "unsupported" }), disco("nvme")],
+      []
+    );
+    expect(r?.id).toBe("nvme");
+  });
+
+  it("salvo que el sin-SMART sea el único disco", () => {
+    const r = selectHeroDisk([disco("usb", { state: "unknown", unknownReason: "unsupported" })], []);
+    expect(r?.id).toBe("usb");
+  });
+
+  it("una alerta solo reconocida sigue eligiendo su disco (cuenta para la salud)", () => {
+    const r = selectHeroDisk(
+      [disco("a"), disco("b", { volumes: [{ isSystemVolume: true }] })],
+      [{ ...alerta("a", "warn", "2026-09-06T10:00:00Z"), status: "acknowledged" as const }]
+    );
+    expect(r?.id).toBe("a");
   });
 });

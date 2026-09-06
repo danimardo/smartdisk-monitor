@@ -10,7 +10,8 @@
 //! `alerts::agrupacion`, que sabe además de deduplicación y de cuándo una resolución depende del
 //! tiempo transcurrido en vez de del valor.
 
-use crate::domain::tipos::AlertSeverity;
+use crate::domain::capacidad::{estado_capacidad, UmbralesCapacidad};
+use crate::domain::tipos::{AlertSeverity, HealthState};
 
 /// Las N muestras más recientes cumplen todas el predicado. Si hay menos de N, no cumple: un
 /// contador que falta no se evalúa (`alert-rules.md`, "Lo que explícitamente NO genera alerta").
@@ -40,39 +41,41 @@ pub fn resuelve_critical_warning(serie: &[f64]) -> bool {
 
 /// `smart.wear_high`: inmediato, dos niveles. **No se resuelve sola** — el desgaste no baja — se
 /// archiva a mano (`alert-rules.md`), así que no existe una función `resuelve_wear_high`.
-pub fn evaluar_wear_high(serie: &[f64]) -> Option<AlertSeverity> {
+/// v3 (ADR-036): los umbrales llegan de `settings.alerts` (fábrica 80/90), ya no `90/100` literal.
+pub fn evaluar_wear_high(serie: &[f64], warn_pct: f64, crit_pct: f64) -> Option<AlertSeverity> {
     let v = *serie.first()?;
-    if v >= 100.0 {
+    if v >= crit_pct {
         Some(AlertSeverity::Critical)
-    } else if v >= 90.0 {
+    } else if v >= warn_pct {
         Some(AlertSeverity::Warning)
     } else {
         None
     }
 }
 
-/// `temp.above_configured_warn`: sin límite del fabricante, 3 ciclos consecutivos por encima de
-/// 70 °C. **Regla independiente** de `temp.above_configured_crit`, no un nivel más bajo de la
-/// misma: la tabla normativa les da activación, severidad y resolución propias, así que pueden
-/// convivir como dos grupos activos a la vez (`domain::salud::device_state` ya colapsa al peor).
-pub fn evaluar_temperatura_configurada_warn(serie: &[f64]) -> Option<AlertSeverity> {
-    primeras_n_cumplen(serie, 3, |v| v > 70.0).then_some(AlertSeverity::Warning)
+/// `temp.above_configured_warn`: sin límite del fabricante, 3 ciclos consecutivos por encima del
+/// umbral configurado (`settings.alerts.temp_configured_warn_c`, fábrica 60 °C — ADR-036).
+/// **Regla independiente** de `temp.above_configured_crit`: la tabla normativa les da activación,
+/// severidad y resolución propias (`domain::salud::device_state` colapsa al peor).
+pub fn evaluar_temperatura_configurada_warn(serie: &[f64], warn_c: f64) -> Option<AlertSeverity> {
+    primeras_n_cumplen(serie, 3, |v| v > warn_c).then_some(AlertSeverity::Warning)
 }
 
-/// Resolución de `temp.above_configured_warn`: ≤ 67 °C durante 3 ciclos.
-pub fn resuelve_temperatura_configurada_warn(serie: &[f64]) -> bool {
-    primeras_n_cumplen(serie, 3, |v| v <= 67.0)
+/// Resolución de `temp.above_configured_warn`: ≤ (umbral − 3 °C) durante 3 ciclos. El margen de 3 °C
+/// es el mismo que tenía la histéresis literal (70 → 67).
+pub fn resuelve_temperatura_configurada_warn(serie: &[f64], warn_c: f64) -> bool {
+    primeras_n_cumplen(serie, 3, |v| v <= warn_c - 3.0)
 }
 
-/// `temp.above_configured_crit`: crítico **inmediato** en ≥ 80 °C, sin ciclos de histéresis para
-/// activarse — a diferencia de `..._warn`, que exige 3 ciclos consecutivos.
-pub fn evaluar_temperatura_configurada_crit(serie: &[f64]) -> Option<AlertSeverity> {
-    primeras_n_cumplen(serie, 1, |v| v >= 80.0).then_some(AlertSeverity::Critical)
+/// `temp.above_configured_crit`: crítico **inmediato** en ≥ umbral configurado
+/// (`temp_configured_crit_c`, fábrica 70 °C), sin ciclos de histéresis para activarse.
+pub fn evaluar_temperatura_configurada_crit(serie: &[f64], crit_c: f64) -> Option<AlertSeverity> {
+    primeras_n_cumplen(serie, 1, |v| v >= crit_c).then_some(AlertSeverity::Critical)
 }
 
-/// Resolución de `temp.above_configured_crit`: ≤ 75 °C durante 3 ciclos.
-pub fn resuelve_temperatura_configurada_crit(serie: &[f64]) -> bool {
-    primeras_n_cumplen(serie, 3, |v| v <= 75.0)
+/// Resolución de `temp.above_configured_crit`: ≤ (umbral − 5 °C) durante 3 ciclos (margen de 80 → 75).
+pub fn resuelve_temperatura_configurada_crit(serie: &[f64], crit_c: f64) -> bool {
+    primeras_n_cumplen(serie, 3, |v| v <= crit_c - 5.0)
 }
 
 /// `smart.spare_below_threshold`: 3 ciclos consecutivos con la reserva por debajo de su propio
@@ -91,11 +94,23 @@ pub fn resuelve_spare_below_threshold(pares: &[(f64, f64)]) -> bool {
             .all(|&(spare, umbral)| spare >= umbral + 2.0)
 }
 
-/// `smart.media_errors`: crítico inmediato si el contador aumentó respecto a la lectura anterior.
-/// Sin lectura previa no hay incremento que medir (`alert-rules.md`, última viñeta de "NO genera
-/// alerta"): con menos de dos muestras, no se evalúa.
-pub fn evaluar_media_errors(serie: &[f64]) -> Option<AlertSeverity> {
-    (serie.len() >= 2 && serie[0] > serie[1]).then_some(AlertSeverity::Critical)
+/// `smart.media_errors`: se activa según la **magnitud del incremento** de `media_errors_total`
+/// entre las dos lecturas más recientes (clarify Q1, ADR-036): `>= crit` ⇒ crítico, `>= warn` ⇒
+/// advertencia. Sin lectura previa no hay incremento que medir (`alert-rules.md`, última viñeta de
+/// "NO genera alerta"): con menos de dos muestras, no se evalúa. Un incremento nulo o negativo (el
+/// contador no baja salvo que se sustituya el disco) tampoco.
+pub fn evaluar_media_errors(serie: &[f64], warn: i64, crit: i64) -> Option<AlertSeverity> {
+    if serie.len() < 2 {
+        return None;
+    }
+    let incremento = serie[0] - serie[1];
+    if incremento >= crit as f64 {
+        Some(AlertSeverity::Critical)
+    } else if incremento >= warn as f64 {
+        Some(AlertSeverity::Warning)
+    } else {
+        None
+    }
 }
 
 /// `smart.error_log`: aumenta ⇒ advertencia; si son **tres aumentos consecutivos** ⇒ crítico.
@@ -115,9 +130,56 @@ pub fn evaluar_error_log(serie: &[f64]) -> Option<AlertSeverity> {
     })
 }
 
+/// `capacity.low` / `capacity.critical` (v3, ADR-036 — antes no implementadas en el motor).
+/// `pares` son `(free_bytes, capacity_bytes)` de cada lectura de `volume_free_bytes`, más reciente
+/// primero. La capacidad se repite en cada par (cambia poco); se pasa así para reutilizar el patrón
+/// `aplicar_par`. Sin ninguna lectura, no se evalúa.
+pub fn evaluar_capacidad_low(pares: &[(f64, f64)], u: &UmbralesCapacidad) -> Option<AlertSeverity> {
+    let (free, cap) = *pares.first()?;
+    match estado_capacidad(Some(free as i64), Some(cap as i64), u) {
+        HealthState::Warn => Some(AlertSeverity::Warning),
+        // Cuando la capacidad está en crítico, `capacity.low` **no** se activa: es `capacity.critical`
+        // quien manda. Dos grupos independientes, como temperatura (`domain::salud` colapsa al peor).
+        _ => None,
+    }
+}
+
+/// Resolución de `capacity.low`: las 3 lecturas más recientes dan `ok` (`alert-rules.md`: «vuelve a
+/// `ok` **y** se mantiene 3 ciclos»).
+pub fn resuelve_capacidad_low(pares: &[(f64, f64)], u: &UmbralesCapacidad) -> bool {
+    pares.len() >= 3
+        && pares[..3]
+            .iter()
+            .all(|&(f, c)| estado_capacidad(Some(f as i64), Some(c as i64), u) == HealthState::Ok)
+}
+
+/// `capacity.critical`: crítico inmediato cuando `estado_capacidad` da `crit`.
+pub fn evaluar_capacidad_critical(
+    pares: &[(f64, f64)],
+    u: &UmbralesCapacidad,
+) -> Option<AlertSeverity> {
+    let (free, cap) = *pares.first()?;
+    (estado_capacidad(Some(free as i64), Some(cap as i64), u) == HealthState::Crit)
+        .then_some(AlertSeverity::Critical)
+}
+
+/// Resolución de `capacity.critical`: las 3 lecturas más recientes dan `warn` u `ok` (`alert-rules.md`:
+/// «sube a `warn` u `ok` y se mantiene 3 ciclos»).
+pub fn resuelve_capacidad_critical(pares: &[(f64, f64)], u: &UmbralesCapacidad) -> bool {
+    pares.len() >= 3
+        && pares[..3].iter().all(|&(f, c)| {
+            !matches!(
+                estado_capacidad(Some(f as i64), Some(c as i64), u),
+                HealthState::Crit
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const G: f64 = (1024 * 1024 * 1024) as f64;
 
     // ---- smart.health.failed ----
 
@@ -172,38 +234,67 @@ mod tests {
         assert!(resuelve_critical_warning(&[0.0, 0.0, 0.0]));
     }
 
-    // ---- smart.wear_high ----
+    // ---- smart.wear_high (umbrales de settings, fábrica 80/90) ----
 
     #[test]
-    fn wear_high_advierte_a_partir_de_noventa() {
-        assert_eq!(evaluar_wear_high(&[90.0]), Some(AlertSeverity::Warning));
-        assert_eq!(evaluar_wear_high(&[89.0]), None);
+    fn wear_high_advierte_en_el_umbral_justo_por_encima_y_por_debajo() {
+        assert_eq!(
+            evaluar_wear_high(&[80.0], 80.0, 90.0),
+            Some(AlertSeverity::Warning)
+        );
+        assert_eq!(
+            evaluar_wear_high(&[80.1], 80.0, 90.0),
+            Some(AlertSeverity::Warning)
+        );
+        assert_eq!(evaluar_wear_high(&[79.9], 80.0, 90.0), None);
     }
 
     #[test]
-    fn wear_high_escala_a_critico_en_cien() {
-        assert_eq!(evaluar_wear_high(&[100.0]), Some(AlertSeverity::Critical));
+    fn wear_high_escala_a_critico_en_su_umbral() {
+        assert_eq!(
+            evaluar_wear_high(&[90.0], 80.0, 90.0),
+            Some(AlertSeverity::Critical)
+        );
+        assert_eq!(
+            evaluar_wear_high(&[89.9], 80.0, 90.0),
+            Some(AlertSeverity::Warning)
+        );
     }
 
     #[test]
     fn wear_high_no_se_activa_sin_lectura() {
-        assert_eq!(evaluar_wear_high(&[]), None);
+        assert_eq!(evaluar_wear_high(&[], 80.0, 90.0), None);
     }
 
-    // ---- temp.above_configured_warn ----
+    #[test]
+    fn wear_high_respeta_umbrales_configurables() {
+        // 88 %: crítico con «Solo lo grave» (90/95)? no, aviso. Con «Prudente» (70/85): crítico.
+        assert_eq!(evaluar_wear_high(&[88.0], 90.0, 95.0), None);
+        assert_eq!(
+            evaluar_wear_high(&[88.0], 70.0, 85.0),
+            Some(AlertSeverity::Critical)
+        );
+    }
+
+    // ---- temp.above_configured_warn (umbral de settings, fábrica 60 °C) ----
 
     #[test]
-    fn temperatura_warn_advierte_tras_tres_ciclos_por_encima_de_setenta() {
+    fn temperatura_warn_advierte_en_el_umbral_justo_por_encima_y_por_debajo() {
         assert_eq!(
-            evaluar_temperatura_configurada_warn(&[71.0, 72.0, 73.0]),
+            evaluar_temperatura_configurada_warn(&[61.0, 62.0, 63.0], 60.0),
             Some(AlertSeverity::Warning)
+        );
+        assert_eq!(
+            evaluar_temperatura_configurada_warn(&[60.0, 60.0, 60.0], 60.0),
+            None,
+            "en el umbral exacto no (operador estricto)"
         );
     }
 
     #[test]
     fn temperatura_warn_no_se_activa_con_solo_dos_ciclos() {
         assert_eq!(
-            evaluar_temperatura_configurada_warn(&[71.0, 72.0]),
+            evaluar_temperatura_configurada_warn(&[61.0, 62.0], 60.0),
             None,
             "faltan ciclos, dato incompleto"
         );
@@ -211,55 +302,59 @@ mod tests {
 
     #[test]
     fn temperatura_warn_no_se_activa_sin_ninguna_lectura() {
-        assert_eq!(evaluar_temperatura_configurada_warn(&[]), None);
+        assert_eq!(evaluar_temperatura_configurada_warn(&[], 60.0), None);
     }
 
     #[test]
-    fn temperatura_warn_resuelve_a_67_durante_tres_ciclos() {
-        assert!(!resuelve_temperatura_configurada_warn(&[68.0, 68.0, 68.0]));
-        assert!(resuelve_temperatura_configurada_warn(&[67.0, 67.0, 67.0]));
+    fn temperatura_warn_resuelve_tres_grados_por_debajo_del_umbral_durante_tres_ciclos() {
+        assert!(!resuelve_temperatura_configurada_warn(
+            &[58.0, 58.0, 58.0],
+            60.0
+        ));
+        assert!(resuelve_temperatura_configurada_warn(
+            &[57.0, 57.0, 57.0],
+            60.0
+        ));
     }
 
-    // ---- temp.above_configured_crit ----
+    // ---- temp.above_configured_crit (umbral de settings, fábrica 70 °C) ----
 
     #[test]
-    fn temperatura_crit_es_inmediata_una_sola_lectura_basta() {
+    fn temperatura_crit_es_inmediata_en_su_umbral() {
         assert_eq!(
-            evaluar_temperatura_configurada_crit(&[80.0]),
+            evaluar_temperatura_configurada_crit(&[70.0], 70.0),
             Some(AlertSeverity::Critical)
         );
-    }
-
-    #[test]
-    fn temperatura_crit_no_se_activa_por_debajo_de_ochenta() {
-        assert_eq!(evaluar_temperatura_configurada_crit(&[79.9]), None);
+        assert_eq!(evaluar_temperatura_configurada_crit(&[69.9], 70.0), None);
     }
 
     #[test]
     fn temperatura_crit_no_se_activa_sin_ninguna_lectura() {
-        assert_eq!(evaluar_temperatura_configurada_crit(&[]), None);
+        assert_eq!(evaluar_temperatura_configurada_crit(&[], 70.0), None);
     }
 
     #[test]
-    fn temperatura_crit_resuelve_a_75_durante_tres_ciclos_no_inmediatamente() {
+    fn temperatura_crit_resuelve_cinco_grados_por_debajo_durante_tres_ciclos_no_inmediatamente() {
         assert!(
-            !resuelve_temperatura_configurada_crit(&[74.0]),
+            !resuelve_temperatura_configurada_crit(&[64.0], 70.0),
             "la resolución sí exige histéresis"
         );
-        assert!(resuelve_temperatura_configurada_crit(&[74.0, 74.0, 74.0]));
+        assert!(resuelve_temperatura_configurada_crit(
+            &[64.0, 64.0, 64.0],
+            70.0
+        ));
     }
 
     #[test]
     fn temperatura_warn_y_crit_son_independientes_pueden_coexistir() {
-        // Un disco a 85°C cumple ambas: advertencia (>70, 3 ciclos) y crítico (>=80, inmediato).
-        // domain::salud colapsa al peor; el motor no decide eso, solo evalúa cada regla.
-        let serie = [85.0, 85.0, 85.0];
+        // Un disco a 75°C con fábrica 60/70 cumple ambas: advertencia (>60, 3 ciclos) y crítico (>=70).
+        let serie = [75.0, 75.0, 75.0];
         assert_eq!(
-            evaluar_temperatura_configurada_warn(&serie),
+            evaluar_temperatura_configurada_warn(&serie, 60.0),
             Some(AlertSeverity::Warning)
         );
         assert_eq!(
-            evaluar_temperatura_configurada_crit(&serie),
+            evaluar_temperatura_configurada_crit(&serie, 70.0),
             Some(AlertSeverity::Critical)
         );
     }
@@ -299,32 +394,48 @@ mod tests {
         ]));
     }
 
-    // ---- smart.media_errors ----
+    // ---- smart.media_errors (umbral sobre la magnitud del incremento, fábrica 1/5) ----
 
     #[test]
-    fn media_errors_se_activa_si_aumenta_respecto_a_la_lectura_anterior() {
+    fn media_errors_advierte_en_el_umbral_del_incremento_y_escala_a_critico() {
+        // incremento de 1 = aviso; de 5 = crítico; de 0 = nada.
         assert_eq!(
-            evaluar_media_errors(&[5.0, 3.0]),
+            evaluar_media_errors(&[4.0, 3.0], 1, 5),
+            Some(AlertSeverity::Warning)
+        );
+        assert_eq!(evaluar_media_errors(&[3.0, 3.0], 1, 5), None);
+        assert_eq!(
+            evaluar_media_errors(&[8.0, 3.0], 1, 5),
             Some(AlertSeverity::Critical)
+        );
+        assert_eq!(
+            evaluar_media_errors(&[7.0, 3.0], 1, 5),
+            Some(AlertSeverity::Warning)
         );
     }
 
     #[test]
     fn media_errors_no_se_activa_sin_lectura_previa() {
         assert_eq!(
-            evaluar_media_errors(&[5.0]),
+            evaluar_media_errors(&[5.0], 1, 5),
             None,
             "sin anterior no hay incremento que medir"
         );
     }
 
     #[test]
-    fn media_errors_no_se_activa_si_no_aumenta() {
-        assert_eq!(evaluar_media_errors(&[3.0, 3.0]), None);
+    fn media_errors_un_incremento_negativo_no_activa_nada() {
+        // El contador solo baja si se sustituye el disco: no es un error.
+        assert_eq!(evaluar_media_errors(&[3.0, 5.0], 1, 5), None);
+    }
+
+    #[test]
+    fn media_errors_respeta_umbrales_configurables() {
+        // incremento de 3: nada con «Solo lo grave» (5/15), crítico con «Prudente» (1/3).
+        assert_eq!(evaluar_media_errors(&[6.0, 3.0], 5, 15), None);
         assert_eq!(
-            evaluar_media_errors(&[3.0, 5.0]),
-            None,
-            "bajar no es aumentar"
+            evaluar_media_errors(&[6.0, 3.0], 1, 3),
+            Some(AlertSeverity::Critical)
         );
     }
 
@@ -354,5 +465,70 @@ mod tests {
             evaluar_error_log(&[4.0, 3.0, 2.0, 2.0]),
             Some(AlertSeverity::Warning)
         );
+    }
+
+    // ---- capacity.low / capacity.critical (nuevas en v3) ----
+
+    fn cap() -> UmbralesCapacidad {
+        UmbralesCapacidad::default() // 10 % / 5 %
+    }
+
+    #[test]
+    fn capacidad_low_advierte_por_debajo_del_diez_por_ciento_no_en_el_umbral() {
+        let vol = 100.0 * G; // pequeño: solo manda el porcentaje
+        assert_eq!(
+            evaluar_capacidad_low(&[(9.0 * G, vol)], &cap()),
+            Some(AlertSeverity::Warning)
+        );
+        assert_eq!(evaluar_capacidad_low(&[(10.0 * G, vol)], &cap()), None);
+        assert_eq!(evaluar_capacidad_low(&[(11.0 * G, vol)], &cap()), None);
+    }
+
+    #[test]
+    fn capacidad_low_no_se_activa_cuando_ya_es_critico_ese_es_capacity_critical() {
+        let vol = 100.0 * G;
+        assert_eq!(
+            evaluar_capacidad_low(&[(3.0 * G, vol)], &cap()),
+            None,
+            "3 % es crítico, no low"
+        );
+        assert_eq!(
+            evaluar_capacidad_critical(&[(3.0 * G, vol)], &cap()),
+            Some(AlertSeverity::Critical)
+        );
+    }
+
+    #[test]
+    fn capacidad_no_se_activa_sin_ninguna_lectura() {
+        assert_eq!(evaluar_capacidad_low(&[], &cap()), None);
+        assert_eq!(evaluar_capacidad_critical(&[], &cap()), None);
+    }
+
+    #[test]
+    fn capacidad_low_resuelve_tras_tres_lecturas_en_ok() {
+        let vol = 100.0 * G;
+        assert!(!resuelve_capacidad_low(
+            &[(20.0 * G, vol), (9.0 * G, vol), (20.0 * G, vol)],
+            &cap()
+        ));
+        assert!(resuelve_capacidad_low(
+            &[(20.0 * G, vol), (20.0 * G, vol), (20.0 * G, vol)],
+            &cap()
+        ));
+    }
+
+    #[test]
+    fn capacidad_critical_resuelve_cuando_sube_a_warn_u_ok_tres_ciclos() {
+        let vol = 100.0 * G;
+        // 3 lecturas en aviso (8 %): ya no es crítico ⇒ resuelve el crítico
+        assert!(resuelve_capacidad_critical(
+            &[(8.0 * G, vol), (8.0 * G, vol), (8.0 * G, vol)],
+            &cap()
+        ));
+        // una lectura reciente vuelve a crítico ⇒ no resuelve
+        assert!(!resuelve_capacidad_critical(
+            &[(3.0 * G, vol), (8.0 * G, vol), (8.0 * G, vol)],
+            &cap()
+        ));
     }
 }

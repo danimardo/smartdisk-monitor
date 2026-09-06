@@ -1,0 +1,40 @@
+import { page } from "vitest/browser";
+import { describe, expect, it, vi } from "vitest";
+import { render } from "vitest-browser-svelte";
+import EventRow from "./EventRow.svelte";
+import es from "$lib/i18n/es.json";
+
+/** `EventRow` vive en una `VirtualList` de miles de filas: la altura no cambia (42 px) y el nivel
+ *  se lee por color **e** icono, nunca por color solo (`03-eventos.md`, constitución §VII). */
+
+describe("EventRow", () => {
+  it("el nivel es un cuadrado con icono y nombre accesible, no una píldora de texto en la fila", async () => {
+    const { container } = await render(EventRow, {
+      props: { level: "error", message: "Fallo de E/S en el disco 2", provider: "disk", eventId: 7 }
+    });
+    // El icono del nivel `error` es `bolt` y lleva el nombre del nivel como etiqueta accesible.
+    expect(container.querySelector('use[href="#i-bolt"]')).not.toBeNull();
+    await expect.element(page.getByRole("img", { name: es["events.level.error"] })).toBeInTheDocument();
+  });
+
+  it("una asociación inferida se etiqueta de forma explícita, sin competir con el dato", async () => {
+    await render(EventRow, {
+      props: { level: "info", message: "m", provider: "Ntfs", eventId: 1, mappingConfidence: "inferred" }
+    });
+    await expect.element(page.getByText(es["events.inferredMapping"])).toBeInTheDocument();
+  });
+
+  it("una asociación exacta no muestra la etiqueta", async () => {
+    await render(EventRow, {
+      props: { level: "info", message: "m", provider: "Ntfs", eventId: 1, mappingConfidence: "exact" }
+    });
+    expect(page.getByText(es["events.inferredMapping"]).query()).toBeNull();
+  });
+
+  it("al pulsarla invoca onselect", async () => {
+    const onselect = vi.fn();
+    await render(EventRow, { props: { level: "warning", message: "m", onselect } });
+    await page.getByRole("button").click();
+    expect(onselect).toHaveBeenCalledOnce();
+  });
+});

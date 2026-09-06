@@ -29,7 +29,11 @@ module.exports = {
         crit: { DEFAULT: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)" },
         unknown: { DEFAULT: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)" }
       },
-      fontFamily: { sans: "var(--sdm-font-sans)", mono: "var(--sdm-font-mono)" },
+      fontFamily: {
+        sans: "var(--sdm-font-sans)",
+        mono: "var(--sdm-font-mono)",
+        display: "var(--sdm-font-display)"
+      },
       fontSize: {
         "2xs": ["var(--sdm-text-2xs)", { lineHeight: "1.35" }],
         xs: ["var(--sdm-text-xs)", { lineHeight: "1.45" }],
@@ -38,7 +42,9 @@ module.exports = {
         lg: ["var(--sdm-text-lg)", { lineHeight: "1.3" }],
         xl: ["var(--sdm-text-xl)", { lineHeight: "1.2" }],
         "2xl": ["var(--sdm-text-2xl)", { lineHeight: "1.2" }],
-        metric: ["var(--sdm-text-metric)", { lineHeight: "1.05" }]
+        metric: ["var(--sdm-text-metric)", { lineHeight: "1.05" }],
+        display: ["var(--sdm-text-display)", { lineHeight: "1" }],
+        hero: ["var(--sdm-text-hero)", { lineHeight: "1" }]
       },
       fontWeight: { regular: "400", medium: "500", semibold: "600" },
       spacing: {
@@ -60,7 +66,11 @@ module.exports = {
       height: {
         "control-sm": "var(--sdm-control-sm)",
         "control-md": "var(--sdm-control-md)",
-        "control-lg": "var(--sdm-control-lg)"
+        "control-lg": "var(--sdm-control-lg)",
+        hero: "var(--sdm-hero-height)"
+      },
+      width: {
+        rail: "var(--sdm-rail-width)"
       },
       boxShadow: {
         card: "var(--sdm-shadow)",

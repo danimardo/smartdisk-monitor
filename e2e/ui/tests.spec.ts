@@ -60,11 +60,27 @@ test.describe("pruebas y diagnóstico", () => {
       testRun: testRunActivo
     });
 
-    await expect(page.getByRole("heading", { name: es["tests.active.title"] })).toBeVisible();
+    // v3: «Prueba en curso» es la píldora de estado del bloque, ya no un encabezado.
+    await expect(page.getByText(es["tests.active.title"], { exact: true })).toBeVisible();
     await expect(page.getByText("40 %", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: es["tests.active.cancel"] }).click();
     const invocacion = (await llamadas(page)).find((l) => l.comando === "cancel_test");
     expect(invocacion?.args).toMatchObject({ testRunId: testRunActivo.id });
+  });
+
+  test("v3: sin prueba en curso el bloque no se muestra y las tres tarjetas llevan su icono", async ({
+    page
+  }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/tests");
+
+    await expect(page.getByRole("heading", { name: es["tests.cards.benchmark.title"] })).toBeVisible();
+    // Sin `test:progress`, no hay bloque de prueba en curso: su píldora no aparece.
+    await expect(page.getByText(es["tests.active.title"], { exact: true })).toHaveCount(0);
+
+    // Cada tarjeta de prueba tiene su cuadrado de icono del sprite en la cabecera.
+    const iconos = await page.getByRole("main").locator('svg use[href^="#i-"]').count();
+    expect(iconos).toBeGreaterThanOrEqual(3);
   });
 });

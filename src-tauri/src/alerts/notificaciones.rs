@@ -17,7 +17,7 @@ use time::{Duration, OffsetDateTime};
 use crate::alerts::{agrupacion::Transicion, ciclo};
 use crate::domain::tipos::AlertGroup;
 use crate::persistence::db::AppState;
-use crate::persistence::repo_alertas;
+use crate::persistence::{repo_alertas, repo_varios};
 use crate::platform::rotulos::{locale_actual, t};
 
 /// Cooldown por regla (`alert-rules.md` §2, columna "Cooldown de notificación"). `None` = "ninguno:
@@ -48,44 +48,68 @@ pub fn procesar_transiciones(app: &AppHandle, transiciones: &[(String, Transicio
 
 fn procesar_una(app: &AppHandle, grupo_id: &str, transicion: Transicion) -> rusqlite::Result<()> {
     let estado = app.state::<AppState>();
-    let grupo = {
+    let (grupo, notificaciones_activas) = {
         let conn = estado
             .conn
             .lock()
             .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-        repo_alertas::get_group(&conn, grupo_id)?
+        let grupo = repo_alertas::get_group(&conn, grupo_id)?;
+        // Apagado explícito del toast (ADR-037), independiente de pausar. `notifications.enabled`
+        // ausente = mostrar (valor de fábrica).
+        let activas = repo_varios::get_setting_raw(&conn, "notifications.enabled")
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str::<bool>(&s).ok())
+            .unwrap_or(true);
+        (grupo, activas)
     };
     let Some(grupo) = grupo else {
         return Ok(());
     };
 
     let ahora = OffsetDateTime::now_utc();
-    if ciclo::esta_silenciada(grupo.muted_until.as_deref(), ahora) {
-        return Ok(());
-    }
+    let silenciada = ciclo::esta_silenciada(grupo.muted_until.as_deref(), ahora);
 
-    let debe_notificar = match transicion {
-        Transicion::CreadaActiva | Transicion::Reactivada | Transicion::Escalada => true,
-        Transicion::OcurrenciaRepetida => match cooldown_de(&grupo.rule_key) {
-            None => true,
-            Some(cooldown) => {
-                let mapa = estado
-                    .notified_at
-                    .lock()
-                    .expect("el mutex de notificaciones no se envenena: sin pánicos dentro");
-                match mapa.get(grupo_id) {
-                    None => true,
-                    Some(ultima) => ahora - *ultima >= cooldown,
-                }
-            }
-        },
-        Transicion::SinCambio | Transicion::Resuelta => false,
+    let desde_ultima = {
+        let mapa = estado
+            .notified_at
+            .lock()
+            .expect("el mutex de notificaciones no se envenena: sin pánicos dentro");
+        mapa.get(grupo_id).map(|ultima| ahora - *ultima)
     };
 
-    if debe_notificar {
+    if debe_enviar(
+        notificaciones_activas,
+        silenciada,
+        transicion,
+        cooldown_de(&grupo.rule_key),
+        desde_ultima,
+    ) {
         enviar_y_registrar(app, &estado, &grupo, ahora);
     }
     Ok(())
+}
+
+/// ¿Toca enviar el toast? Decisión pura, sin `AppHandle` ni base de datos, para poder fijarla en
+/// pruebas (el resto de `procesar_una` necesita un proceso Tauri real, `research.md` R1).
+fn debe_enviar(
+    notificaciones_activas: bool,
+    silenciada: bool,
+    transicion: Transicion,
+    cooldown: Option<Duration>,
+    desde_ultima: Option<Duration>,
+) -> bool {
+    if !notificaciones_activas || silenciada {
+        return false;
+    }
+    match transicion {
+        Transicion::CreadaActiva | Transicion::Reactivada | Transicion::Escalada => true,
+        Transicion::OcurrenciaRepetida => match cooldown {
+            None => true,
+            Some(cd) => desde_ultima.map_or(true, |d| d >= cd),
+        },
+        Transicion::SinCambio | Transicion::Resuelta => false,
+    }
 }
 
 fn enviar_y_registrar(
@@ -142,6 +166,67 @@ mod tests {
     #[test]
     fn una_regla_desconocida_no_se_queda_sin_cooldown() {
         assert_eq!(cooldown_de("regla.inventada"), Some(Duration::hours(1)));
+    }
+
+    #[test]
+    fn con_las_notificaciones_apagadas_no_se_envia_nada_aunque_sea_una_alerta_nueva() {
+        // ADR-037: el apagado explícito manda sobre cualquier transición.
+        assert!(!debe_enviar(
+            false,
+            false,
+            Transicion::CreadaActiva,
+            None,
+            None
+        ));
+    }
+
+    #[test]
+    fn una_alerta_silenciada_no_notifica_aunque_las_notificaciones_esten_activas() {
+        assert!(!debe_enviar(true, true, Transicion::Escalada, None, None));
+    }
+
+    #[test]
+    fn con_las_notificaciones_activas_una_alerta_nueva_o_escalada_siempre_notifica() {
+        for t in [
+            Transicion::CreadaActiva,
+            Transicion::Reactivada,
+            Transicion::Escalada,
+        ] {
+            assert!(debe_enviar(true, false, t, Some(Duration::days(7)), None));
+        }
+    }
+
+    #[test]
+    fn una_ocurrencia_repetida_respeta_el_cooldown() {
+        // Dentro del cooldown → no; pasado el cooldown → sí; sin registro previo → sí.
+        assert!(!debe_enviar(
+            true,
+            false,
+            Transicion::OcurrenciaRepetida,
+            Some(Duration::minutes(30)),
+            Some(Duration::minutes(10))
+        ));
+        assert!(debe_enviar(
+            true,
+            false,
+            Transicion::OcurrenciaRepetida,
+            Some(Duration::minutes(30)),
+            Some(Duration::minutes(31))
+        ));
+        assert!(debe_enviar(
+            true,
+            false,
+            Transicion::OcurrenciaRepetida,
+            Some(Duration::minutes(30)),
+            None
+        ));
+    }
+
+    #[test]
+    fn sin_cambio_o_resuelta_nunca_notifican() {
+        for t in [Transicion::SinCambio, Transicion::Resuelta] {
+            assert!(!debe_enviar(true, false, t, None, None));
+        }
     }
 
     /// Las 8 reglas en alcance (`docs/open-questions.md` J.16) tienen sus claves de i18n propias:

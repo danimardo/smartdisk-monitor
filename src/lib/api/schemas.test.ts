@@ -179,3 +179,66 @@ describe("eventSchemas", () => {
     expect(r.success).toBe(false);
   });
 });
+
+describe("settings — perfiles de alerta v3 (ADR-036)", () => {
+  const base = {
+    schedule: { metricsFastSeconds: 30, smartFullSeconds: 300, eventsSeconds: 30, discoverySeconds: 60 },
+    alerts: {
+      profile: "balanced",
+      tempConfiguredWarnC: 60,
+      tempConfiguredCritC: 70,
+      wearWarnPercent: 80,
+      wearCritPercent: 90,
+      capacityWarnPercent: 10,
+      capacityCritPercent: 5,
+      capacityAbsoluteFloorMinCapacityBytes: 274_877_906_944,
+      capacityAbsoluteFloorWarnBytes: 21_474_836_480,
+      capacityAbsoluteFloorCritBytes: 10_737_418_240,
+      mediaErrorsWarnPer24h: 1,
+      mediaErrorsCritPer24h: 5,
+      driverRetryWarnPer24h: 5,
+      driverRetryCritPer24h: 12
+    },
+    onboarding: { completedAt: null },
+    retention: {
+      rawDays: 7,
+      fiveMinutesDays: 90,
+      hourlyDays: 730,
+      freeSpaceWarnBytes: 1_073_741_824,
+      freeSpaceHaltBytes: 268_435_456
+    },
+    lifecycle: { closeAction: "minimize", closeActionRemembered: false, startWithSystem: false },
+    notifications: { soundEnabled: false, enabled: true },
+    logging: { verbose: false }
+  };
+
+  it("acepta el settings de fábrica v3", () => {
+    expect(S.settings.safeParse(base).success).toBe(true);
+  });
+
+  it("RECHAZA un perfil de alerta que no está en el enum", () => {
+    expect(S.settings.safeParse({ ...base, alerts: { ...base.alerts, profile: "agresivo" } }).success).toBe(
+      false
+    );
+  });
+
+  it("RECHAZA un settings al que le falta un umbral nuevo (cambio de contrato del backend)", () => {
+    const alerts = { ...base.alerts };
+    delete (alerts as Record<string, unknown>).wearWarnPercent;
+    expect(S.settings.safeParse({ ...base, alerts }).success).toBe(false);
+  });
+
+  it("RECHAZA una marca de asistente que no es fecha ni null", () => {
+    expect(S.settings.safeParse({ ...base, onboarding: { completedAt: "ayer" } }).success).toBe(false);
+  });
+
+  it("RECHAZA un settings sin los ajustes nuevos de notificación y autoarranque (v3 ADR-037/038)", () => {
+    const sinToast = { ...base, notifications: { soundEnabled: false } };
+    expect(S.settings.safeParse(sinToast).success).toBe(false);
+    const sinAutoarranque = {
+      ...base,
+      lifecycle: { closeAction: "minimize", closeActionRemembered: false }
+    };
+    expect(S.settings.safeParse(sinAutoarranque).success).toBe(false);
+  });
+});

@@ -13,15 +13,15 @@
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
-  import { trayState } from "$lib/design/health";
+  import { globalStatus, type GlobalStatusKind } from "$lib/design/health";
+  import { healthIcon, type IconName } from "$lib/design/icons";
   import { formatAge } from "$lib/design/format";
   import {
     getAppInfo,
     getAppearanceSettings,
+    getDevices,
     getLogLevel,
-    pauseMonitoring,
     refreshNow,
-    resumeMonitoring,
     subscribe,
     toAppError
   } from "$lib/api";
@@ -34,14 +34,19 @@
   let ready = $state(false);
   let startupError = $state<AppError | null>(null);
 
-  /** Mapa de navegación. Las claves i18n viven en los diccionarios, no aquí. */
-  const SECTIONS = [
-    { id: "/", key: "nav.dashboard" },
-    { id: "/alerts", key: "nav.alerts" },
-    { id: "/events", key: "nav.events" },
-    { id: "/tests", key: "nav.tests" },
-    { id: "/reports", key: "nav.reports" },
-    { id: "/settings", key: "nav.settings" }
+  /** El asistente inicial (US-002) ocupa la ventana entera: sin riel ni barra de herramientas
+   *  (FR-033). El `onMount` de abajo sigue corriendo —el asistente necesita tema, idioma e
+   *  inventario—, solo se omite el `AppShell`. */
+  const esOnboarding = $derived(page.url.pathname === "/onboarding");
+
+  /** Mapa de navegación. Las claves i18n viven en los diccionarios; el icono, en el riel. */
+  const SECTIONS: { id: string; key: string; icon: IconName }[] = [
+    { id: "/", key: "nav.dashboard", icon: "diskStack" },
+    { id: "/alerts", key: "nav.alerts", icon: "alert" },
+    { id: "/events", key: "nav.events", icon: "plug" },
+    { id: "/tests", key: "nav.tests", icon: "flask" },
+    { id: "/reports", key: "nav.reports", icon: "shield" },
+    { id: "/settings", key: "nav.settings", icon: "wear" }
   ];
 
   const sections = $derived(
@@ -49,29 +54,46 @@
       id: s.id,
       href: s.id,
       label: t(s.key),
+      icon: s.icon,
       badge: s.id === "/alerts" ? app.alerts.length || null : null
     }))
   );
 
-  /** El estado global sale de una sola función, nunca se recalcula por pantalla. */
-  const globalState = $derived(
-    trayState({
+  /** El estado global sale de **una sola función** (`globalStatus`) y se presenta en dos sitios —la
+   *  píldora de la `Toolbar` y el pie del riel—, que así no pueden contradecirse. */
+  const status = $derived(
+    globalStatus({
+      loaded: app.loadedAt !== null,
       paused: app.paused,
-      collectorFailure: app.sources.some((s) => s.status === "error"),
       monitoredStates: app.devices.map((d) => d.state)
     })
   );
 
-  /** Cuántos discos monitorizados no están correctos. Alimenta la etiqueta de estado global. */
-  const needAttention = $derived(app.devices.filter((d) => d.state === "warn" || d.state === "crit").length);
-
   const globalLabel = $derived.by(() => {
-    if (app.paused) return t("global.paused");
-    // Sin discos no es "necesita atención": es que no hay nada que vigilar todavía.
-    if (app.devices.length === 0) return t("global.noDevices");
-    if (needAttention === 0) return t("global.allGood");
-    return tp("global.needsAttention", needAttention);
+    switch (status.kind) {
+      case "loading":
+        return t("global.loading");
+      case "paused":
+        return t("global.paused");
+      case "noDevices":
+        return t("global.noDevices");
+      case "ok":
+        return t("global.allGood");
+      case "attention":
+        return tp("global.needsAttention", status.count);
+    }
   });
+
+  const GLOBAL_ICON: Record<GlobalStatusKind, IconName> = {
+    loading: "clock",
+    paused: "clock",
+    noDevices: "shield",
+    ok: "shield",
+    attention: "alert"
+  };
+  const globalIcon = $derived(
+    status.kind === "attention" ? healthIcon[status.state] : GLOBAL_ICON[status.kind]
+  );
 
   const freshness = $derived.by(() => {
     const age = formatAge(app.loadedAt);
@@ -84,7 +106,16 @@
       .at(0) ?? "/"
   );
 
-  const screenTitle = $derived(t(SECTIONS.find((s) => s.id === activeSection)?.key ?? "nav.dashboard"));
+  /** El título de la barra de herramientas sale **de la ruta**: cada `+page.ts` puede exponer
+   *  `title`/`subtitle` en su `load` (el detalle de disco pone el alias); si no, se usa la etiqueta
+   *  de la sección. Corrige el defecto de v2 («Panel general» fijo en todas las pantallas). */
+  const routeTitle = $derived(
+    typeof page.data?.title === "string" && page.data.title ? page.data.title : null
+  );
+  const routeSubtitle = $derived(typeof page.data?.subtitle === "string" ? page.data.subtitle : "");
+  const screenTitle = $derived(
+    routeTitle ?? t(SECTIONS.find((s) => s.id === activeSection)?.key ?? "nav.dashboard")
+  );
 
   /* ---------------------------------------------------------------------------- acerca de (US-061) */
 
@@ -133,8 +164,21 @@
         // el suyo propio.
         setLoggerLevel(await getLogLevel());
 
-        // 2. El inventario lo trae el `load` de cada pantalla (constitución §XIV). Aquí solo se
-        //    escucha: nada de sondeo (ADR-015).
+        // 2. El inventario. El `load` de `/` también lo trae, pero el estado global vive en el chrome
+        //    y debe ser correcto en cualquier ruta de entrada (un enlace directo a `/disks/x` o a
+        //    `/alerts`), no solo cuando se pasa por el panel. Se pide una vez aquí y a partir de ahí
+        //    manda el evento `metrics:updated` (ADR-015, nada de sondeo).
+        if (app.loadedAt === null) {
+          const inv = await getDevices();
+          app.devices = inv.devices;
+          app.excluded = inv.excluded;
+          app.sources = inv.sources;
+          app.paused = inv.paused;
+          app.pausedSince = inv.pausedSince;
+          app.loadedAt = new Date().toISOString();
+        }
+
+        // 3. A partir de aquí solo se escucha.
         unsubscribe = await subscribe({
           "metrics:updated": (p) => {
             app.upsertDevices(p.devices);
@@ -166,14 +210,6 @@
 
     return () => unsubscribe?.();
   });
-
-  const togglePause = async () => {
-    try {
-      await (app.paused ? resumeMonitoring() : pauseMonitoring());
-    } catch (cause) {
-      startupError = toAppError(cause);
-    }
-  };
 </script>
 
 <svelte:head>
@@ -193,29 +229,37 @@
       {/if}
     </div>
   </div>
+{:else if esOnboarding}
+  {#if ready}
+    {@render children?.()}
+  {:else}
+    <div class="flex h-screen items-center justify-center">
+      <span class="text-sm text-fg-dim">{t("common.loading")}</span>
+    </div>
+  {/if}
 {:else}
   <AppShell transitionKey={page.url.pathname}>
     {#snippet sidebar()}
       <Sidebar
         {sections}
-        disks={app.devices}
         active={activeSection}
-        activeDiskId={page.params.id ?? ""}
-        paused={app.paused}
-        footerNote={globalLabel}
-        ontogglepause={togglePause}
+        globalState={status.state}
+        {globalLabel}
+        {globalIcon}
+        globalCount={status.count || null}
+        onabout={abrirAcercaDe}
       />
     {/snippet}
 
     {#snippet toolbar()}
       <Toolbar
         title={screenTitle}
-        {globalState}
+        subtitle={routeSubtitle}
+        globalState={status.state}
         {globalLabel}
         {freshness}
         primaryLabel={t("common.refresh")}
         onprimary={() => refreshNow("all").catch((c) => (startupError = toAppError(c)))}
-        onabout={abrirAcercaDe}
       />
     {/snippet}
 

@@ -204,6 +204,25 @@ pub fn latest_n_values(
     filas.collect()
 }
 
+/// Igual que `latest_n_values` pero para una métrica de **volumen** (`capacity.low/critical` sobre
+/// `volume_free_bytes`, v3).
+pub fn latest_n_values_volume(
+    conn: &Connection,
+    volume_id: &str,
+    metric_key: &str,
+    n: u32,
+) -> rusqlite::Result<Vec<f64>> {
+    let mut stmt = conn.prepare(
+        "SELECT value_real FROM metric_samples
+         WHERE volume_id = ?1 AND metric_key = ?2 AND value_real IS NOT NULL
+         ORDER BY sampled_at_utc DESC LIMIT ?3",
+    )?;
+    let filas = stmt.query_map(params![volume_id, metric_key, i64::from(n)], |row| {
+        row.get(0)
+    })?;
+    filas.collect()
+}
+
 /// La última muestra conocida de una métrica, para calcular frescura (FR-005/FR-006): sin ella no
 /// se puede saber si un dispositivo está `unknown` por falta de lecturas recientes.
 pub fn latest_device_sample(

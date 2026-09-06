@@ -2,15 +2,23 @@
   /** Registro de eventos de Windows (US-021): lista virtualizada con filtros de nivel y
    *  proveedor, detalle con el XML original. El texto del mensaje llega en el idioma de Windows
    *  y se renderiza **como texto, jamás como HTML** (`docs/ui-contract.md` §3.5). */
-  import { CodeOutput, EmptyState, EventRow, FilterBar, VirtualList } from "$lib/components";
+  import { CodeOutput, EmptyState, EventRow, FilterBar, StatusPill, VirtualList } from "$lib/components";
   import { getEventRawXml, getSystemEvents, toAppError } from "$lib/api";
   import { formatDateTime } from "$lib/design/format";
+  import { eventLevelIcon } from "$lib/design/icons";
   import { t } from "$lib/i18n";
-  import type { AppError } from "$lib/design/types";
+  import type { AppError, HealthState } from "$lib/design/types";
   import type { SystemEvent } from "$lib/api";
   import type { PageData } from "./$types";
 
   let { data }: { data: PageData } = $props();
+
+  /** Mismo mapa que `EventRow`: el detalle repite la píldora de texto que la fila ya no lleva. */
+  const NIVEL_A_SALUD: Record<"error" | "warning" | "info", HealthState> = {
+    error: "crit",
+    warning: "warn",
+    info: "unknown"
+  };
 
   /** Los mismos ocho proveedores que vigila el colector (`event_log::PROVEEDORES_VIGILADOS`):
    *  no son texto de interfaz, son identificadores literales del sistema, igual que `target` en
@@ -163,7 +171,15 @@
       <EmptyState kind="empty" title={t("events.detail.empty")} body="" />
     {:else}
       <div class="flex flex-col gap-3 sdm-material rounded-card p-6">
-        <h2 class="m-0 text-sm font-semibold">{t("events.detail.title")}</h2>
+        <div class="flex items-center gap-2">
+          <h2 class="m-0 text-sm font-semibold">{t("events.detail.title")}</h2>
+          <div class="flex-1"></div>
+          <StatusPill
+            state={NIVEL_A_SALUD[seleccionado.level]}
+            label={t(`events.level.${seleccionado.level}`)}
+            icon={eventLevelIcon[seleccionado.level]}
+          />
+        </div>
         <p class="m-0 text-xs text-fg-dim">
           {seleccionado.provider} · {seleccionado.eventId} · {formatDateTime(seleccionado.occurredAt)}
         </p>

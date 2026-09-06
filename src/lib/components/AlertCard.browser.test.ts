@@ -42,4 +42,14 @@ describe("AlertCard", () => {
     await page.getByRole("button").click();
     expect(onselect).toHaveBeenCalledWith("g1");
   });
+
+  it("v3: la píldora de severidad lleva su icono (crit → bolt) y el contador va en `.sdm-num`", async () => {
+    const { container } = await render(AlertCard, {
+      props: { alert: grupoDePrueba({ severity: "crit", count: 7 }) }
+    });
+    expect(container.querySelector('use[href="#i-bolt"]')).not.toBeNull();
+    const contador = page.getByText("×7");
+    await expect.element(contador).toBeInTheDocument();
+    expect(contador.element().classList.contains("sdm-num")).toBe(true);
+  });
 });

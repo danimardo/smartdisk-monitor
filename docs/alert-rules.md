@@ -63,16 +63,16 @@ desconectado generaría cuatro alertas. Véase §3.5.
 |---|---|---|---|---|---|---|
 | `smart.health.failed` | smartctl | `health_passed = false` | crítico inmediato | `health_passed = true` durante 3 ciclos | ninguno: siempre notifica | — |
 | `nvme.critical_warning` | smartctl | `critical_warning ≠ 0` | crítico inmediato | `= 0` durante 3 ciclos | ninguno | bit activo |
-| `smart.media_errors` | smartctl | `media_errors_total` aumenta respecto a la lectura anterior | crítico inmediato | no aumenta durante 24 h | 1 h | — |
+| `smart.media_errors` | smartctl | el **incremento** de `media_errors_total` entre dos lecturas alcanza `settings.alerts.media_errors_warn_per24h` (aviso) / `_crit_per24h` (crítico). El sufijo `Per24h` es histórico: **no** es una ventana de 24 h (ADR-036) | advertencia; **crítico** en el umbral crítico | no aumenta durante 24 h | 1 h | — |
 | `smart.error_log` | smartctl | `error_log_entries_total` aumenta | advertencia; **crítico** si aumenta en 3 ciclos seguidos | no aumenta durante 24 h | 1 h | — |
 | `smart.spare_below_threshold` | smartctl | `available_spare_percent < available_spare_threshold_percent` | crítico | por encima del umbral + 2 puntos durante 3 ciclos | 6 h | — |
-| `smart.wear_high` | smartctl | `percentage_used ≥ 90` | advertencia; **crítico** en `≥ 100` | no se resuelve sola: el desgaste no baja. Se archiva a mano | 7 días | — |
+| `smart.wear_high` | smartctl | `percentage_used ≥ settings.alerts.wear_warn_percent` (fábrica 80) | advertencia; **crítico** en `≥ wear_crit_percent` (fábrica 90) | no se resuelve sola: el desgaste no baja. Se archiva a mano | 7 días | — |
 | `temp.above_vendor_limit` | smartctl | `temperature_celsius > vendorTempLimitC` durante 3 ciclos | advertencia | ≤ límite − 3 °C durante 3 ciclos | 30 min | id. de sensor |
 | `temp.above_vendor_critical` | smartctl | `temperature_celsius ≥ vendorTempCriticalC` | crítico inmediato | ≤ crítico − 5 °C durante 3 ciclos | 15 min | id. de sensor |
-| `temp.above_configured_warn` | smartctl | sin límite del fabricante: `> 70 °C` durante 3 ciclos | advertencia | ≤ 67 °C durante 3 ciclos | 30 min | id. de sensor |
-| `temp.above_configured_crit` | smartctl | sin límite del fabricante: `≥ 80 °C` | crítico inmediato | ≤ 75 °C durante 3 ciclos | 15 min | id. de sensor |
-| `capacity.low` | sistema de archivos | `capacityState()` da `warn` | advertencia | vuelve a `ok` **y** se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
-| `capacity.critical` | sistema de archivos | `capacityState()` da `crit` | crítico | sube a `warn` u `ok` y se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
+| `temp.above_configured_warn` | smartctl | sin límite del fabricante: `> settings.alerts.temp_configured_warn_c` (fábrica 60 °C — ADR-036) durante 3 ciclos | advertencia | ≤ (umbral − 3 °C) durante 3 ciclos | 30 min | id. de sensor |
+| `temp.above_configured_crit` | smartctl | sin límite del fabricante: `≥ settings.alerts.temp_configured_crit_c` (fábrica 70 °C) | crítico inmediato | ≤ (umbral − 5 °C) durante 3 ciclos | 15 min | id. de sensor |
+| `capacity.low` | sistema de archivos | `estado_capacidad()` da `warn` sobre la serie `volume_free_bytes` (ADR-036: umbrales de `settings.alerts.capacity_*`) | advertencia | vuelve a `ok` **y** se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
+| `capacity.critical` | sistema de archivos | `estado_capacidad()` da `crit` | crítico | sube a `warn` u `ok` y se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
 | `device.removed_unexpected` | inventario + `disk` 157 | desaparece sin solicitud de expulsión previa | crítico; **advertencia** si `bus_type = USB` | reaparece el mismo `fingerprint` | ninguno | — |
 | `events.disk_error` | registro de eventos | `disk` 7, `NvmeDisk` 500, `StorageSpaces-Driver` 202/203/209 | crítico | 24 h sin repetición | 1 h | `provider:event_id` |
 | `events.filesystem_error` | registro de eventos | `Ntfs` 55 o 131 | crítico | 24 h sin repetición | 1 h | `provider:event_id` |

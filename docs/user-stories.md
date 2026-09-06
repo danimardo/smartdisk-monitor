@@ -14,17 +14,25 @@ Criterios de aceptación:
 - Si la elevación se rechaza, la aplicación no continúa en un estado parcialmente funcional.
 - Se muestra una explicación comprensible cuando Windows impide la elevación.
 
-### US-002 — Asistente inicial (P0)
+### US-002 — Asistente inicial (P0) · **cubierta** (rediseño v3, `specs/002-rediseno-v3/` US8)
 
 Como usuario quiero configurar la aplicación mediante un asistente para empezar a monitorizar sin conocer SMART.
 
 Criterios de aceptación:
 
-- Aparece cuando no existe una configuración inicial completa.
+- Aparece cuando `settings.onboarding.completedAt` es nulo y no hay configuración previa; una
+  instalación que ya venía configurada se marca como completada sin mostrarlo (FR-043).
+- Cuatro pasos, uno por pantalla (Bienvenida · Discos · Alertas · Listo), sin riel ni barra de
+  herramientas, con «Omitir y usar los valores de fábrica» visible en todos.
 - Enumera los discos detectados y selecciona inicialmente todos los compatibles.
 - Permite excluir discos y asignar alias.
-- Explica los estados no compatible y desconocido.
-- Las elecciones se conservan tras reiniciar.
+- Explica los estados no compatible y desconocido; el disco USB sin SMART se explica como «no es una
+  avería», nunca en rojo.
+- El paso 3 elige un perfil de alerta (Prudente / Equilibrado / Solo lo grave) y ofrece la
+  notificación de Windows y el autoarranque.
+- «Omitir» aplica el perfil Equilibrado, graba la marca y va al panel.
+- Las elecciones se conservan tras reiniciar; se relanza desde Ajustes → «Repetir la configuración
+  inicial» sin borrar datos.
 
 ### US-003 — Preferencias de idioma y tema (P1)
 

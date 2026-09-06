@@ -9,4 +9,9 @@ export type VolumeSummary = { id: string, label: string, driveLetters: Array<str
  * `chkdsk /scan` solo existe en NTFS (T083): la decisión vive en el backend, no se le pide al
  * frontend que repita el criterio comparando `filesystem` a mano.
  */
-chkdskAvailable: boolean, mappingConfidence: MappingConfidence, };
+chkdskAvailable: boolean, 
+/**
+ * `true` para el volumen donde vive Windows. Lo calcula el backend (v3, ADR-036):
+ * `selectHeroDisk()` lo usa y la interfaz no lo infiere.
+ */
+isSystemVolume: boolean, mappingConfidence: MappingConfidence, };

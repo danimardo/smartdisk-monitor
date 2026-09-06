@@ -13,6 +13,7 @@ export { default as DateRangePicker } from "./DateRangePicker.svelte";
 export { default as FilterBar } from "./FilterBar.svelte";
 export { default as VirtualList } from "./VirtualList.svelte";
 
+export { default as Icon } from "./Icon.svelte";
 export { default as StatusPill } from "./StatusPill.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";
 export { default as MetricCard } from "./MetricCard.svelte";
@@ -20,9 +21,11 @@ export { default as DataRow } from "./DataRow.svelte";
 export { default as CapacityBar } from "./CapacityBar.svelte";
 export { default as ProgressBar } from "./ProgressBar.svelte";
 export { default as HealthDonut } from "./HealthDonut.svelte";
+export { default as Sparkline } from "./Sparkline.svelte";
 export { default as TimeSeriesChart } from "./TimeSeriesChart.svelte";
 
 export { default as DiskCard } from "./DiskCard.svelte";
+export { default as HeroPanel } from "./HeroPanel.svelte";
 export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 

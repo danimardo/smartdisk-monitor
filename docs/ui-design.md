@@ -1,9 +1,17 @@
 # Sistema de diseño — reglas de interfaz (VINCULANTES)
 
 Este documento es **vinculante** para cualquier agente (humano o IA) que escriba interfaz en este
-repositorio. Describe cómo construir pantallas con el sistema de diseño aprobado: **v2, material
-translúcido** (evolución de la dirección 1b). Si algo no está aquí, no lo inventes: pregunta o propón
+repositorio. Describe cómo construir pantallas con el sistema de diseño aprobado: **v3, «escena de
+datos»** sobre el material translúcido de v2 (paleta propia «Ciruela», tipografía de «display» para
+cifras grandes, riel de navegación; ADR-034). Si algo no está aquí, no lo inventes: pregunta o propón
 una extensión del sistema.
+
+> **v2 → v3 (ADR-034/ADR-035).** No es una reescritura: el material de tres capas, los radios
+> concéntricos, el movimiento, el catálogo cerrado y todas las reglas de producto siguen intactos.
+> Cambian la paleta (acento morado de tinta, crítico bermellón), `--sdm-on-accent` (tinta en oscuro,
+> ya no blanco), se añaden `.sdm-display` y tres componentes (`Icon`, `Sparkline`, `HeroPanel`), y la
+> `Sidebar` pasa a un riel de 74 px. La herencia del acento de Windows deja de ser el comportamiento
+> de fábrica y pasa a un interruptor apagado por defecto.
 
 Es el par visual de `docs/ui-contract.md`: aquel dice **qué** puede pedirle la interfaz al backend,
 este dice **cómo** se pinta lo que recibe. Referencias funcionales: `docs/product-specification.md`,
@@ -23,12 +31,14 @@ ninguna de estas rutas.
 | Los mismos tokens, legibles por herramientas | `src/design-system/tokens.json` |
 | Mapeo de tokens a utilidades Tailwind | `tailwind.config.cjs` (raíz del proyecto) |
 | **Catálogo de componentes** | `src/lib/components/` — se importa del barrel `$lib/components` |
-| Tipos, formato, salud, tema y acento | `src/lib/design/` |
+| Tipos, formato, salud, iconos, tema y acento | `src/lib/design/` (incluye `icons.ts`) |
 | Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
 | Tipografía empotrada | `src/design-system/fonts/` |
-| **Boceto aprobado** (4 pantallas, ambos temas) | `design/SmartDisk Monitor v2.dc.html` |
-| Guía visual de tokens (estilo v1, sin refrescar) | `design/Sistema de diseno SmartDisk.dc.html` |
-| Exploración inicial 1a/1b, referencia histórica | `design/Bocetos SmartDisk Monitor.dc.html` |
+| Juego de iconos de línea (sprite, 15 símbolos) | montado en `src/lib/components/AppShell.svelte`; se usa vía `<Icon name="…" />` |
+| **Boceto aprobado v3** (4 pantallas, ambos temas) | `design/propuesta-redisenov2/mockups/smartdisk-v3.html` |
+| Hoja de contacto de los iconos | `design/propuesta-redisenov2/mockups/icons-hoja-de-contacto.html` |
+| Fichas de cambio del rediseño v3 | `design/propuesta-redisenov2/cambios/` · spec: `specs/002-rediseno-v3/` |
+| Boceto v2 (referencia histórica) | `design/SmartDisk Monitor v2.dc.html` |
 | Comandos y eventos que la UI puede llamar | `docs/ui-contract.md` |
 | Verificadores que fallan la integración | `pnpm verify:tokens`, `pnpm verify:i18n` |
 
@@ -65,9 +75,16 @@ tailwind.config.cjs              ← mapeo de tokens a utilidades
 - El tema se conmuta con `document.documentElement.dataset.theme = "light" | "dark"`; lo gestiona
   `$lib/design/theme.svelte.ts`. **Todo componente debe verse correcto en ambos temas sin condicionales.**
 - Preferencia de tema y de idioma se persisten en la tabla `settings`, no en `localStorage`.
-- **El acento lo hereda de Windows.** `applySystemAccent()` (`$lib/design/accent.ts`) sobreescribe
-  los tokens de acento al arrancar. Nunca codifiques el azul: el respaldo ya vive en `tokens.css`.
-  El acento **no** comunica salud.
+- **El acento es propio: morado «Ciruela»** (`#7a3f9d` claro / `#c79aec` oscuro), definido en
+  `tokens.css`. Heredar el acento de Windows es un **interruptor de Ajustes → Apariencia, apagado de
+  fábrica** (`settings.appearance.useSystemAccent`, ADR-035): al encenderlo, `applySystemAccent()`
+  (`$lib/design/accent.ts`) sobrescribe los tres tokens de acento, siempre corregidos a AA por
+  `accessibleAccent()`/`accentOnSurface()`; al apagarlo, `clearSystemAccent()` restaura el morado.
+  Nunca codifiques un color de acento a mano. El acento **no** comunica salud.
+- **`--sdm-on-accent` no es blanco en tema oscuro.** El acento oscuro es claro y el texto blanco
+  encima daba 2,27:1. Todo texto o icono sobre el acento —o sobre un color de estado— usa
+  `text-fg-onAccent` (`var(--sdm-on-accent)`), **nunca `text-white`**. Excepciones (son brillos, no
+  tinta): el filo interior de `ProgressBar` en modo `display` y el punto del `Switch` activo.
 - **Hay dos tokens de acento y no son intercambiables:**
 
   | Token | Uso | Contra qué se mide su contraste |
@@ -99,6 +116,16 @@ tailwind.config.cjs              ← mapeo de tokens a utilidades
 - El lienzo lleva un degradado muy tenue (`--sdm-bg` → `--sdm-bg-2`): es lo que da vida al desenfoque.
   No lo sustituyas por un color plano ni por un degradado de color saturado.
 - Peso tipográfico máximo **600**. La jerarquía la aporta el material y el tamaño, no la grasa.
+- **Tipografía de «display» (v3).** Para **cifras y titulares**, nunca para texto corrido, se usa la
+  clase `.sdm-display` (`--sdm-font-display` + peso 600 + `tabular-nums` + `--sdm-tracking-display`).
+  Sus usos: la cifra del héroe (`--sdm-text-hero`, 76 px), el progreso de una prueba
+  (`--sdm-text-display`, 58 px), las cifras de `MetricCard`/`DiskCard`, el alias de la cabecera del
+  detalle y el título de la barra de herramientas. `--sdm-font-display` hoy resuelve a la familia
+  sans ya empotrada: no se empaqueta una segunda familia (ADR-034).
+- **El riel de navegación (v3).** La `Sidebar` es un riel de `--sdm-rail-width` (74 px) solo con
+  iconos; cada botón lleva `title` **y** `aria-label`. No lleva texto de sección ni lista de discos.
+- **Crítico bermellón.** `--sdm-crit` se desplazó al bermellón (`#b03434` / `#ef8080`) para no
+  confundirse con el acento morado. Sigue siendo el único rojo, y `unknown` sigue sin ser nunca rojo.
 - La escala tipográfica **no se toca sin volver a medir**. Parece pequeña sobre el papel y no lo es:
   Instrument Sans tiene una altura de x de 0,5175 em frente a los 0,50 de Segoe UI, así que el cuerpo
   denso de 12,5 px equivale ópticamente a Segoe UI 12,9 px, por encima de los 12 px (9 pt) que
@@ -124,20 +151,23 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 
 | Componente | Para qué | Notas de uso obligatorias |
 |---|---|---|
-| `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras |
-| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado |
-| `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado |
-| `MetricCard` | cifra destacada + procedencia | `value={null}` ⇒ "No disponible", **compuesto como texto en `text-base`, no como cifra**: a 27 px no cabe en ninguna celda realista. Es un bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
+| `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
+| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
+| `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
+| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un `polyline` por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
+| `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
+| `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
+| `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
 | `CapacityBar` | ocupación de volumen | el color lo decide `capacityState()`, no el llamante |
-| `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante |
-| `Sidebar` | navegación principal + lista de discos | material de chrome; la selección se marca con material elevado y punto de acento; navega con `<a href>`, **nunca** con callback |
-| `Toolbar` | barra de herramientas unificada | título y subtítulo de pantalla, controles contextuales, estado global y acción primaria |
+| `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante; prop `emphasis` (`inline` por defecto, `display` para la prueba en curso) |
+| `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
+| `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |
 | `SegmentedControl` | intervalos 24 h / 7 d / 30 d / personalizado | |
-| `DiskCard` | tarjeta de disco del panel | recibe `href`; sin él se renderiza como bloque no interactivo |
-| `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica |
-| `AlertCard` | grupo de alertas en lista | contador `×N`; claves técnicas solo en el detalle |
-| `EventRow` | evento de Windows | etiqueta "asociación inferida" cuando `mappingConfidence !== "exact"` |
+| `DiskCard` | tarjeta de disco del panel | recibe `href`; cabecera de 52 px que hereda el color del estado con `sparkline` de temperatura de fondo (`temperatureSeries` opcional); dato ausente como «—» discreto, no «No disponible» a 23 px |
+| `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
+| `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
+| `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
 | `TimeSeriesChart` | gráficas históricas | huecos como huecos; umbral del fabricante discontinuo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
@@ -169,6 +199,10 @@ Excepción ya autorizada: los cuatro componentes de la tabla "Autorizados y pend
 no requieren nueva decisión, solo revisión visual antes de darlos por terminados.
 Un componente nuevo debe: consumir solo tokens, funcionar en ambos temas, aceptar `null` en todo dato
 opcional, tener etiqueta accesible y exportarse en `src/lib/components/index.ts`.
+
+**Componentes añadidos en v3** (ADR-034): `Icon`, `Sparkline` y `HeroPanel`. Cada uno cumple el
+criterio (a)+(b) y su justificación completa está en `design/propuesta-redisenov2/cambios/componentes/`
+y en `specs/002-rediseno-v3/`. Ninguno del catálogo se elimina.
 
 ## 4. Reglas de composición de pantalla
 
@@ -278,16 +312,36 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
 
 ## 7. Pantallas y su composición aprobada
 
-1. **Panel general** — `HealthDonut` + leyenda + tarjeta de atención a la izquierda; rejilla 2×2 de `DiskCard`;
-   tarjeta "Sucesos recientes" con `EventRow` al pie. La lista de discos vive además en la `Sidebar`.
-2. **Detalle de disco** — cabecera con alias y estado; el `SegmentedControl` de intervalo va en la `Toolbar`; fila de 4 `MetricCard`;
-   `TimeSeriesChart` de temperatura (2/3) + panel de contadores con `DataRow` (1/3) y acciones al pie.
+1. **Panel general** (v3) — `HeroPanel` con el disco que necesita atención (`selectHeroDisk()`) y su
+   serie de temperatura de fondo; rejilla `repeat(auto-fill, minmax(272px, 1fr))` de `DiskCard`; fila
+   inferior `1fr 300px` con «Sucesos del sistema» (`EventRow`) y «Reparto de estados» (composición de
+   pantalla, sustituye a `HealthDonut` en el panel — `HealthDonut` sigue en el catálogo). La región
+   entera hace scroll; **sin `VirtualList`** en la rejilla (véase `open-questions.md` §U). La lista de
+   discos ya **no** vive en la `Sidebar` (riel de solo iconos, v3).
+2. **Detalle de disco** (v3) — cabecera de identidad (`Card` de una fila: cuadrado de `Icon` con el
+   color del estado, alias `.sdm-display`, `StatusPill` con icono, línea de identidad, botón «Probar
+   disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con
+   `TimeSeriesChart` de temperatura y panel de contadores con `DataRow`. El `SegmentedControl` de
+   intervalo va **junto a la gráfica**, ya no en la `Toolbar`.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
-   rejilla de hechos, acciones (Reconocer / Silenciar / Archivar) y cronología de ocurrencias.
-4. **Pruebas y diagnóstico** — tres tarjetas de prueba; tarjeta de ejecución en curso con `ProgressBar` y
-   cinco métricas; aviso ámbar de parada automática; historial de `test_runs`.
-5. **Informes**, **Ajustes** y **asistente inicial** (US-002) están pendientes de diseño: compón con este mismo
-   catálogo y pide revisión antes de introducir patrones nuevos.
+   rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
+   (Reconocer / Silenciar / Archivar) y cronología de ocurrencias.
+4. **Pruebas y diagnóstico** (v3) — **si hay una prueba en curso**, su bloque va arriba y a ancho
+   completo: cabecera con píldora «Prueba en curso» + tipo de prueba `.sdm-display` + cifra de progreso
+   a `text-display` (58 px, a `text-metric` por debajo de 1100 px) + botón Cancelar; `ProgressBar
+   emphasis="display"`; rejilla de métricas en cuadros `bg-glass-3`; aviso de parada automática en
+   `bg-warn-soft` con `Icon` (nunca un badge `text-white`). Debajo, las tres tarjetas de prueba (cada
+   una con su cuadrado de `Icon`, `testIcon`), y el historial con columna de icono de estado. Sin
+   prueba en curso, el bloque no se muestra y las tarjetas suben.
+5. **Ajustes** — secciones apiladas, cada una en su `Card`; controles internos sobre `bg-glass-3`
+   (no material sobre material). «Borrar todos los datos» separada al final con `border="crit"` y
+   ~32 px extra de separación; el fondo no se tiñe.
+6. **Asistente inicial** (`/onboarding`, US-002, v3) — **sin `AppShell`**: `+layout.svelte` omite el
+   riel y la barra de herramientas en esta ruta. Cabecera propia de 56 px (logo, indicador de paso,
+   «Omitir y usar los valores de fábrica» siempre visible), cuerpo `max-w-[1000px]` centrado, pie de
+   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla. El
+   guardián de redirección vive en `+layout.ts` (`open-questions.md` §V).
+7. **Informes**: hereda tokens; sin composición nueva.
 
 ### Comportamiento con muchos discos
 
@@ -296,12 +350,13 @@ puede tener veinte o más. Reglas obligatorias, no opcionales:
 
 - La lista de discos de la `Sidebar` tiene su propio `overflow-y: auto`; la navegación principal y el
   estado global **nunca** hacen scroll con ella.
-- El panel general pasa de rejilla fija 2×2 a `repeat(auto-fill, minmax(460px, 1fr))` (véase §4.0.bis:
-  460 es el ancho por debajo del cual las cuatro métricas dejan de caber).
-- A partir de **12 discos monitorizados**, `DiskCard` usa su variante compacta (una sola fila de
-  métricas, sin gráfica en miniatura) y el panel muestra primero los que no están en `ok`.
-- `HealthDonut` cuenta solo los discos monitorizados. Los excluidos por el usuario no aparecen en el
-  reparto ni en el recuento; se listan aparte, como exige US-011.
+- El panel general usa rejilla `repeat(auto-fill, minmax(272px, 1fr))` (v3; la `DiskCard` v3 encaja
+  tres magnitudes y la barra de capacidad en 272 px).
+- A partir de **12 discos monitorizados**, `DiskCard` usa su variante compacta: **sin la sparkline de
+  temperatura de cabecera** (`conSparklines = devices.length <= 12`). Es también lo que mantiene
+  SC-006 sin virtualizar la rejilla (`open-questions.md` §U); medido en `e2e/ui/rendimiento.spec.ts`.
+- El «Reparto de estados» y el recuento cuentan solo los discos monitorizados. Los excluidos por el
+  usuario no aparecen; se listan aparte, como exige US-011.
 
 ## 8. Definición de terminado para una pantalla
 

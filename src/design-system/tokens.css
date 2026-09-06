@@ -40,6 +40,11 @@
   /* ---- Tipografía ---- */
   --sdm-font-sans: "Instrument Sans", system-ui, "Segoe UI Variable", "Segoe UI", sans-serif;
   --sdm-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* Familia de "display" para cifras y titulares grandes (v3, ADR-034). Hoy resuelve a la familia
+     sans ya empotrada: se descartó empaquetar una segunda familia (Bricolage Grotesque) para no
+     ampliar la superficie de un binario privilegiado. `.sdm-display` es el único punto de cambio si
+     esa decisión se revisa. */
+  --sdm-font-display: var(--sdm-font-sans);
 
   --sdm-text-2xs: 0.6875rem;    /* 11px  etiquetas de píldora y unidades */
   --sdm-text-xs: 0.75rem;       /* 12px  metadatos */
@@ -49,14 +54,17 @@
   --sdm-text-xl: 1.25rem;       /* 20px  título de pantalla */
   --sdm-text-2xl: 1.3125rem;    /* 21px  titular de alerta */
   --sdm-text-metric: 1.6875rem; /* 27px  cifra grande */
+  --sdm-text-display: 3.625rem; /* 58px  cifra de progreso de prueba (solo con .sdm-display) */
+  --sdm-text-hero: 4.75rem;     /* 76px  temperatura del héroe del panel (solo con .sdm-display) */
 
-  /* En v2 el peso máximo es 600: el material aporta la jerarquía, no la grasa tipográfica. */
+  /* En v2/v3 el peso máximo es 600: el material aporta la jerarquía, no la grasa tipográfica. */
   --sdm-weight-regular: 400;
   --sdm-weight-medium: 500;
   --sdm-weight-semibold: 600;
 
   --sdm-tracking-tight: -0.02em;
   --sdm-tracking-metric: -0.03em;
+  --sdm-tracking-display: -0.045em;  /* acompaña a .sdm-display en cifras a partir de 22px */
 
   /* ---- Espaciado (escala de 4; v2 respira más) ---- */
   --sdm-space-1: 4px;
@@ -66,6 +74,10 @@
   --sdm-space-5: 18px;   /* gap canónico entre tarjetas */
   --sdm-space-6: 20px;   /* padding de pantalla */
   --sdm-space-8: 32px;
+
+  /* ---- Dimensiones de composición fijas (v3) ---- */
+  --sdm-rail-width: 74px;    /* ancho del riel de la Sidebar (sustituye a los 250px de v2) */
+  --sdm-hero-height: 246px;  /* alto del HeroPanel del panel general */
 
   /* ---- Radios concéntricos ----
      Regla: el radio interior = radio exterior − padding. 18 → 13 → 9 → cápsula. */
@@ -87,6 +99,11 @@
   --sdm-blur-overlay: 44px;  /* diálogos */
   --sdm-saturate: 180%;
 
+  /* ---- Iconografía de línea (v3) ----
+     El juego de iconos hereda currentColor y no fija ningún color. Solo fija estos dos valores. */
+  --sdm-icon-stroke: 1.7;   /* stroke-width de todos los iconos de línea */
+  --sdm-icon-size: 24px;    /* viewBox de referencia; se renderizan a 12-28px */
+
   /* ---- Movimiento: elástico y breve ---- */
   --sdm-duration-fast: 140ms;
   --sdm-duration-base: 220ms;
@@ -99,22 +116,24 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --sdm-bg: #e9ebf0;
-  --sdm-bg-2: #dfe2ea;         /* extremo del degradado del lienzo */
+  /* v3 — paleta "Ciruela" (ADR-034). Neutros malva y acento morado de tinta. Ratios de contraste
+     medidos sobre el material compuesto en docs/open-questions.md; mínimo exigido 4,5:1. */
+  --sdm-bg: #efeaf1;
+  --sdm-bg-2: #e6dfe9;         /* extremo del degradado del lienzo */
 
   /* Capas de material. `glass` lleva backdrop-filter; `solid` es el respaldo sin soporte. */
   --sdm-glass: rgba(255, 255, 255, 0.72);
   --sdm-glass-2: rgba(255, 255, 255, 0.5);
-  --sdm-glass-3: rgba(120, 124, 140, 0.1);   /* pistas de barra, bloques internos */
-  --sdm-solid: #fdfdfe;
+  --sdm-glass-3: rgba(124, 114, 128, 0.1);   /* pistas de barra, bloques internos */
+  --sdm-solid: #fdfcfe;
 
-  --sdm-hairline: rgba(22, 24, 32, 0.09);
+  --sdm-hairline: rgba(30, 23, 35, 0.09);
   --sdm-highlight: rgba(255, 255, 255, 0.9); /* brillo superior de 1px */
-  --sdm-scrim: rgba(10, 10, 14, 0.34);       /* fondo de diálogo */
+  --sdm-scrim: rgba(14, 10, 16, 0.36);       /* fondo de diálogo */
 
-  --sdm-text: #191b22;
-  --sdm-text-dim: #5f6371;
-  --sdm-text-faint: #6a6f7b;
+  --sdm-text: #1e1723;
+  --sdm-text-dim: #635a6b;
+  --sdm-text-faint: #6c6274;
   --sdm-on-accent: #ffffff;
 
   /* Acento: se sobreescribe en runtime con el color de acento de Windows (véase accent.ts).
@@ -127,24 +146,28 @@
                         casi negra en oscuro, así que NO puede ser el mismo color en ambos temas.
      Un solo color no sirve para las dos cosas: el azul #0078d4 de Windows da 4,31:1 como texto
      sobre el material claro, por debajo de AA. Medido en tools/accent-check.py. */
-  --sdm-accent: #0067c0;
-  --sdm-accent-hi: #1a7cd4;    /* extremo claro del degradado vertical del botón */
-  --sdm-accent-soft: rgba(0, 103, 192, 0.12);
-  --sdm-accent-fg: #0067c0;    /* 5,40:1 sobre el material claro */
+  /* Acento morado de tinta (v3). #7a3f9d da 6,53:1 sobre el material claro, así que sirve de fondo
+     (--sdm-accent) y de texto (--sdm-accent-fg). Con el interruptor "usar el acento de Windows"
+     encendido, accent.ts sobrescribe estos tres tokens en runtime. */
+  --sdm-accent: #7a3f9d;
+  --sdm-accent-hi: #8b4bb0;    /* extremo claro del degradado vertical del botón */
+  --sdm-accent-soft: rgba(122, 63, 157, 0.12);
+  --sdm-accent-fg: #7a3f9d;    /* 6,53:1 sobre el material claro */
 
   /* Salud suavizada: menos saturación para convivir con el material, manteniendo 4.5:1 como texto
-     de píldora sobre el material claro. Verificado con AA; no los aclares. */
+     de píldora sobre el material claro. Verificado con AA; no los aclares. El crítico se desplaza al
+     bermellón para no confundirse con el acento morado. */
   --sdm-ok: #2f7256;
   --sdm-ok-soft: rgba(67, 144, 111, 0.13);
   --sdm-warn: #7d5619;
   --sdm-warn-soft: rgba(183, 129, 58, 0.14);
-  --sdm-crit: #a83d45;
-  --sdm-crit-soft: rgba(194, 90, 96, 0.13);
-  --sdm-unknown: #5d616d;
-  --sdm-unknown-soft: rgba(138, 141, 153, 0.13);
+  --sdm-crit: #b03434;
+  --sdm-crit-soft: rgba(176, 52, 52, 0.12);
+  --sdm-unknown: #635c69;
+  --sdm-unknown-soft: rgba(99, 92, 105, 0.11);
 
-  --sdm-shadow: 0 1px 1px rgba(20, 22, 30, 0.05), 0 8px 22px -14px rgba(20, 22, 30, 0.28);
-  --sdm-shadow-lift: 0 2px 4px rgba(20, 22, 30, 0.06), 0 24px 60px -22px rgba(20, 22, 30, 0.42);
+  --sdm-shadow: 0 1px 1px rgba(24, 18, 28, 0.05), 0 8px 22px -14px rgba(24, 18, 28, 0.28);
+  --sdm-shadow-lift: 0 2px 4px rgba(24, 18, 28, 0.06), 0 24px 60px -22px rgba(24, 18, 28, 0.42);
   --sdm-focus-ring: 0 0 0 3px color-mix(in srgb, var(--sdm-accent) 40%, transparent);
 }
 
@@ -152,36 +175,39 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --sdm-bg: #101014;
-  --sdm-bg-2: #16161c;
+  /* v3 — paleta "Ciruela" en oscuro. Atención: --sdm-on-accent deja de ser blanco (daba 2,27:1
+     sobre el acento claro); pasa a tinta. Todo texto sobre el acento usa --sdm-on-accent, nunca
+     text-white (ADR-034, docs/00-tokens §2). */
+  --sdm-bg: #130f16;
+  --sdm-bg-2: #19141d;
 
-  --sdm-glass: rgba(42, 42, 50, 0.66);
-  --sdm-glass-2: rgba(58, 58, 68, 0.42);
+  --sdm-glass: rgba(48, 42, 52, 0.66);
+  --sdm-glass-2: rgba(64, 56, 68, 0.42);
   --sdm-glass-3: rgba(255, 255, 255, 0.06);
-  --sdm-solid: #1b1b21;
+  --sdm-solid: #1c1620;
 
   --sdm-hairline: rgba(255, 255, 255, 0.09);
   --sdm-highlight: rgba(255, 255, 255, 0.13);
-  --sdm-scrim: rgba(0, 0, 0, 0.5);
+  --sdm-scrim: rgba(0, 0, 0, 0.52);
 
-  --sdm-text: #f2f2f6;
-  --sdm-text-dim: #a2a4b0;
-  --sdm-text-faint: #9195a1;
-  --sdm-on-accent: #ffffff;
+  --sdm-text: #f4f0f6;
+  --sdm-text-dim: #a89eb0;
+  --sdm-text-faint: #a29aa8;
+  --sdm-on-accent: #20132a;    /* 7,80:1 sobre el acento oscuro */
 
-  --sdm-accent: #3d95ea;
-  --sdm-accent-hi: #5aa8f2;
-  --sdm-accent-soft: rgba(61, 149, 234, 0.18);
-  --sdm-accent-fg: #3d95ea;    /* 5,09:1 sobre el material oscuro */
+  --sdm-accent: #c79aec;
+  --sdm-accent-hi: #d4aef5;
+  --sdm-accent-soft: rgba(199, 154, 236, 0.18);
+  --sdm-accent-fg: #c79aec;    /* 6,89:1 sobre el material oscuro */
 
   --sdm-ok: #6cc79c;
   --sdm-ok-soft: rgba(108, 199, 156, 0.16);
   --sdm-warn: #e0b473;
   --sdm-warn-soft: rgba(224, 180, 115, 0.16);
-  --sdm-crit: #e88b90;
-  --sdm-crit-soft: rgba(232, 139, 144, 0.16);
-  --sdm-unknown: #9396a2;
-  --sdm-unknown-soft: rgba(147, 150, 162, 0.14);
+  --sdm-crit: #ef8080;
+  --sdm-crit-soft: rgba(239, 128, 128, 0.16);
+  --sdm-unknown: #a8a0b0;
+  --sdm-unknown-soft: rgba(168, 160, 176, 0.14);
 
   --sdm-shadow: 0 1px 1px rgba(0, 0, 0, 0.3), 0 10px 26px -16px rgba(0, 0, 0, 0.7);
   --sdm-shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 28px 70px -24px rgba(0, 0, 0, 0.85);
@@ -272,6 +298,16 @@ a:hover {
 .sdm-num {
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--sdm-tracking-tight);
+}
+
+/* Cifras y titulares de "display" (v3): nunca para texto corrido.
+   Da jerarquía sin tocar el peso (sigue topado en 600) ni inventar una negrita 700. */
+.sdm-display {
+  font-family: var(--sdm-font-display);
+  font-weight: var(--sdm-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--sdm-tracking-display);
+  line-height: 1;
 }
 
 /* ---- Comportamiento de aplicación nativa (docs/open-questions.md J.45) ----

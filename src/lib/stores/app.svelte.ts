@@ -6,6 +6,7 @@
 
 import type { AlertGroup, DiskSummary } from "$lib/design/types";
 import type { SourceHealth } from "$lib/api";
+import type { Punto } from "$lib/design/series";
 
 class AppState {
   devices = $state<DiskSummary[]>([]);
@@ -19,6 +20,11 @@ class AppState {
   /** Igual que `loadedAt`, pero para la pantalla de alertas: se carga por separado porque no toda
    *  navegación pasa antes por el panel general. */
   alertsLoadedAt = $state<string | null>(null);
+
+  /** Caché de la serie de temperatura de 24 h por disco (v3): el panel la pide **perezosamente**
+   *  por tarjeta visible tras el primer render, y se guarda aquí para no repetir la petición al
+   *  re-montar filas durante el scroll. Clave: `device.id`. */
+  temperatureSeries = $state<Record<string, Punto[]>>({});
 
   /** Reemplaza por identificador. Los eventos traen el objeto completo, no un parche. */
   upsertDevices(incoming: DiskSummary[]) {

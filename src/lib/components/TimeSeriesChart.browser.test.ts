@@ -67,6 +67,8 @@ describe("TimeSeriesChart", () => {
         points: [{ t: 0, v: 10 }],
         from: 0,
         to: 1000,
+        min: 0,
+        max: 100,
         warnThreshold: 70,
         warnLabel: "Aviso ≥ 70 °C",
         critThreshold: 80,
@@ -77,5 +79,58 @@ describe("TimeSeriesChart", () => {
     await expect.element(page.getByText("Crítico ≥ 80 °C")).toBeInTheDocument();
     // Dos zonas de fondo (aviso y crítico) más las bandas de hueco/gráfica: al menos dos rects.
     expect(container.querySelectorAll("rect").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("v3: dibuja un eje Y con cuatro marcas numéricas fuera del área de trazo", async () => {
+    const { container } = await render(TimeSeriesChart, {
+      props: {
+        points: [
+          { t: 0, v: 40 },
+          { t: 1000, v: 44 }
+        ],
+        from: 0,
+        to: 1000
+      }
+    });
+    const textos = [...container.querySelectorAll("text")].filter(
+      (el) => el.getAttribute("text-anchor") === "end"
+    );
+    expect(textos).toHaveLength(4);
+  });
+
+  it("v3: el trazo se dibuja (regresión — la gráfica salía vacía en v2)", async () => {
+    const { container } = await render(TimeSeriesChart, {
+      props: {
+        points: [
+          { t: 0, v: 41 },
+          { t: 100, v: 42 },
+          { t: 200, v: 41 },
+          { t: 300, v: null },
+          { t: 700, v: 43 },
+          { t: 800, v: 44 },
+          { t: 900, v: 43 }
+        ],
+        from: 0,
+        to: 900,
+        expectedIntervalMs: 100
+      }
+    });
+    // dos tramos continuos ⇒ dos trazos, no un rectángulo hueco
+    expect(container.querySelectorAll("polyline").length).toBe(2);
+  });
+
+  it("v3: el hueco lleva su leyenda con el rango de horas", async () => {
+    await render(TimeSeriesChart, {
+      props: {
+        points: [
+          { t: Date.parse("2026-09-06T08:00:00Z"), v: 41 },
+          { t: Date.parse("2026-09-06T14:00:00Z"), v: 43 }
+        ],
+        from: Date.parse("2026-09-06T08:00:00Z"),
+        to: Date.parse("2026-09-06T14:00:00Z"),
+        expectedIntervalMs: 60_000
+      }
+    });
+    await expect.element(page.getByText(/sin datos/)).toBeInTheDocument();
   });
 });

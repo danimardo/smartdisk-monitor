@@ -99,7 +99,7 @@ interface AppearanceSettings {
   theme: "light" | "dark" | "system";
   language: "es" | "en" | null;   // null = seguir al sistema
   systemLocale: string;           // BCP-47 de Windows, p. ej. "es-ES". NO usar navigator.language
-  useSystemAccent: boolean;
+  useSystemAccent: boolean;       // valor de fábrica: false (v3, ADR-035) — la app estrena paleta propia
 }
 
 invoke<WindowsAccent>("get_system_accent_color")   // error si el usuario lo tiene desactivado
@@ -120,13 +120,27 @@ interface Settings {
     discoverySeconds: number;     // 60 s de fábrica, 30-600
   };
   alerts: {
-    tempConfiguredWarnC: number;  // 70 de fábrica, 40-95 — solo se aplica sin límite del fabricante
-    tempConfiguredCritC: number;  // 80 de fábrica, entre tempConfiguredWarnC y 100
+    profile: "cautious" | "balanced" | "quiet" | "custom";  // "balanced" de fábrica (ADR-036). Elegir un perfil concreto reescribe los 12 umbrales; editar un umbral a mano ⇒ "custom"
+    tempConfiguredWarnC: number;  // 60 de fábrica (ADR-036), 40-95 — solo sin límite del fabricante
+    tempConfiguredCritC: number;  // 70 de fábrica, entre tempConfiguredWarnC y 100
+    wearWarnPercent: number;      // 80 de fábrica, 50-99
+    wearCritPercent: number;      // 90 de fábrica, entre wearWarnPercent y 100
     capacityWarnPercent: number;  // 10 de fábrica, 1-50 (C.1/ADR-019)
     capacityCritPercent: number;  // 5 de fábrica, 1-50, menor que capacityWarnPercent
     capacityAbsoluteFloorMinCapacityBytes: number;  // 256 GiB de fábrica: a partir de aquí también cuenta el suelo absoluto
     capacityAbsoluteFloorWarnBytes: number;         // 20 GiB de fábrica
     capacityAbsoluteFloorCritBytes: number;         // 10 GiB de fábrica, menor que el de aviso
+    mediaErrorsWarnPer24h: number;  // 1 de fábrica, 1-1000. Nombre histórico: es el incremento del contador que basta para avisar, no una ventana de 24 h (ADR-036)
+    mediaErrorsCritPer24h: number;  // 5 de fábrica, entre el de aviso y 1000
+    driverRetryWarnPer24h: number;  // 5 de fábrica, 1-1000. Aún sin consumidor: la regla events.* necesita el colector de eventos
+    driverRetryCritPer24h: number;  // 12 de fábrica, entre el de aviso y 1000
+  };
+  onboarding: {
+    // ISO-8601 UTC o null. null ⇒ el guardián de `+layout.ts` redirige a `/onboarding` al arrancar,
+    // salvo que ya exista configuración previa (FR-043), en cuyo caso lo graba solo. Se escribe con
+    // `set_setting("settings.onboarding.completed_at", <fecha>|null)` (clave en la lista blanca desde
+    // PR 5). «Repetir la configuración inicial» de Ajustes lo pone a null.
+    completedAt: string | null;
   };
   retention: {
     rawDays: number;              // 7 de fábrica, 1-30 (J.14)
@@ -138,9 +152,13 @@ interface Settings {
   lifecycle: {
     closeAction: "minimize" | "exit";   // "minimize" de fábrica
     closeActionRemembered: boolean;
+    startWithSystem: boolean;     // false de fábrica; al activarlo se registra una tarea programada
+                                  //   elevada (`schtasks`, ADR-038). Clave: `lifecycle.start_with_system`
   };
   notifications: {
     soundEnabled: boolean;        // false de fábrica (US-072)
+    enabled: boolean;             // true de fábrica; false oculta el toast sin pausar (ADR-037).
+                                  //   Clave: `notifications.enabled`
   };
   logging: {
     verbose: boolean;             // ver `set_log_level`, §3.9: no se cambia con `set_setting`
@@ -154,8 +172,9 @@ valor legal. La apariencia (`theme`/`language`/`useSystemAccent`) no vive en `Se
 teniendo su propio `get_appearance_settings()`; se persiste con el mismo `set_setting(key, value)`
 genérico, con las claves `settings.appearance.theme`, `settings.appearance.language` y
 `settings.appearance.use_system_accent`. `reset_settings` con `scope: "all"` también restaura
-`lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio; nunca toca la
-apariencia.
+`lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio (y al borrar
+`lifecycle.start_with_system` también quita la tarea programada de autoarranque); nunca toca la
+apariencia ni `settings.onboarding.completedAt`.
 
 ### 3.2 Inventario
 

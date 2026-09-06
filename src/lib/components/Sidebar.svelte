@@ -1,126 +1,103 @@
 <script lang="ts">
-  /** Barra lateral de material (v2): secciones de navegación y lista de discos monitorizados
-   *  con su punto de estado y temperatura. Sustituye a las pestañas superiores de v1.
-   *  La selección se marca con material elevado + punto de acento, nunca con una barra de color.
+  /** Riel de navegación (v3, ADR-034). Sustituye a la barra de 250 px con etiquetas y lista de
+   *  discos por un riel de 74 px solo con iconos: devuelve 176 px de ancho al contenido, que es
+   *  donde estaba el problema a 1024 px.
    *
-   *  Navega con **enlaces reales** (constitución §XIV). Un `onclick` con `goto()` destruiría el
-   *  ctrl+clic, el menú contextual y el anuncio como enlace de un lector de pantalla. */
-  import StatusDot from "./StatusDot.svelte";
-  import Button from "./Button.svelte";
-  import type { DiskSummary } from "$lib/design/types";
-  import { formatTemperature, NOT_AVAILABLE } from "$lib/design/format";
+   *  Un riel sin texto solo es aceptable si la accesibilidad es impecable (`Sidebar.md` §Accesibilidad):
+   *  cada botón lleva `title` **y** `aria-label`, el activo `aria-current="page"`, el punto de aviso
+   *  no viaja solo (el `aria-label` de Alertas incluye el recuento) y el indicador de estado global
+   *  del pie es `role="status"`.
+   *
+   *  Navega con **enlaces reales** (constitución §XIV): un `onclick` con `goto()` rompería ctrl+clic,
+   *  el clic central, el menú contextual y el anuncio como enlace.
+   *
+   *  La selección se marca con material elevado e icono en acento — **nunca** una barra de color
+   *  lateral (`ui-design.md`). */
+  import Icon from "./Icon.svelte";
+  import { healthToken } from "$lib/design/health";
+  import type { IconName } from "$lib/design/icons";
+  import type { HealthState } from "$lib/design/types";
   import { t } from "$lib/i18n";
 
   let {
-    /** Cada sección lleva su destino: la navegación es un enlace, no un callback. */
-    sections = [] as { id: string; label: string; href: string; badge?: number | null }[],
-    disks = [] as DiskSummary[],
-    /** Construye el destino de cada disco. Devuelve el href; no navega. */
-    diskHref = ((id: string) => `/disks/${id}`) as (id: string) => string,
+    /** Cada sección lleva su icono y su destino: la navegación es un enlace, no un callback. */
+    sections = [] as {
+      id: string;
+      label: string;
+      icon: IconName;
+      href: string;
+      badge?: number | null;
+    }[],
     active = "",
-    activeDiskId = "",
-    /** "1 disco necesita atención", "Monitorización pausada"… */
-    footerNote = "",
-    paused = false,
-    ontogglepause = undefined
+    /** De `globalStatus()` en `health.ts`: la misma fuente que alimenta la píldora de la `Toolbar`. */
+    globalState = "unknown" as HealthState,
+    globalLabel = "",
+    globalIcon = "shield" as IconName,
+    globalCount = null as number | null,
+    onabout = undefined as (() => void) | undefined
   } = $props();
 
-  const row = (isActive: boolean) =>
-    "flex h-8 items-center gap-3 rounded-nav border px-3 text-xs transition-all duration-base ease-sdm " +
+  const tone = $derived(healthToken[globalState]);
+
+  const btn = (isActive: boolean) =>
+    "relative grid size-11 shrink-0 place-items-center rounded-inner border transition-all duration-base ease-sdm " +
     (isActive
-      ? "border-hairline bg-glass-2 text-fg font-semibold shadow-edge"
-      : "border-transparent text-fg-dim font-medium hover:bg-glass-3 hover:text-fg");
+      ? "border-hairline bg-glass-2 text-accent-fg shadow-edge"
+      : "border-transparent text-fg-dim hover:bg-glass-3 hover:text-fg");
+
+  /** «Alertas» con avisos sin revisar: el número entra en el nombre accesible, no solo en el punto. */
+  const labelDe = (s: { id: string; label: string; badge?: number | null }) =>
+    s.id === "/alerts" && s.badge ? t("nav.alertsUnread", { count: s.badge }) : s.label;
 </script>
 
-<!-- Por debajo de 1180 px de ancho CSS disponible (el escalado de Windows no encoge el texto,
-     encoge ese espacio: `docs/ui-design.md` §4.0.bis), la barra se reduce a 56 px: solo el
-     logotipo, un marcador circular con la inicial de cada sección (sin icono propio todavía — el
-     boceto aprobado no define ninguno; usar la inicial evita inventar iconografía sin revisión) y
-     el punto de estado de cada disco, que es lo único que la norma exige conservar. El pie de
-     pausar/reanudar se oculta: la misma acción sigue disponible desde el menú de la bandeja. -->
 <aside
-  class="sdm-material-chrome flex w-[250px] max-[1179px]:w-14 flex-none flex-col border-r border-hairline"
+  class="sdm-material-chrome flex w-rail flex-none flex-col items-center gap-1 border-r border-hairline py-3"
 >
-  <div
-    class="flex h-13 flex-none items-center gap-3 px-4 max-[1179px]:justify-center max-[1179px]:px-0"
-    style="height: 52px"
+  <a
+    href="/"
+    class="mb-2 grid size-9 shrink-0 place-items-center rounded-nav bg-[linear-gradient(180deg,var(--sdm-accent-hi),var(--sdm-accent))] text-fg-onAccent shadow-edge"
+    aria-label={t("app.name")}
+    title={t("app.name")}
   >
-    <div
-      class="grid size-6 shrink-0 place-items-center rounded-nav bg-[linear-gradient(180deg,var(--sdm-accent-hi),var(--sdm-accent))] shadow-[inset_0_1px_0_rgba(255,255,255,.45)]"
-    >
-      <span class="block size-2 rounded-pill border-2 border-white/95"></span>
-    </div>
-    <span class="text-base font-semibold tracking-tight max-[1179px]:hidden">SmartDisk</span>
-  </div>
+    <Icon name="diskStack" size={18} />
+  </a>
 
-  <p
-    class="m-0 px-3 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-fg-faint max-[1179px]:hidden"
-  >
-    {t("nav.monitoring")}
-  </p>
-  <nav class="flex flex-col gap-0.5 px-2" aria-label={t("nav.monitoring")}>
+  <nav class="flex flex-col items-center gap-1" aria-label={t("nav.monitoring")}>
     {#each sections as s (s.id)}
       <a
-        class={row(active === s.id) + " max-[1179px]:justify-center max-[1179px]:px-0"}
+        class={btn(active === s.id)}
         href={s.href}
         aria-current={active === s.id ? "page" : undefined}
-        aria-label={s.label}
+        aria-label={labelDe(s)}
         title={s.label}
       >
-        <span
-          class="hidden size-5 shrink-0 place-items-center rounded-pill bg-glass-3 text-2xs font-semibold max-[1179px]:grid"
-          aria-hidden="true"
-        >
-          {s.label.charAt(0).toUpperCase()}
-        </span>
-        <span
-          class="size-1.5 shrink-0 rounded-pill max-[1179px]:hidden"
-          style="background: {active === s.id ? 'var(--sdm-accent)' : 'var(--sdm-text-faint)'}"
-        ></span>
-        <span class="flex-1 text-left max-[1179px]:hidden">{s.label}</span>
+        <Icon name={s.icon} size={19} />
         {#if s.badge}
-          <span class="rounded-pill bg-warn-soft px-2 text-2xs font-semibold text-warn max-[1179px]:hidden"
-            >{s.badge}</span
-          >
+          <span class="absolute right-1.5 top-1.5 size-1.5 rounded-pill bg-warn" aria-hidden="true"></span>
         {/if}
       </a>
     {/each}
   </nav>
 
-  {#if disks.length}
-    <p
-      class="m-0 px-3 pb-1 pt-4 text-2xs font-semibold uppercase tracking-wider text-fg-faint max-[1179px]:hidden"
-    >
-      {t("nav.monitoredDisks")}
-    </p>
-    <!-- Scroll propio: con veinte discos, la navegación y el pie no se desplazan con la lista. -->
-    <nav class="flex min-h-0 flex-col gap-0.5 overflow-y-auto px-2" aria-label={t("nav.monitoredDisks")}>
-      {#each disks as d (d.id)}
-        <a
-          class={row(activeDiskId === d.id) + " max-[1179px]:justify-center max-[1179px]:px-0"}
-          href={diskHref(d.id)}
-          aria-current={activeDiskId === d.id ? "page" : undefined}
-          aria-label={d.alias ?? d.model}
-          title={d.alias ?? d.model}
-        >
-          <StatusDot state={d.state} label="" size={8} />
-          <span class="flex-1 truncate text-left max-[1179px]:hidden">{d.alias ?? d.model}</span>
-          <span class="sdm-num text-2xs text-fg-faint max-[1179px]:hidden">
-            {d.temperatureC === null ? NOT_AVAILABLE() : formatTemperature(d.temperatureC)}
-          </span>
-        </a>
-      {/each}
-    </nav>
-  {/if}
-
   <div class="flex-1"></div>
 
+  {#if onabout}
+    <button class={btn(false)} aria-label={t("nav.about")} title={t("nav.about")} onclick={onabout}>
+      <Icon name="tag" size={19} />
+    </button>
+  {/if}
+
   <div
-    class="m-3 flex flex-col gap-2 rounded-inner border border-hairline bg-glass-2 p-3 shadow-edge max-[1179px]:hidden"
+    class="mt-1 grid size-10 shrink-0 place-items-center rounded-inner"
+    style="background: {tone.soft}; color: {tone.fg}"
+    role="status"
+    aria-label={globalLabel}
   >
-    {#if footerNote}<span class="text-xs text-fg-dim">{footerNote}</span>{/if}
-    <Button size="sm" full onclick={ontogglepause}>
-      {paused ? t("nav.resume") : t("nav.pause")}
-    </Button>
+    {#if globalCount}
+      <Icon name={globalIcon} size={15} />
+      <span class="sdm-num text-2xs font-semibold leading-none">{globalCount}</span>
+    {:else}
+      <Icon name={globalIcon} size={18} />
+    {/if}
   </div>
 </aside>

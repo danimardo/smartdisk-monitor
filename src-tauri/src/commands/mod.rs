@@ -50,6 +50,9 @@ pub struct VolumeSummary {
     /// `chkdsk /scan` solo existe en NTFS (T083): la decisión vive en el backend, no se le pide al
     /// frontend que repita el criterio comparando `filesystem` a mano.
     pub chkdsk_available: bool,
+    /// `true` para el volumen donde vive Windows. Lo calcula el backend (v3, ADR-036):
+    /// `selectHeroDisk()` lo usa y la interfaz no lo infiere.
+    pub is_system_volume: bool,
     pub mapping_confidence: MappingConfidence,
 }
 
@@ -415,7 +418,9 @@ fn get_appearance_settings_impl(conn: &rusqlite::Connection) -> AppearanceSettin
         theme: leer_ajuste_string(conn, CLAVE_APARIENCIA_TEMA, "system"),
         language: leer_ajuste_string_opcional(conn, CLAVE_APARIENCIA_IDIOMA),
         system_locale: crate::platform::locale::system_locale(),
-        use_system_accent: leer_ajuste_bool(conn, CLAVE_APARIENCIA_ACENTO_SISTEMA, true),
+        // De fábrica **apagado** (v3, ADR-035): la aplicación estrena identidad propia (paleta
+        // Ciruela) y solo hereda el acento de Windows si el usuario lo pide expresamente.
+        use_system_accent: leer_ajuste_bool(conn, CLAVE_APARIENCIA_ACENTO_SISTEMA, false),
     }
 }
 
@@ -448,13 +453,21 @@ pub struct ScheduleSettingsWire {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlertThresholdSettingsWire {
+    /// `cautious` | `balanced` | `quiet` | `custom` (v3, ADR-036). `custom` = un umbral se editó a mano.
+    pub profile: String,
     pub temp_configured_warn_c: f64,
     pub temp_configured_crit_c: f64,
+    pub wear_warn_percent: f64,
+    pub wear_crit_percent: f64,
     pub capacity_warn_percent: f64,
     pub capacity_crit_percent: f64,
     pub capacity_absolute_floor_min_capacity_bytes: i64,
     pub capacity_absolute_floor_warn_bytes: i64,
     pub capacity_absolute_floor_crit_bytes: i64,
+    pub media_errors_warn_per24h: i64,
+    pub media_errors_crit_per24h: i64,
+    pub driver_retry_warn_per24h: i64,
+    pub driver_retry_crit_per24h: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -472,12 +485,16 @@ pub struct RetentionSettingsWire {
 pub struct LifecycleSettingsWire {
     pub close_action: String,
     pub close_action_remembered: bool,
+    /// Autoarranque con el sistema como tarea programada elevada (PR 9, ADR-038). Fábrica: `false`.
+    pub start_with_system: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationSettingsWire {
     pub sound_enabled: bool,
+    /// Apagado explícito del toast nativo, independiente de pausar (PR 9, ADR-037). Fábrica: `true`.
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -488,13 +505,93 @@ pub struct LoggingSettingsWire {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OnboardingSettingsWire {
+    /// Marca de que el asistente inicial terminó (PR 9). `null` = mostrarlo al arrancar.
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SettingsWire {
     pub schedule: ScheduleSettingsWire,
     pub alerts: AlertThresholdSettingsWire,
+    pub onboarding: OnboardingSettingsWire,
     pub retention: RetentionSettingsWire,
     pub lifecycle: LifecycleSettingsWire,
     pub notifications: NotificationSettingsWire,
     pub logging: LoggingSettingsWire,
+}
+
+/// Umbrales de las reglas SMART parametrizadas (v3, ADR-036), leídos de `settings.alerts` con los
+/// mismos `leer_ajuste_*` y defaults que `get_settings_impl`.
+fn config_umbrales_alerta(conn: &rusqlite::Connection) -> crate::alerts::ConfigUmbrales {
+    use crate::domain::ajustes as aj;
+    crate::alerts::ConfigUmbrales {
+        temp_warn_c: leer_ajuste_f64(
+            conn,
+            "alerts.temp_configured_warn_c",
+            aj::TEMP_WARN_DEFAULT_C,
+        ),
+        temp_crit_c: leer_ajuste_f64(
+            conn,
+            "alerts.temp_configured_crit_c",
+            aj::TEMP_CRIT_DEFAULT_C,
+        ),
+        wear_warn_pct: leer_ajuste_f64(
+            conn,
+            "alerts.wear_warn_percent",
+            aj::WEAR_WARN_PERCENT_DEFAULT,
+        ),
+        wear_crit_pct: leer_ajuste_f64(
+            conn,
+            "alerts.wear_crit_percent",
+            aj::WEAR_CRIT_PERCENT_DEFAULT,
+        ),
+        media_errors_warn: leer_ajuste_i64(
+            conn,
+            "alerts.media_errors_warn_per24h",
+            aj::MEDIA_ERRORS_WARN_PER24H_DEFAULT,
+        ),
+        media_errors_crit: leer_ajuste_i64(
+            conn,
+            "alerts.media_errors_crit_per24h",
+            aj::MEDIA_ERRORS_CRIT_PER24H_DEFAULT,
+        ),
+    }
+}
+
+/// Umbrales de `capacity.low/critical` (v3, ADR-036) leídos de `settings.alerts`.
+fn config_umbrales_capacidad(
+    conn: &rusqlite::Connection,
+) -> crate::domain::capacidad::UmbralesCapacidad {
+    use crate::domain::ajustes as aj;
+    crate::domain::capacidad::UmbralesCapacidad {
+        warn_percent: leer_ajuste_f64(
+            conn,
+            "alerts.capacity_warn_percent",
+            aj::CAPACITY_WARN_PERCENT_DEFAULT,
+        ),
+        crit_percent: leer_ajuste_f64(
+            conn,
+            "alerts.capacity_crit_percent",
+            aj::CAPACITY_CRIT_PERCENT_DEFAULT,
+        ),
+        floor_min_capacity_bytes: leer_ajuste_i64(
+            conn,
+            "alerts.capacity_absolute_floor_min_capacity_bytes",
+            aj::CAPACITY_FLOOR_MIN_CAPACITY_DEFAULT_BYTES,
+        ),
+        floor_warn_bytes: leer_ajuste_i64(
+            conn,
+            "alerts.capacity_absolute_floor_warn_bytes",
+            aj::CAPACITY_FLOOR_WARN_DEFAULT_BYTES,
+        ),
+        floor_crit_bytes: leer_ajuste_i64(
+            conn,
+            "alerts.capacity_absolute_floor_crit_bytes",
+            aj::CAPACITY_FLOOR_CRIT_DEFAULT_BYTES,
+        ),
+    }
 }
 
 fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
@@ -507,6 +604,7 @@ fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
             discovery_seconds: leer_ajuste_i64(conn, "schedule.discovery_seconds", 60),
         },
         alerts: AlertThresholdSettingsWire {
+            profile: leer_ajuste_string(conn, "alerts.profile", aj::PERFIL_DEFECTO.id()),
             temp_configured_warn_c: leer_ajuste_f64(
                 conn,
                 "alerts.temp_configured_warn_c",
@@ -516,6 +614,16 @@ fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
                 conn,
                 "alerts.temp_configured_crit_c",
                 aj::TEMP_CRIT_DEFAULT_C,
+            ),
+            wear_warn_percent: leer_ajuste_f64(
+                conn,
+                "alerts.wear_warn_percent",
+                aj::WEAR_WARN_PERCENT_DEFAULT,
+            ),
+            wear_crit_percent: leer_ajuste_f64(
+                conn,
+                "alerts.wear_crit_percent",
+                aj::WEAR_CRIT_PERCENT_DEFAULT,
             ),
             capacity_warn_percent: leer_ajuste_f64(
                 conn,
@@ -542,6 +650,29 @@ fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
                 "alerts.capacity_absolute_floor_crit_bytes",
                 aj::CAPACITY_FLOOR_CRIT_DEFAULT_BYTES,
             ),
+            media_errors_warn_per24h: leer_ajuste_i64(
+                conn,
+                "alerts.media_errors_warn_per24h",
+                aj::MEDIA_ERRORS_WARN_PER24H_DEFAULT,
+            ),
+            media_errors_crit_per24h: leer_ajuste_i64(
+                conn,
+                "alerts.media_errors_crit_per24h",
+                aj::MEDIA_ERRORS_CRIT_PER24H_DEFAULT,
+            ),
+            driver_retry_warn_per24h: leer_ajuste_i64(
+                conn,
+                "alerts.driver_retry_warn_per24h",
+                aj::DRIVER_RETRY_WARN_PER24H_DEFAULT,
+            ),
+            driver_retry_crit_per24h: leer_ajuste_i64(
+                conn,
+                "alerts.driver_retry_crit_per24h",
+                aj::DRIVER_RETRY_CRIT_PER24H_DEFAULT,
+            ),
+        },
+        onboarding: OnboardingSettingsWire {
+            completed_at: leer_ajuste_string_opcional(conn, "settings.onboarding.completed_at"),
         },
         retention: RetentionSettingsWire {
             raw_days: leer_ajuste_i64(conn, "retention.raw_days", aj::RETENTION_RAW_DAYS_DEFAULT),
@@ -573,9 +704,11 @@ fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
                 "lifecycle.close_action_remembered",
                 false,
             ),
+            start_with_system: leer_ajuste_bool(conn, "lifecycle.start_with_system", false),
         },
         notifications: NotificationSettingsWire {
             sound_enabled: leer_ajuste_bool(conn, "notifications.sound_enabled", false),
+            enabled: leer_ajuste_bool(conn, "notifications.enabled", true),
         },
         logging: LoggingSettingsWire {
             verbose: leer_ajuste_bool(conn, "logging.verbose", false),
@@ -727,6 +860,164 @@ fn set_setting_impl(
                 .map_err(error_ajuste_a_app_error)?;
             guardar_ajuste(conn, key, &nuevo, &ahora)?;
         }
+        "alerts.wear_warn_percent" => {
+            let nuevo = valor_f64(value)?;
+            let crit_actual = leer_ajuste_f64(
+                conn,
+                "alerts.wear_crit_percent",
+                aj::WEAR_CRIT_PERCENT_DEFAULT,
+            );
+            aj::validar_desgaste(nuevo, crit_actual).map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &nuevo, &ahora)?;
+        }
+        "alerts.wear_crit_percent" => {
+            let nuevo = valor_f64(value)?;
+            let warn_actual = leer_ajuste_f64(
+                conn,
+                "alerts.wear_warn_percent",
+                aj::WEAR_WARN_PERCENT_DEFAULT,
+            );
+            aj::validar_desgaste(warn_actual, nuevo).map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &nuevo, &ahora)?;
+        }
+        "alerts.media_errors_warn_per24h" => {
+            let nuevo = valor_i64(value)?;
+            let crit_actual = leer_ajuste_i64(
+                conn,
+                "alerts.media_errors_crit_per24h",
+                aj::MEDIA_ERRORS_CRIT_PER24H_DEFAULT,
+            );
+            aj::validar_media_errors(nuevo, crit_actual).map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &nuevo, &ahora)?;
+        }
+        "alerts.media_errors_crit_per24h" => {
+            let nuevo = valor_i64(value)?;
+            let warn_actual = leer_ajuste_i64(
+                conn,
+                "alerts.media_errors_warn_per24h",
+                aj::MEDIA_ERRORS_WARN_PER24H_DEFAULT,
+            );
+            aj::validar_media_errors(warn_actual, nuevo).map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &nuevo, &ahora)?;
+        }
+        "alerts.driver_retry_warn_per24h" => {
+            let nuevo = valor_i64(value)?;
+            let crit_actual = leer_ajuste_i64(
+                conn,
+                "alerts.driver_retry_crit_per24h",
+                aj::DRIVER_RETRY_CRIT_PER24H_DEFAULT,
+            );
+            aj::validar_reintentos_controlador(nuevo, crit_actual)
+                .map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &nuevo, &ahora)?;
+        }
+        "alerts.driver_retry_crit_per24h" => {
+            let nuevo = valor_i64(value)?;
+            let warn_actual = leer_ajuste_i64(
+                conn,
+                "alerts.driver_retry_warn_per24h",
+                aj::DRIVER_RETRY_WARN_PER24H_DEFAULT,
+            );
+            aj::validar_reintentos_controlador(warn_actual, nuevo)
+                .map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &nuevo, &ahora)?;
+        }
+        "alerts.profile" => {
+            // Un perfil concreto escribe sus doce umbrales de golpe; `"custom"` solo guarda el
+            // identificador (los valores son los que haya en `settings`).
+            let id = valor_string(value)?;
+            let perfil = aj::PerfilAlerta::from_id(&id).ok_or_else(|| {
+                Box::new(
+                    AppError::new("ipc.schema_mismatch", "error.schemaMismatch").with_detail(
+                        "se esperaba \"cautious\", \"balanced\", \"quiet\" o \"custom\"",
+                    ),
+                )
+            })?;
+            if let Some(u) = perfil.umbrales() {
+                guardar_ajuste(
+                    conn,
+                    "alerts.temp_configured_warn_c",
+                    &u.temp_warn_c,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.temp_configured_crit_c",
+                    &u.temp_crit_c,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.wear_warn_percent",
+                    &u.wear_warn_percent,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.wear_crit_percent",
+                    &u.wear_crit_percent,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.capacity_warn_percent",
+                    &u.capacity_warn_percent,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.capacity_crit_percent",
+                    &u.capacity_crit_percent,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.capacity_absolute_floor_warn_bytes",
+                    &u.capacity_absolute_floor_warn_bytes,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.capacity_absolute_floor_crit_bytes",
+                    &u.capacity_absolute_floor_crit_bytes,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.media_errors_warn_per24h",
+                    &u.media_errors_warn_per24h,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.media_errors_crit_per24h",
+                    &u.media_errors_crit_per24h,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.driver_retry_warn_per24h",
+                    &u.driver_retry_warn_per24h,
+                    &ahora,
+                )?;
+                guardar_ajuste(
+                    conn,
+                    "alerts.driver_retry_crit_per24h",
+                    &u.driver_retry_crit_per24h,
+                    &ahora,
+                )?;
+            }
+            guardar_ajuste(conn, key, &perfil.id(), &ahora)?;
+        }
+        "settings.onboarding.completed_at" => {
+            // ISO-8601 UTC o null: la marca de que el asistente inicial terminó (PR 9).
+            if value.is_null() {
+                guardar_ajuste(conn, key, &serde_json::Value::Null, &ahora)?;
+            } else {
+                let cuando = valor_string(value)?;
+                guardar_ajuste(conn, key, &cuando, &ahora)?;
+            }
+        }
         "retention.raw_days" => {
             let dias = valor_i64(value)?;
             aj::validar_retencion_raw_days(dias).map_err(error_ajuste_a_app_error)?;
@@ -764,7 +1055,13 @@ fn set_setting_impl(
             }
             guardar_ajuste(conn, key, &accion, &ahora)?;
         }
-        "lifecycle.close_action_remembered" | "notifications.sound_enabled" => {
+        "lifecycle.close_action_remembered"
+        | "notifications.sound_enabled"
+        | "notifications.enabled"
+        | "lifecycle.start_with_system" => {
+            // `lifecycle.start_with_system` **solo** persiste aquí; el efecto en el Programador de
+            // tareas lo aplica el comando `set_setting` (y `reset_settings`) tras esta función,
+            // para que el arnés de pruebas nunca lance `schtasks` (ADR-038).
             let b = valor_bool(value)?;
             guardar_ajuste(conn, key, &b, &ahora)?;
         }
@@ -802,16 +1099,39 @@ fn set_setting_impl(
             ))
         }
     }
+
+    // Editar a mano cualquier umbral de alerta rompe el perfil: pasa a «Personalizado» (ADR-036).
+    // La única forma de volver a un perfil concreto es elegirlo (`alerts.profile`).
+    if key.starts_with("alerts.") && key != "alerts.profile" {
+        marcar_perfil_personalizado(conn, &ahora)?;
+    }
+    Ok(())
+}
+
+/// Pone `alerts.profile = "custom"` salvo que ya lo esté. Se llama tras editar a mano un umbral.
+fn marcar_perfil_personalizado(conn: &rusqlite::Connection, ahora: &str) -> AppResult<()> {
+    let actual = leer_ajuste_string_opcional(conn, "alerts.profile");
+    if actual.as_deref() != Some("custom") {
+        guardar_ajuste(conn, "alerts.profile", &"custom", ahora)?;
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_setting(state: State<AppState>, key: String, value: serde_json::Value) -> AppResult<()> {
-    let conn = state
-        .conn
-        .lock()
-        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-    set_setting_impl(&conn, &key, &value)
+    {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        set_setting_impl(&conn, &key, &value)?;
+    }
+    // Efectos colaterales fuera del bloqueo de conexión y fuera de `set_setting_impl` (que las
+    // pruebas llaman a pelo): el ajuste ya está guardado; si el efecto falla, el error sube.
+    if key == "lifecycle.start_with_system" {
+        crate::platform::autoarranque::aplicar(valor_bool(&value)?)?;
+    }
+    Ok(())
 }
 
 /// Claves que `reset_settings` borra por ámbito (T097): borrar, no reescribir el valor de
@@ -825,13 +1145,20 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
         "schedule.discovery_seconds",
     ];
     const ALERTS: &[&str] = &[
+        "alerts.profile",
         "alerts.temp_configured_warn_c",
         "alerts.temp_configured_crit_c",
+        "alerts.wear_warn_percent",
+        "alerts.wear_crit_percent",
         "alerts.capacity_warn_percent",
         "alerts.capacity_crit_percent",
         "alerts.capacity_absolute_floor_min_capacity_bytes",
         "alerts.capacity_absolute_floor_warn_bytes",
         "alerts.capacity_absolute_floor_crit_bytes",
+        "alerts.media_errors_warn_per24h",
+        "alerts.media_errors_crit_per24h",
+        "alerts.driver_retry_warn_per24h",
+        "alerts.driver_retry_crit_per24h",
     ];
     const RETENTION: &[&str] = &[
         "retention.raw_days",
@@ -843,7 +1170,9 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
     const RESTO: &[&str] = &[
         "lifecycle.close_action",
         "lifecycle.close_action_remembered",
+        "lifecycle.start_with_system",
         "notifications.sound_enabled",
+        "notifications.enabled",
         "logging.verbose",
     ];
     match scope {
@@ -856,13 +1185,26 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
 
 #[tauri::command]
 pub fn reset_settings(state: State<AppState>, scope: String) -> AppResult<SettingsWire> {
+    let claves = claves_por_ambito(&scope);
+    let toca_autoarranque = claves.contains(&"lifecycle.start_with_system");
+    {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        for clave in &claves {
+            repo_varios::delete_setting(&conn, clave).map_err(rusqlite_err_to_app_error)?;
+        }
+    }
+    // Al borrar `lifecycle.start_with_system` vuelve a su valor de fábrica (`false`): la tarea
+    // programada no debe quedar huérfana (ADR-038).
+    if toca_autoarranque {
+        crate::platform::autoarranque::aplicar(false)?;
+    }
     let conn = state
         .conn
         .lock()
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-    for clave in claves_por_ambito(&scope) {
-        repo_varios::delete_setting(&conn, clave).map_err(rusqlite_err_to_app_error)?;
-    }
     Ok(get_settings_impl(&conn))
 }
 
@@ -934,6 +1276,7 @@ fn build_volume_summaries(
 ) -> AppResult<Vec<VolumeSummary>> {
     let ids =
         repo_inventario::volumes_for_device(conn, device_id).map_err(rusqlite_err_to_app_error)?;
+    let letra_sistema = crate::platform::sistema::letra_unidad_sistema();
     let mut resumenes = Vec::with_capacity(ids.len());
     for id in ids {
         let Some(v) = repo_inventario::get_volume(conn, &id).map_err(rusqlite_err_to_app_error)?
@@ -950,6 +1293,12 @@ fn build_volume_summaries(
             .clone()
             .unwrap_or_else(|| drive_letters.first().cloned().unwrap_or_default());
         let chkdsk_available = tests::chkdsk::admite_scan(v.filesystem.as_deref());
+        let is_system_volume = letra_sistema.is_some_and(|letra| {
+            drive_letters
+                .iter()
+                .filter_map(|l| l.chars().next())
+                .any(|c| c.to_ascii_uppercase() == letra)
+        });
         resumenes.push(VolumeSummary {
             id: v.id,
             label,
@@ -960,6 +1309,7 @@ fn build_volume_summaries(
                 .device_mapping_confidence
                 .unwrap_or(MappingConfidence::Unknown),
             chkdsk_available,
+            is_system_volume,
         });
     }
     Ok(resumenes)
@@ -1448,7 +1798,7 @@ pub fn refresh_now(
     // (`ejecutar_ciclo`) es más tolerante porque sus trabajos son independientes entre sí.
     let resultado: AppResult<ResultadoCicloPost> = (|| match scope.as_str() {
         "all" => {
-            let cambios = refresh_inventory(&state)?;
+            let (cambios, transiciones_capacidad) = refresh_inventory(&state)?;
             let conn = state
                 .conn
                 .lock()
@@ -1465,8 +1815,10 @@ pub fn refresh_now(
                 None,
                 &mut source_health,
             )?);
+            let mut transiciones = r.transiciones;
+            transiciones.extend(transiciones_capacidad);
             Ok(ResultadoCicloPost {
-                transiciones: r.transiciones,
+                transiciones,
                 degradadas,
                 cambios_inventario: Some(cambios),
                 hubo_metrica: true,
@@ -1530,7 +1882,10 @@ fn ejecutar_ciclo(
 
     if trabajos.contains(&TipoTrabajo::AltasYBajas) {
         match refresh_inventory(&state) {
-            Ok(cambios) => resultado.cambios_inventario = Some(cambios),
+            Ok((cambios, transiciones_capacidad)) => {
+                resultado.cambios_inventario = Some(cambios);
+                resultado.transiciones.extend(transiciones_capacidad);
+            }
             Err(e) => {
                 tracing::warn!(error = ?e, "no se pudo reconciliar el inventario en el bucle en segundo plano")
             }
@@ -1776,7 +2131,58 @@ fn refresh_events(conn: &rusqlite::Connection) {
 #[cfg(not(windows))]
 fn refresh_events(_conn: &rusqlite::Connection) {}
 
-fn refresh_inventory(state: &State<AppState>) -> AppResult<CambiosInventario> {
+/// Persiste `volume_free_bytes` como muestra periódica de cada volumen enlazado a un disco
+/// monitorizado y evalúa `capacity.low` / `capacity.critical` sobre esa serie (v3, ADR-036). Antes,
+/// la capacidad solo vivía como instantánea en `volumes.free_bytes`, sin serie ni alerta.
+fn evaluar_capacidad_volumenes(
+    conn: &rusqlite::Connection,
+    ahora: &str,
+) -> rusqlite::Result<Vec<(String, crate::alerts::agrupacion::Transicion)>> {
+    use crate::domain::tipos::{
+        MetricQuality, MetricSample, MetricSource, MetricTarget, Resolution,
+    };
+    let umbrales = config_umbrales_capacidad(conn);
+    let mut transiciones = Vec::new();
+
+    let dispositivos = repo_inventario::list_present_devices(conn)?;
+    for d in dispositivos.iter().filter(|d| d.monitoring_enabled) {
+        for volume_id in repo_inventario::volumes_for_device(conn, &d.id)? {
+            let Some(v) = repo_inventario::get_volume(conn, &volume_id)? else {
+                continue;
+            };
+            let Some(libres) = v.free_bytes else { continue };
+            repo_metricas::insert_sample(
+                conn,
+                &MetricSample {
+                    target: MetricTarget::Volume(volume_id.clone()),
+                    metric_key: "volume_free_bytes".to_string(),
+                    value_real: Some(libres as f64),
+                    value_integer: None,
+                    unit: "bytes".to_string(),
+                    sampled_at_utc: ahora.to_string(),
+                    source: MetricSource::WindowsStorage,
+                    quality: MetricQuality::Exact,
+                    resolution: Resolution::Raw,
+                },
+            )?;
+            transiciones.extend(crate::alerts::evaluar_capacidad(
+                conn,
+                &volume_id,
+                v.capacity_bytes,
+                ahora,
+                &umbrales,
+            )?);
+        }
+    }
+    Ok(transiciones)
+}
+
+fn refresh_inventory(
+    state: &State<AppState>,
+) -> AppResult<(
+    CambiosInventario,
+    Vec<(String, crate::alerts::agrupacion::Transicion)>,
+)> {
     let ahora = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default();
@@ -1836,7 +2242,13 @@ fn refresh_inventory(state: &State<AppState>) -> AppResult<CambiosInventario> {
         .conn
         .lock()
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-    reconciliar_inventario(&conn, &leidos, &volumenes, &ahora)
+    let cambios = reconciliar_inventario(&conn, &leidos, &volumenes, &ahora)?;
+    // Un fallo al evaluar la capacidad no debe tumbar la reconciliación de inventario (SC-008).
+    let transiciones = evaluar_capacidad_volumenes(&conn, &ahora).unwrap_or_else(|e| {
+        tracing::warn!(error = ?e, "no se pudo evaluar la capacidad de los volúmenes");
+        Vec::new()
+    });
+    Ok((cambios, transiciones))
 }
 
 /// Persiste una lectura ya parseada de `smartctl`: cada campo presente como muestra, y la
@@ -2038,6 +2450,10 @@ fn refresh_smart(
     let mut fallos: u32 = 0;
     let mut ultimo_error: Option<AppError> = None;
 
+    // Umbrales configurables de las reglas SMART (v3, ADR-036): se leen una vez por ciclo, no por
+    // disco. El motor los recibe como parámetro; nunca lee `settings` por su cuenta.
+    let cfg_umbrales = config_umbrales_alerta(conn);
+
     for d in dispositivos
         .iter()
         .filter(|d| d.monitoring_enabled)
@@ -2076,7 +2492,7 @@ fn refresh_smart(
                 if let Err(e) = persist_smart_reading(conn, &d.id, &resultado, &ahora) {
                     tracing::warn!(disco = %d.id, error = ?e, "no se pudo guardar la lectura SMART");
                 } else {
-                    match crate::alerts::evaluar_smart(conn, &d.id, &ahora) {
+                    match crate::alerts::evaluar_smart(conn, &d.id, &ahora, &cfg_umbrales) {
                         Ok(mut t) => transiciones.append(&mut t),
                         // La lectura ya quedó guardada: un fallo al evaluar alertas no debe hacer
                         // parecer que la lectura en sí falló.
@@ -5456,11 +5872,27 @@ mod tests_ajustes {
         let conn = conn_de_prueba();
         let s = get_settings_impl(&conn);
         assert_eq!(s.schedule.metrics_fast_seconds, 30);
-        assert_eq!(s.alerts.temp_configured_warn_c, 70.0);
+        assert_eq!(s.alerts.profile, "balanced");
+        assert_eq!(
+            s.alerts.temp_configured_warn_c, 60.0,
+            "v3: baja de 70 (clarify Q2)"
+        );
+        assert_eq!(s.alerts.temp_configured_crit_c, 70.0);
+        assert_eq!(s.alerts.wear_warn_percent, 80.0);
         assert_eq!(s.alerts.capacity_warn_percent, 10.0);
+        assert_eq!(s.alerts.media_errors_warn_per24h, 1);
+        assert_eq!(s.alerts.driver_retry_crit_per24h, 12);
         assert_eq!(s.retention.raw_days, 7);
         assert_eq!(s.lifecycle.close_action, "minimize");
+        assert!(
+            !s.lifecycle.start_with_system,
+            "v3: autoarranque apagado de fábrica (ADR-038)"
+        );
         assert!(!s.notifications.sound_enabled);
+        assert!(
+            s.notifications.enabled,
+            "v3: el toast se muestra de fábrica (ADR-037)"
+        );
         assert!(!s.logging.verbose);
     }
 
@@ -5498,6 +5930,80 @@ mod tests_ajustes {
         )
         .unwrap_err();
         assert_eq!(err.code, "settings.out_of_range");
+    }
+
+    // ---- v3: perfiles de alerta (ADR-036) ----
+
+    #[test]
+    fn elegir_un_perfil_escribe_sus_doce_umbrales_y_el_identificador() {
+        let conn = conn_de_prueba();
+        set_setting_impl(&conn, "alerts.profile", &serde_json::json!("cautious")).unwrap();
+        let s = get_settings_impl(&conn).alerts;
+        assert_eq!(s.profile, "cautious");
+        assert_eq!(s.temp_configured_warn_c, 55.0);
+        assert_eq!(s.temp_configured_crit_c, 65.0);
+        assert_eq!(s.wear_warn_percent, 70.0);
+        assert_eq!(s.media_errors_crit_per24h, 3);
+        assert_eq!(s.driver_retry_warn_per24h, 2);
+    }
+
+    #[test]
+    fn editar_un_umbral_a_mano_pasa_el_perfil_a_custom() {
+        let conn = conn_de_prueba();
+        set_setting_impl(&conn, "alerts.profile", &serde_json::json!("balanced")).unwrap();
+        assert_eq!(get_settings_impl(&conn).alerts.profile, "balanced");
+
+        set_setting_impl(&conn, "alerts.wear_warn_percent", &serde_json::json!(75.0)).unwrap();
+        let s = get_settings_impl(&conn).alerts;
+        assert_eq!(s.profile, "custom", "editar un umbral rompe el perfil");
+        assert_eq!(s.wear_warn_percent, 75.0);
+        // el resto de umbrales de «Equilibrado» siguen intactos
+        assert_eq!(s.temp_configured_warn_c, 60.0);
+    }
+
+    #[test]
+    fn un_perfil_desconocido_se_rechaza() {
+        let conn = conn_de_prueba();
+        let err =
+            set_setting_impl(&conn, "alerts.profile", &serde_json::json!("agresivo")).unwrap_err();
+        assert_eq!(err.code, "ipc.schema_mismatch");
+    }
+
+    #[test]
+    fn un_umbral_de_desgaste_fuera_de_rango_se_rechaza() {
+        let conn = conn_de_prueba();
+        let err = set_setting_impl(&conn, "alerts.wear_warn_percent", &serde_json::json!(30.0))
+            .unwrap_err();
+        assert_eq!(err.code, "settings.out_of_range");
+        let err = set_setting_impl(
+            &conn,
+            "alerts.media_errors_crit_per24h",
+            &serde_json::json!(0),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, "settings.out_of_range");
+    }
+
+    #[test]
+    fn la_marca_del_asistente_acepta_fecha_y_null() {
+        let conn = conn_de_prueba();
+        set_setting_impl(
+            &conn,
+            "settings.onboarding.completed_at",
+            &serde_json::json!("2026-09-06T12:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(
+            leer_ajuste_string_opcional(&conn, "settings.onboarding.completed_at").as_deref(),
+            Some("2026-09-06T12:00:00Z")
+        );
+        set_setting_impl(
+            &conn,
+            "settings.onboarding.completed_at",
+            &serde_json::Value::Null,
+        )
+        .unwrap();
+        assert!(leer_ajuste_string_opcional(&conn, "settings.onboarding.completed_at").is_none());
     }
 
     #[test]
@@ -5710,6 +6216,33 @@ mod tests_ajustes {
     }
 
     #[test]
+    fn mostrar_notificaciones_y_autoarranque_son_booleanos_con_su_valor_de_fabrica() {
+        let conn = conn_de_prueba();
+
+        // Fábrica: notificaciones visibles, autoarranque apagado (ADR-037/038).
+        let s = get_settings_impl(&conn);
+        assert!(s.notifications.enabled);
+        assert!(!s.lifecycle.start_with_system);
+
+        set_setting_impl(&conn, "notifications.enabled", &serde_json::json!(false)).unwrap();
+        assert!(!get_settings_impl(&conn).notifications.enabled);
+
+        set_setting_impl(
+            &conn,
+            "lifecycle.start_with_system",
+            &serde_json::json!(true),
+        )
+        .unwrap();
+        assert!(get_settings_impl(&conn).lifecycle.start_with_system);
+
+        // Tipo equivocado en cualquiera de las dos → `ipc.schema_mismatch`, nunca un valor por defecto.
+        for clave in ["notifications.enabled", "lifecycle.start_with_system"] {
+            let err = set_setting_impl(&conn, clave, &serde_json::json!("sí")).unwrap_err();
+            assert_eq!(err.code, "ipc.schema_mismatch");
+        }
+    }
+
+    #[test]
     fn el_tema_de_apariencia_solo_admite_los_tres_valores_conocidos() {
         let conn = conn_de_prueba();
         set_setting_impl(
@@ -5761,6 +6294,21 @@ mod tests_ajustes {
             &serde_json::json!(false),
         )
         .unwrap();
+        assert!(!get_appearance_settings_impl(&conn).use_system_accent);
+
+        set_setting_impl(
+            &conn,
+            "settings.appearance.use_system_accent",
+            &serde_json::json!(true),
+        )
+        .unwrap();
+        assert!(get_appearance_settings_impl(&conn).use_system_accent);
+    }
+
+    #[test]
+    fn sin_clave_guardada_el_acento_del_sistema_esta_apagado_de_fabrica() {
+        // v3 (ADR-035): la herencia del acento de Windows deja de ser el comportamiento de fábrica.
+        let conn = conn_de_prueba();
         assert!(!get_appearance_settings_impl(&conn).use_system_accent);
     }
 
@@ -6147,6 +6695,8 @@ mod tests_helpers_varios {
         assert!(claves.contains(&"alerts.temp_configured_warn_c"));
         assert!(claves.contains(&"retention.raw_days"));
         assert!(claves.contains(&"lifecycle.close_action"));
+        assert!(claves.contains(&"lifecycle.start_with_system"));
+        assert!(claves.contains(&"notifications.enabled"));
         assert!(claves.contains(&"logging.verbose"));
     }
 

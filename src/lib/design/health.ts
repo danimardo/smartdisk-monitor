@@ -46,6 +46,82 @@ export function worstState(states: readonly HealthState[]): HealthState {
   return "unknown";
 }
 
+/** Estado global de la aplicación, calculado **una sola vez** y presentado en dos sitios: la píldora
+ *  de la `Toolbar` (con texto) y el pie del riel de la `Sidebar` (solo icono). Al ser la misma
+ *  función, no pueden contradecirse (`docs/ui-design.md` §7, `09-chrome-y-estados.md`).
+ *
+ *  `kind` distingue los casos que la interfaz rotula distinto; `state` es el token de color; `count`
+ *  es cuántos discos monitorizados necesitan atención. La `Sidebar`/`Toolbar` traducen `kind` a texto
+ *  con `t()` — aquí no hay literales de interfaz. */
+export type GlobalStatusKind = "loading" | "paused" | "noDevices" | "ok" | "attention";
+
+export function globalStatus(input: {
+  /** false mientras el inventario no ha llegado: NO es lo mismo que "no hay discos". */
+  loaded: boolean;
+  paused: boolean;
+  /** Estados de los discos **monitorizados** (los excluidos no cuentan). */
+  monitoredStates: readonly HealthState[];
+}): { kind: GlobalStatusKind; state: HealthState; count: number } {
+  if (!input.loaded) return { kind: "loading", state: "unknown", count: 0 };
+  if (input.paused) return { kind: "paused", state: "unknown", count: 0 };
+  if (input.monitoredStates.length === 0) return { kind: "noDevices", state: "unknown", count: 0 };
+  const count = input.monitoredStates.filter((s) => s === "warn" || s === "crit").length;
+  if (count === 0) return { kind: "ok", state: "ok", count: 0 };
+  return { kind: "attention", state: worstState(input.monitoredStates), count };
+}
+
+/** El disco que protagoniza el `HeroPanel` del panel general (v3, `HeroPanel.md`). **La pantalla
+ *  elige, no el componente**, y este es el criterio:
+ *
+ *   1. el disco con la alerta que cuenta para la salud (`active`/`acknowledged`) de mayor severidad;
+ *      empate → la de ocurrencia más reciente;
+ *   2. si no hay ninguna, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
+ *   3. si no se sabe, el primero del inventario;
+ *   4. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
+ *
+ *  Devuelve `null` solo si no hay ningún disco. */
+export function selectHeroDisk<
+  D extends {
+    id: string;
+    state: HealthState;
+    unknownReason?: UnknownReason | null;
+    volumes?: readonly { isSystemVolume?: boolean }[];
+  }
+>(
+  disks: readonly D[],
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string; lastOccurredAt: string }[]
+): D | null {
+  if (disks.length === 0) return null;
+
+  const sinSmart = (d: D) => d.state === "unknown" && (d.unknownReason ?? "unsupported") === "unsupported";
+  const elegibles = disks.some((d) => !sinSmart(d)) ? disks.filter((d) => !sinSmart(d)) : disks;
+
+  const sev: Record<Severity, number> = { crit: 3, warn: 2, info: 1 };
+  const puntuados: { disk: D; sev: number; when: string }[] = [];
+  for (const d of elegibles) {
+    const suyas = alerts.filter(
+      (a) => alertCountsTowardHealth(a.status) && a.deduplicationKey.includes(`device:${d.id}`)
+    );
+    if (!suyas.length) continue;
+    let mejorSev = 0;
+    let mejorWhen = "";
+    for (const a of suyas) {
+      if (sev[a.severity] > mejorSev || (sev[a.severity] === mejorSev && a.lastOccurredAt > mejorWhen)) {
+        mejorSev = sev[a.severity];
+        mejorWhen = a.lastOccurredAt;
+      }
+    }
+    puntuados.push({ disk: d, sev: mejorSev, when: mejorWhen });
+  }
+
+  if (puntuados.length) {
+    puntuados.sort((a, b) => b.sev - a.sev || b.when.localeCompare(a.when));
+    return puntuados[0].disk;
+  }
+
+  return elegibles.find((d) => d.volumes?.some((v) => v.isSystemVolume)) ?? elegibles[0];
+}
+
 /** Un `unknown` que se debe a una fuente que **debería** funcionar es una degradación real y se
  *  presenta como advertencia; un `unknown` declarado por el propio dispositivo (un USB que no expone
  *  SMART) es normalidad y no ensucia el estado global. Regla derivada de spec §5

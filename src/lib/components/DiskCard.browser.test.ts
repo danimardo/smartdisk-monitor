@@ -34,7 +34,8 @@ function discoBase(overrides: Partial<DiskSummary> = {}): DiskSummary {
         capacityBytes: 500_000_000_000,
         freeBytes: 100_000_000_000,
         mappingConfidence: "exact",
-        chkdskAvailable: true
+        chkdskAvailable: true,
+        isSystemVolume: false
       }
     ],
     ...overrides
@@ -69,15 +70,16 @@ describe("DiskCard", () => {
     await expect.element(page.getByText("Sin datos SMART")).toBeInTheDocument();
   });
 
-  it("un dato ausente se muestra como «No disponible», nunca como 0 ni vacío", async () => {
-    await render(DiskCard, {
+  it("un dato ausente se muestra como «—» discreto con «No disponible» en el title, nunca como 0 ni vacío", async () => {
+    const { container } = await render(DiskCard, {
       props: {
         disk: discoBase({ temperatureC: null, percentageUsed: null, activityPercent: null }),
         href: "/disks/d1"
       }
     });
-    const disponibles = page.getByText("No disponible");
-    await expect.element(disponibles.first()).toBeInTheDocument();
+    const ausentes = page.getByText("—");
+    await expect.element(ausentes.first()).toBeInTheDocument();
+    expect(container.querySelector('[title="No disponible"]')).not.toBeNull();
   });
 
   it("sin volumen asociado lo dice explícitamente, no deja el hueco en blanco", async () => {

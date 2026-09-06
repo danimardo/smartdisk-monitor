@@ -73,3 +73,48 @@ describe("tokens del sistema de diseño", () => {
     expect(fondoOscuro).not.toBe(fondoClaro);
   });
 });
+
+describe("tokens v3 — display, riel e iconos", () => {
+  it("declara los tokens de composición nuevos, resueltos en ambos temas", () => {
+    const nuevos = [
+      "--sdm-font-display",
+      "--sdm-text-display",
+      "--sdm-text-hero",
+      "--sdm-tracking-display",
+      "--sdm-rail-width",
+      "--sdm-hero-height",
+      "--sdm-icon-stroke",
+      "--sdm-icon-size"
+    ];
+    for (const tema of ["light", "dark"] as const) {
+      document.documentElement.setAttribute("data-theme", tema);
+      for (const t of nuevos) {
+        expect(valorResuelto(t), `${t} sin valor con data-theme="${tema}"`).not.toBe("");
+      }
+    }
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("--sdm-on-accent es tinta en oscuro, no blanco (paleta Ciruela)", () => {
+    document.documentElement.setAttribute("data-theme", "light");
+    const claro = valorResuelto("--sdm-on-accent").toLowerCase();
+    document.documentElement.setAttribute("data-theme", "dark");
+    const oscuro = valorResuelto("--sdm-on-accent").toLowerCase();
+    document.documentElement.removeAttribute("data-theme");
+
+    // En claro sigue siendo blanco sobre el acento sólido; en oscuro el acento es claro y el texto
+    // blanco daba 2,27:1 — pasa a tinta.
+    expect(oscuro).not.toBe(claro);
+    expect(["#fff", "#ffffff", "rgb(255, 255, 255)", "white"]).not.toContain(oscuro);
+  });
+
+  it(".sdm-display usa la familia de display y el peso 600, sin inventar 700", () => {
+    const el = document.createElement("span");
+    el.className = "sdm-display";
+    document.body.appendChild(el);
+    const estilo = getComputedStyle(el);
+    expect(estilo.fontWeight).toBe("600");
+    expect(estilo.fontVariantNumeric).toContain("tabular-nums");
+    el.remove();
+  });
+});

@@ -11,5 +11,7 @@ export const prerender = false;
 
 export const load: PageLoad = async ({ params }) => {
   const [disk, settings] = await Promise.all([getDeviceDetail(params.id), getSettings()]);
-  return { disk, settings };
+  // El chrome usa `title`/`subtitle` de la ruta para la barra de herramientas: en el detalle es el
+  // alias (o el modelo) del disco, no «Panel general» (defecto de v2).
+  return { disk, settings, title: disk.alias ?? disk.model, subtitle: disk.model };
 };

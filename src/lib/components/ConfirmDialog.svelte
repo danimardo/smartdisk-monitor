@@ -2,6 +2,7 @@
   /** Confirmación obligatoria antes de cualquier operación que escriba datos o genere carga (spec §12).
    *  Diálogo de material sobre velo desenfocado; declara qué hará, dónde, el impacto y el comando literal. */
   import Button from "./Button.svelte";
+  import Icon from "./Icon.svelte";
   import { t } from "$lib/i18n";
 
   let {
@@ -57,10 +58,7 @@
 
       {#if impact}
         <div class="flex gap-3 rounded-inner bg-warn-soft p-4">
-          <span
-            class="grid size-[18px] shrink-0 place-items-center rounded-pill bg-warn text-2xs font-semibold text-white"
-            >!</span
-          >
+          <span class="shrink-0 text-warn"><Icon name="alert" size={16} /></span>
           <span class="text-xs leading-normal" style="text-wrap: pretty">{impact}</span>
         </div>
       {/if}

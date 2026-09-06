@@ -7,6 +7,7 @@
 
 use rusqlite::Connection;
 
+use crate::domain::capacidad::UmbralesCapacidad;
 use crate::domain::tipos::AlertSeverity;
 use crate::persistence::repo_metricas;
 use agrupacion::{EvaluacionAlerta, Transicion};
@@ -19,6 +20,33 @@ pub mod notificaciones;
 /// Muestras que se piden por métrica: la histéresis más larga en alcance pide 3 ciclos; una de
 /// margen basta para decidir a la vez activación y resolución sin dos consultas.
 const MUESTRAS_HISTERESIS: u32 = 4;
+
+/// Umbrales de las reglas SMART que el motor parametriza desde `settings.alerts` (v3, ADR-036). Los
+/// resuelve quien orquesta la recopilación (`commands::refresh_smart`), no este módulo — así el motor
+/// sigue sin leer la base de datos de ajustes.
+#[derive(Debug, Clone, Copy)]
+pub struct ConfigUmbrales {
+    pub temp_warn_c: f64,
+    pub temp_crit_c: f64,
+    pub wear_warn_pct: f64,
+    pub wear_crit_pct: f64,
+    pub media_errors_warn: i64,
+    pub media_errors_crit: i64,
+}
+
+impl Default for ConfigUmbrales {
+    fn default() -> Self {
+        use crate::domain::ajustes as aj;
+        Self {
+            temp_warn_c: aj::TEMP_WARN_DEFAULT_C,
+            temp_crit_c: aj::TEMP_CRIT_DEFAULT_C,
+            wear_warn_pct: aj::WEAR_WARN_PERCENT_DEFAULT,
+            wear_crit_pct: aj::WEAR_CRIT_PERCENT_DEFAULT,
+            media_errors_warn: aj::MEDIA_ERRORS_WARN_PER24H_DEFAULT,
+            media_errors_crit: aj::MEDIA_ERRORS_CRIT_PER24H_DEFAULT,
+        }
+    }
+}
 
 /// Evalúa, sobre `metric_samples` ya persistido, las reglas en alcance de la primera versión del
 /// motor (`docs/open-questions.md` J.16) para un dispositivo, y aplica el resultado con
@@ -38,9 +66,11 @@ pub fn evaluar_smart(
     conn: &Connection,
     device_id: &str,
     ahora_utc: &str,
+    cfg: &ConfigUmbrales,
 ) -> rusqlite::Result<Vec<(String, Transicion)>> {
     let serie =
         |clave: &str| repo_metricas::latest_n_values(conn, device_id, clave, MUESTRAS_HISTERESIS);
+    let cfg = *cfg;
 
     let mut transiciones = Vec::with_capacity(8);
 
@@ -67,8 +97,8 @@ pub fn evaluar_smart(
         device_id,
         "smart.media_errors",
         &serie("media_errors_total")?,
-        motor::evaluar_media_errors,
-        None,
+        |s| motor::evaluar_media_errors(s, cfg.media_errors_warn, cfg.media_errors_crit),
+        None::<fn(&[f64]) -> bool>,
         ahora_utc,
     )?);
     transiciones.push(aplicar_simple(
@@ -77,7 +107,7 @@ pub fn evaluar_smart(
         "smart.error_log",
         &serie("error_log_entries_total")?,
         motor::evaluar_error_log,
-        None,
+        None::<fn(&[f64]) -> bool>,
         ahora_utc,
     )?);
     transiciones.push(aplicar_simple(
@@ -85,8 +115,8 @@ pub fn evaluar_smart(
         device_id,
         "smart.wear_high",
         &serie("percentage_used")?,
-        motor::evaluar_wear_high,
-        None,
+        |s| motor::evaluar_wear_high(s, cfg.wear_warn_pct, cfg.wear_crit_pct),
+        None::<fn(&[f64]) -> bool>,
         ahora_utc,
     )?);
     transiciones.push(aplicar_simple(
@@ -94,8 +124,8 @@ pub fn evaluar_smart(
         device_id,
         "temp.above_configured_warn",
         &serie("temperature_celsius")?,
-        motor::evaluar_temperatura_configurada_warn,
-        Some(motor::resuelve_temperatura_configurada_warn),
+        |s| motor::evaluar_temperatura_configurada_warn(s, cfg.temp_warn_c),
+        Some(|s: &[f64]| motor::resuelve_temperatura_configurada_warn(s, cfg.temp_warn_c)),
         ahora_utc,
     )?);
     transiciones.push(aplicar_simple(
@@ -103,8 +133,8 @@ pub fn evaluar_smart(
         device_id,
         "temp.above_configured_crit",
         &serie("temperature_celsius")?,
-        motor::evaluar_temperatura_configurada_crit,
-        Some(motor::resuelve_temperatura_configurada_crit),
+        |s| motor::evaluar_temperatura_configurada_crit(s, cfg.temp_crit_c),
+        Some(|s: &[f64]| motor::resuelve_temperatura_configurada_crit(s, cfg.temp_crit_c)),
         ahora_utc,
     )?);
 
@@ -128,13 +158,55 @@ pub fn evaluar_smart(
     Ok(transiciones)
 }
 
+/// Evalúa `capacity.low` y `capacity.critical` para un volumen, sobre la serie de `volume_free_bytes`
+/// ya persistida (v3, ADR-036). `capacity_bytes` es la capacidad actual del volumen (cambia poco);
+/// se pasa aparte para no exigir una segunda serie. Se llama tras la reconciliación de inventario,
+/// una vez por volumen enlazado a un disco monitorizado.
+pub fn evaluar_capacidad(
+    conn: &Connection,
+    volume_id: &str,
+    capacity_bytes: Option<i64>,
+    ahora_utc: &str,
+    umbrales: &UmbralesCapacidad,
+) -> rusqlite::Result<Vec<(String, Transicion)>> {
+    let libres = repo_metricas::latest_n_values_volume(
+        conn,
+        volume_id,
+        "volume_free_bytes",
+        MUESTRAS_HISTERESIS,
+    )?;
+    let cap = capacity_bytes.unwrap_or(0) as f64;
+    let pares: Vec<(f64, f64)> = libres.iter().map(|&f| (f, cap)).collect();
+    let u = *umbrales;
+
+    let low = aplicar_par_volumen(
+        conn,
+        volume_id,
+        "capacity.low",
+        &pares,
+        |p| motor::evaluar_capacidad_low(p, &u),
+        Some(|p: &[(f64, f64)]| motor::resuelve_capacidad_low(p, &u)),
+        ahora_utc,
+    )?;
+    let critical = aplicar_par_volumen(
+        conn,
+        volume_id,
+        "capacity.critical",
+        &pares,
+        |p| motor::evaluar_capacidad_critical(p, &u),
+        Some(|p: &[(f64, f64)]| motor::resuelve_capacidad_critical(p, &u)),
+        ahora_utc,
+    )?;
+    Ok(vec![low, critical])
+}
+
 fn aplicar_simple(
     conn: &Connection,
     device_id: &str,
     rule_key: &str,
     serie: &[f64],
-    evaluar: fn(&[f64]) -> Option<AlertSeverity>,
-    resuelve: Option<fn(&[f64]) -> bool>,
+    evaluar: impl Fn(&[f64]) -> Option<AlertSeverity>,
+    resuelve: Option<impl Fn(&[f64]) -> bool>,
     ahora_utc: &str,
 ) -> rusqlite::Result<(String, Transicion)> {
     let severidad = evaluar(serie);
@@ -153,6 +225,35 @@ fn aplicar_simple(
         },
     )?;
     let clave = agrupacion::deduplication_key(rule_key, Some(device_id), None, None);
+    Ok((clave, transicion))
+}
+
+/// Como `aplicar_par` pero para una regla que apunta a un **volumen**, no a un dispositivo.
+fn aplicar_par_volumen(
+    conn: &Connection,
+    volume_id: &str,
+    rule_key: &str,
+    pares: &[(f64, f64)],
+    evaluar: impl Fn(&[(f64, f64)]) -> Option<AlertSeverity>,
+    resuelve: Option<impl Fn(&[(f64, f64)]) -> bool>,
+    ahora_utc: &str,
+) -> rusqlite::Result<(String, Transicion)> {
+    let severidad = evaluar(pares);
+    let resuelto = severidad.is_none() && resuelve.is_some_and(|f| f(pares));
+    let transicion = agrupacion::procesar(
+        conn,
+        &EvaluacionAlerta {
+            rule_key: rule_key.to_string(),
+            target_device_id: None,
+            target_volume_id: Some(volume_id.to_string()),
+            context: None,
+            severity_si_activa: severidad,
+            resuelto,
+            value: pares.first().map(|&(libre, _)| libre),
+            occurred_at_utc: ahora_utc.to_string(),
+        },
+    )?;
+    let clave = agrupacion::deduplication_key(rule_key, None, Some(volume_id), None);
     Ok((clave, transicion))
 }
 
@@ -231,7 +332,13 @@ mod tests {
         let conn = conn_de_prueba();
         insertar(&conn, "health_passed", 0.0, "2026-09-04T10:00:00Z");
 
-        evaluar_smart(&conn, "d1", "2026-09-04T10:00:00Z").unwrap();
+        evaluar_smart(
+            &conn,
+            "d1",
+            "2026-09-04T10:00:00Z",
+            &ConfigUmbrales::default(),
+        )
+        .unwrap();
 
         let grupo = repo_alertas::get_group(&conn, "smart.health.failed|device:d1")
             .unwrap()
@@ -243,7 +350,13 @@ mod tests {
     fn tres_lecturas_correctas_seguidas_resuelven_el_grupo() {
         let conn = conn_de_prueba();
         insertar(&conn, "health_passed", 0.0, "2026-09-04T10:00:00Z");
-        evaluar_smart(&conn, "d1", "2026-09-04T10:00:00Z").unwrap();
+        evaluar_smart(
+            &conn,
+            "d1",
+            "2026-09-04T10:00:00Z",
+            &ConfigUmbrales::default(),
+        )
+        .unwrap();
 
         for (i, cuando) in [
             "2026-09-04T10:05:00Z",
@@ -254,7 +367,7 @@ mod tests {
         .enumerate()
         {
             insertar(&conn, "health_passed", 1.0, cuando);
-            evaluar_smart(&conn, "d1", cuando).unwrap();
+            evaluar_smart(&conn, "d1", cuando, &ConfigUmbrales::default()).unwrap();
             let _ = i;
         }
 
@@ -267,7 +380,13 @@ mod tests {
     #[test]
     fn sin_ninguna_muestra_no_crea_ningun_grupo() {
         let conn = conn_de_prueba();
-        evaluar_smart(&conn, "d1", "2026-09-04T10:00:00Z").unwrap();
+        evaluar_smart(
+            &conn,
+            "d1",
+            "2026-09-04T10:00:00Z",
+            &ConfigUmbrales::default(),
+        )
+        .unwrap();
         assert!(repo_alertas::list_groups_counting_toward_health(&conn)
             .unwrap()
             .is_empty());
@@ -283,12 +402,171 @@ mod tests {
         ] {
             insertar(&conn, "available_spare_percent", 5.0, cuando);
             insertar(&conn, "available_spare_threshold_percent", 10.0, cuando);
-            evaluar_smart(&conn, "d1", cuando).unwrap();
+            evaluar_smart(&conn, "d1", cuando, &ConfigUmbrales::default()).unwrap();
         }
 
         let grupo = repo_alertas::get_group(&conn, "smart.spare_below_threshold|device:d1")
             .unwrap()
             .expect("no se activó smart.spare_below_threshold");
         assert_eq!(grupo.status, AlertStatus::Active);
+    }
+
+    // ---- v3: umbrales configurables (ADR-036) ----
+
+    #[test]
+    fn la_temperatura_de_aviso_configurada_decide_si_se_activa() {
+        let conn = conn_de_prueba();
+        for cuando in [
+            "2026-09-04T10:00:00Z",
+            "2026-09-04T10:05:00Z",
+            "2026-09-04T10:10:00Z",
+        ] {
+            insertar(&conn, "temperature_celsius", 62.0, cuando);
+        }
+        // Con el umbral de fábrica v2 (70) no salta; con el de v3/«Equilibrado» (60) sí.
+        let cfg_v2 = ConfigUmbrales {
+            temp_warn_c: 70.0,
+            ..ConfigUmbrales::default()
+        };
+        evaluar_smart(&conn, "d1", "2026-09-04T10:10:00Z", &cfg_v2).unwrap();
+        assert!(
+            repo_alertas::get_group(&conn, "temp.above_configured_warn|device:d1")
+                .unwrap()
+                .is_none_or(|g| g.status != AlertStatus::Active)
+        );
+
+        evaluar_smart(
+            &conn,
+            "d1",
+            "2026-09-04T10:10:00Z",
+            &ConfigUmbrales::default(),
+        )
+        .unwrap();
+        let g = repo_alertas::get_group(&conn, "temp.above_configured_warn|device:d1")
+            .unwrap()
+            .expect("con umbral 60 °C debería activarse a 62 °C");
+        assert_eq!(g.status, AlertStatus::Active);
+    }
+
+    // ---- capacity.low / capacity.critical (v3) ----
+
+    fn conn_con_volumen() -> Connection {
+        let conn = conn_de_prueba();
+        conn.execute(
+            "INSERT INTO volumes (id, volume_guid, first_seen_at, last_seen_at)
+             VALUES ('v1', 'v1', '2026-09-04T00:00:00Z', '2026-09-04T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insertar_libres(conn: &Connection, bytes: f64, cuando: &str) {
+        use crate::domain::tipos::{
+            MetricQuality, MetricSample, MetricSource, MetricTarget, Resolution,
+        };
+        repo_metricas::insert_sample(
+            conn,
+            &MetricSample {
+                target: MetricTarget::Volume("v1".to_string()),
+                metric_key: "volume_free_bytes".to_string(),
+                value_real: Some(bytes),
+                value_integer: None,
+                unit: "bytes".to_string(),
+                sampled_at_utc: cuando.to_string(),
+                source: MetricSource::WindowsStorage,
+                quality: MetricQuality::Exact,
+                resolution: Resolution::Raw,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn un_volumen_por_debajo_del_diez_por_ciento_activa_capacity_low() {
+        let conn = conn_con_volumen();
+        let cap = 100i64 * 1024 * 1024 * 1024;
+        insertar_libres(
+            &conn,
+            8.0 * 1024.0 * 1024.0 * 1024.0,
+            "2026-09-04T10:00:00Z",
+        );
+        evaluar_capacidad(
+            &conn,
+            "v1",
+            Some(cap),
+            "2026-09-04T10:00:00Z",
+            &UmbralesCapacidad::default(),
+        )
+        .unwrap();
+        let g = repo_alertas::get_group(&conn, "capacity.low|volume:v1")
+            .unwrap()
+            .expect("no se activó capacity.low");
+        assert_eq!(g.status, AlertStatus::Active);
+    }
+
+    #[test]
+    fn capacity_low_no_se_activa_sin_ninguna_lectura() {
+        let conn = conn_con_volumen();
+        evaluar_capacidad(
+            &conn,
+            "v1",
+            Some(1_000),
+            "2026-09-04T10:00:00Z",
+            &UmbralesCapacidad::default(),
+        )
+        .unwrap();
+        assert!(repo_alertas::get_group(&conn, "capacity.low|volume:v1")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn capacity_low_deduplica_y_resuelve_tras_tres_lecturas_en_ok() {
+        let conn = conn_con_volumen();
+        let cap = 100i64 * 1024 * 1024 * 1024;
+        let g = 1024.0 * 1024.0 * 1024.0;
+        // dos ciclos en aviso: un solo grupo, con contador 2
+        for cuando in ["2026-09-04T10:00:00Z", "2026-09-04T10:05:00Z"] {
+            insertar_libres(&conn, 8.0 * g, cuando);
+            evaluar_capacidad(
+                &conn,
+                "v1",
+                Some(cap),
+                cuando,
+                &UmbralesCapacidad::default(),
+            )
+            .unwrap();
+        }
+        let dedup = repo_alertas::get_group(&conn, "capacity.low|volume:v1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(dedup.status, AlertStatus::Active);
+        assert!(
+            dedup.occurrence_count >= 2,
+            "no deduplicó: {}",
+            dedup.occurrence_count
+        );
+
+        // tres lecturas en ok ⇒ resuelve
+        for cuando in [
+            "2026-09-04T10:10:00Z",
+            "2026-09-04T10:15:00Z",
+            "2026-09-04T10:20:00Z",
+        ] {
+            insertar_libres(&conn, 50.0 * g, cuando);
+            evaluar_capacidad(
+                &conn,
+                "v1",
+                Some(cap),
+                cuando,
+                &UmbralesCapacidad::default(),
+            )
+            .unwrap();
+        }
+        let g2 = repo_alertas::get_group(&conn, "capacity.low|volume:v1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g2.status, AlertStatus::Resolved);
     }
 }

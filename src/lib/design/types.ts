@@ -82,6 +82,9 @@ export interface VolumeSummary {
   mappingConfidence: "exact" | "inferred" | "unknown";
   /** `chkdsk /scan` solo existe en NTFS: lo decide el backend, no se repite el criterio aquí. */
   chkdskAvailable: boolean;
+  /** `true` para el volumen donde vive Windows (v3, ADR-036). Lo calcula el backend; la interfaz no
+   *  lo infiere. Lo consume `selectHeroDisk()`. */
+  isSystemVolume: boolean;
 }
 
 export interface AlertGroup {

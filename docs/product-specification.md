@@ -90,7 +90,9 @@ Debe mostrar de un vistazo:
 - Gris: monitorización pausada, sin datos o fallo general de recopilación.
 - Clic izquierdo: mostrar o restaurar la ventana.
 - Clic derecho: abrir, ver un resumen, pausar/reanudar y salir.
-- La aplicación no se inicia automáticamente.
+- La aplicación no se inicia automáticamente de fábrica. El asistente inicial y Ajustes ofrecen
+  «Arrancar SmartDisk con el sistema» (`lifecycle.start_with_system`): al activarlo se registra una
+  tarea programada que la abre —ya elevada, sin diálogo de UAC— al iniciar sesión (ADR-038).
 - Al cerrar con X, pregunta si debe minimizarse o salir y permite recordar la decisión.
 
 ## 4. Frecuencias predeterminadas
@@ -164,7 +166,9 @@ Las alertas de capacidad son poco intrusivas: se genera una alerta agrupada al c
 ### Notificaciones
 
 - Centro de alertas dentro de la aplicación.
-- Notificación nativa de Windows cuando la aplicación está minimizada.
+- Notificación nativa de Windows cuando la aplicación está minimizada. Se puede desactivar por
+  completo (`notifications.enabled`, activada de fábrica): la alerta sigue en la lista, solo deja de
+  aparecer la ventana emergente. Distinto de pausar, que además detiene la recopilación.
 - Sin canales externos.
 - Sonido desactivado inicialmente.
 - Silencio temporal de 15 minutos, 1 hora, 8 horas o indefinido hasta reactivación manual.

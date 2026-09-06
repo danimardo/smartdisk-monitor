@@ -30,4 +30,22 @@ describe("ProgressBar", () => {
     const relleno = container.querySelector<HTMLElement>('[style*="width"]');
     expect(relleno?.style.width).toBe("100%");
   });
+
+  it("emphasis por defecto («inline»): relleno plano `bg-accent`, sin degradado", async () => {
+    const { container } = await render(ProgressBar, { props: { value: 40 } });
+    const relleno = container.querySelector<HTMLElement>('[style*="width"]')!;
+    expect(relleno.className).toContain("bg-accent");
+    expect(relleno.getAttribute("style") ?? "").not.toContain("linear-gradient");
+  });
+
+  it("emphasis «display»: barra de 12 px con degradado del acento y filo interior", async () => {
+    const { container } = await render(ProgressBar, {
+      props: { value: 40, emphasis: "display" }
+    });
+    const carril = container.querySelector('[role="progressbar"]')!;
+    expect(carril.className).toContain("h-3");
+    const relleno = container.querySelector<HTMLElement>('[style*="width"]')!;
+    expect(relleno.className).toContain("shadow-edge");
+    expect(relleno.getAttribute("style") ?? "").toContain("linear-gradient");
+  });
 });

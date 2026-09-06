@@ -14,7 +14,8 @@ export const apariencia = {
   theme: "light",
   language: "es",
   systemLocale: "es-ES",
-  useSystemAccent: true
+  // De fábrica apagado (v3, ADR-035): una instalación nueva estrena la paleta Ciruela.
+  useSystemAccent: false
 };
 
 export const acento = { hex: "#0067c0", palette: ["#0067c0"] };
@@ -42,7 +43,8 @@ export const inventario = {
           capacityBytes: 2_000_398_934_016,
           freeBytes: 1_204_000_000_000,
           mappingConfidence: "exact",
-          chkdskAvailable: true
+          chkdskAvailable: true,
+          isSystemVolume: false
         }
       ]
     },
@@ -229,13 +231,23 @@ export const settingsDeFabrica = {
     discoverySeconds: 60
   },
   alerts: {
-    tempConfiguredWarnC: 70,
-    tempConfiguredCritC: 80,
+    profile: "balanced" as const,
+    tempConfiguredWarnC: 60,
+    tempConfiguredCritC: 70,
+    wearWarnPercent: 80,
+    wearCritPercent: 90,
     capacityWarnPercent: 10,
     capacityCritPercent: 5,
     capacityAbsoluteFloorMinCapacityBytes: 274_877_906_944,
     capacityAbsoluteFloorWarnBytes: 21_474_836_480,
-    capacityAbsoluteFloorCritBytes: 10_737_418_240
+    capacityAbsoluteFloorCritBytes: 10_737_418_240,
+    mediaErrorsWarnPer24h: 1,
+    mediaErrorsCritPer24h: 5,
+    driverRetryWarnPer24h: 5,
+    driverRetryCritPer24h: 12
+  },
+  onboarding: {
+    completedAt: "2026-01-01T00:00:00Z"
   },
   retention: {
     rawDays: 7,
@@ -246,10 +258,12 @@ export const settingsDeFabrica = {
   },
   lifecycle: {
     closeAction: "minimize" as const,
-    closeActionRemembered: false
+    closeActionRemembered: false,
+    startWithSystem: false
   },
   notifications: {
-    soundEnabled: false
+    soundEnabled: false,
+    enabled: true
   },
   logging: {
     verbose: false

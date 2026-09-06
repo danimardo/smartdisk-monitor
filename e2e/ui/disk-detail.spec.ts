@@ -33,6 +33,28 @@ test.describe("detalle de disco", () => {
     expect(llamadasSerie.length).toBeGreaterThanOrEqual(2);
   });
 
+  test("v3: las cuatro métricas llevan icono y el control de intervalo vive en el cuerpo, no en la barra", async ({
+    page
+  }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto(`/disks/${detalleDisco0.id}`);
+    await expect(page.getByRole("heading", { name: detalleDisco0.model })).toBeVisible();
+
+    // Las cuatro etiquetas de MetricCard (algunas se repiten en los contadores: basta la primera).
+    for (const clave of ["disk.temperature", "disk.activity", "disk.wear", "disk.powerOnHours"] as const) {
+      await expect(page.getByText(es[clave]).first()).toBeVisible();
+    }
+
+    // El SegmentedControl de intervalo está dentro de <main>, no en la <Toolbar> (que perdió su ranura).
+    const toolbar = page.getByRole("banner");
+    await expect(toolbar.getByRole("radio", { name: es["range.24h"] })).toHaveCount(0);
+    await expect(page.getByRole("main").getByRole("radio", { name: es["range.24h"] })).toBeVisible();
+
+    // Iconos del sprite presentes en el cuerpo (cabecera de identidad + tarjetas de métrica).
+    const iconos = await page.getByRole("main").locator('svg use[href^="#i-"]').count();
+    expect(iconos).toBeGreaterThanOrEqual(4);
+  });
+
   test("el rango personalizado muestra el selector de fechas", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto(`/disks/${detalleDisco0.id}`);

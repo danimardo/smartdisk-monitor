@@ -326,7 +326,9 @@ Debe mostrar de un vistazo:
 - Gris: monitorización pausada, sin datos o fallo general de recopilación.
 - Clic izquierdo: mostrar o restaurar la ventana.
 - Clic derecho: abrir, ver un resumen, pausar/reanudar y salir.
-- La aplicación no se inicia automáticamente.
+- La aplicación no se inicia automáticamente de fábrica. El asistente inicial y Ajustes ofrecen
+  «Arrancar SmartDisk con el sistema» (`lifecycle.start_with_system`): al activarlo se registra una
+  tarea programada que la abre —ya elevada, sin diálogo de UAC— al iniciar sesión (ADR-038).
 - Al cerrar con X, pregunta si debe minimizarse o salir y permite recordar la decisión.
 
 ### 4. Frecuencias predeterminadas
@@ -400,7 +402,9 @@ Las alertas de capacidad son poco intrusivas: se genera una alerta agrupada al c
 #### Notificaciones
 
 - Centro de alertas dentro de la aplicación.
-- Notificación nativa de Windows cuando la aplicación está minimizada.
+- Notificación nativa de Windows cuando la aplicación está minimizada. Se puede desactivar por
+  completo (`notifications.enabled`, activada de fábrica): la alerta sigue en la lista, solo deja de
+  aparecer la ventana emergente. Distinto de pausar, que además detiene la recopilación.
 - Sin canales externos.
 - Sonido desactivado inicialmente.
 - Silencio temporal de 15 minutos, 1 hora, 8 horas o indefinido hasta reactivación manual.
@@ -581,17 +585,25 @@ Criterios de aceptación:
 - Si la elevación se rechaza, la aplicación no continúa en un estado parcialmente funcional.
 - Se muestra una explicación comprensible cuando Windows impide la elevación.
 
-#### US-002 — Asistente inicial (P0)
+#### US-002 — Asistente inicial (P0) · **cubierta** (rediseño v3, `specs/002-rediseno-v3/` US8)
 
 Como usuario quiero configurar la aplicación mediante un asistente para empezar a monitorizar sin conocer SMART.
 
 Criterios de aceptación:
 
-- Aparece cuando no existe una configuración inicial completa.
+- Aparece cuando `settings.onboarding.completedAt` es nulo y no hay configuración previa; una
+  instalación que ya venía configurada se marca como completada sin mostrarlo (FR-043).
+- Cuatro pasos, uno por pantalla (Bienvenida · Discos · Alertas · Listo), sin riel ni barra de
+  herramientas, con «Omitir y usar los valores de fábrica» visible en todos.
 - Enumera los discos detectados y selecciona inicialmente todos los compatibles.
 - Permite excluir discos y asignar alias.
-- Explica los estados no compatible y desconocido.
-- Las elecciones se conservan tras reiniciar.
+- Explica los estados no compatible y desconocido; el disco USB sin SMART se explica como «no es una
+  avería», nunca en rojo.
+- El paso 3 elige un perfil de alerta (Prudente / Equilibrado / Solo lo grave) y ofrece la
+  notificación de Windows y el autoarranque.
+- «Omitir» aplica el perfil Equilibrado, graba la marca y va al panel.
+- Las elecciones se conservan tras reiniciar; se relanza desde Ajustes → «Repetir la configuración
+  inicial» sin borrar datos.
 
 #### US-003 — Preferencias de idioma y tema (P1)
 
@@ -1524,6 +1536,40 @@ Fichero de origen: `docs/data-model.md`
   detiene la escritura de historial sin afectar a la monitorización ni a las alertas en vivo. Valor
   por defecto 1 GB / 256 MB, no medido (`open-questions.md` J.13).
 - `logging.verbose`: booleano, modo detallado de registro de actividad (US-071).
+- `notifications.enabled`: booleano, **fábrica `true`** (ADR-037). `false` oculta el toast nativo sin
+  necesidad de pausar la recopilación. La alerta sigue existiendo y contando para el color de salud.
+- `lifecycle.start_with_system`: booleano, **fábrica `false`** (ADR-038). Al activarlo, el backend
+  registra una tarea programada elevada (`schtasks /SC ONLOGON /RL HIGHEST`); al desactivarlo o al
+  hacer `reset_settings("all")`, la borra. Fuente de verdad = esta clave, no el estado real de la
+  tarea.
+- **`alerts.profile`** (`cautious` | `balanced` | `quiet` | `custom`) y los umbrales que un perfil
+  escribe (ADR-036, `cambios/08b-perfiles-de-alerta.md`). Fábrica: `balanced`. Umbrales nuevos frente
+  a v2, con su rango de edición y su valor de fábrica (perfil Equilibrado):
+
+  | Clave | Rango | Fábrica |
+  |---|---|---|
+  | `alerts.temp_configured_warn_c` | 40–95 | **60** (baja de 70) |
+  | `alerts.temp_configured_crit_c` | warn–100 | **70** (baja de 80) |
+  | `alerts.wear_warn_percent` | 50–99 | 80 |
+  | `alerts.wear_crit_percent` | warn–100 | 90 |
+  | `alerts.media_errors_warn_per24h` | 1–1000 | 1 — es el incremento del contador que basta para avisar, **no** una ventana de 24 h (clarify Q1) |
+  | `alerts.media_errors_crit_per24h` | warn–1000 | 5 |
+  | `alerts.driver_retry_warn_per24h` | 1–1000 | 5 — **aún sin consumidor** (necesita el colector de eventos, Historia 4) |
+  | `alerts.driver_retry_crit_per24h` | warn–1000 | 12 |
+
+  Perfiles: Prudente 55/65 · 70/85 · … · Equilibrado (= fábrica) · Solo lo grave 70/80 · 90/95 · …
+  Tabla completa en `specs/002-rediseno-v3/data-model.md` y en `cambios/08b`.
+- **`settings.onboarding.completed_at`**: fecha ISO-8601 UTC o nula. Nula ⇒ el guardián de
+  `+layout.ts` redirige al asistente inicial al arrancar, **salvo** que ya haya configuración previa
+  observable (tema ≠ `system`, idioma forzado, perfil de alerta ≠ `balanced`, algún alias o alguna
+  exclusión), en cuyo caso la graba y sigue sin mostrarlo (FR-043, sin migración). No la restaura
+  `reset_settings`.
+- **`volume_free_bytes`** (`metric_samples`, `MetricTarget::Volume`): muestra periódica del espacio
+  libre de cada volumen monitorizado, persistida en el ciclo de descubrimiento (ADR-036). Antes la
+  capacidad solo vivía como instantánea en `volumes.free_bytes`; ahora también como serie, para que
+  `capacity.low`/`capacity.critical` tengan histéresis. La retención la compacta igual que el resto.
+- `VolumeSummary` gana `is_system_volume` (booleano): `true` para el volumen donde vive Windows. Lo
+  calcula el backend al leer (`GetSystemWindowsDirectoryW`), **sin columna nueva ni migración**.
 
 #### `event_cursors`
 
@@ -1665,16 +1711,16 @@ desconectado generaría cuatro alertas. Véase §3.5.
 |---|---|---|---|---|---|---|
 | `smart.health.failed` | smartctl | `health_passed = false` | crítico inmediato | `health_passed = true` durante 3 ciclos | ninguno: siempre notifica | — |
 | `nvme.critical_warning` | smartctl | `critical_warning ≠ 0` | crítico inmediato | `= 0` durante 3 ciclos | ninguno | bit activo |
-| `smart.media_errors` | smartctl | `media_errors_total` aumenta respecto a la lectura anterior | crítico inmediato | no aumenta durante 24 h | 1 h | — |
+| `smart.media_errors` | smartctl | el **incremento** de `media_errors_total` entre dos lecturas alcanza `settings.alerts.media_errors_warn_per24h` (aviso) / `_crit_per24h` (crítico). El sufijo `Per24h` es histórico: **no** es una ventana de 24 h (ADR-036) | advertencia; **crítico** en el umbral crítico | no aumenta durante 24 h | 1 h | — |
 | `smart.error_log` | smartctl | `error_log_entries_total` aumenta | advertencia; **crítico** si aumenta en 3 ciclos seguidos | no aumenta durante 24 h | 1 h | — |
 | `smart.spare_below_threshold` | smartctl | `available_spare_percent < available_spare_threshold_percent` | crítico | por encima del umbral + 2 puntos durante 3 ciclos | 6 h | — |
-| `smart.wear_high` | smartctl | `percentage_used ≥ 90` | advertencia; **crítico** en `≥ 100` | no se resuelve sola: el desgaste no baja. Se archiva a mano | 7 días | — |
+| `smart.wear_high` | smartctl | `percentage_used ≥ settings.alerts.wear_warn_percent` (fábrica 80) | advertencia; **crítico** en `≥ wear_crit_percent` (fábrica 90) | no se resuelve sola: el desgaste no baja. Se archiva a mano | 7 días | — |
 | `temp.above_vendor_limit` | smartctl | `temperature_celsius > vendorTempLimitC` durante 3 ciclos | advertencia | ≤ límite − 3 °C durante 3 ciclos | 30 min | id. de sensor |
 | `temp.above_vendor_critical` | smartctl | `temperature_celsius ≥ vendorTempCriticalC` | crítico inmediato | ≤ crítico − 5 °C durante 3 ciclos | 15 min | id. de sensor |
-| `temp.above_configured_warn` | smartctl | sin límite del fabricante: `> 70 °C` durante 3 ciclos | advertencia | ≤ 67 °C durante 3 ciclos | 30 min | id. de sensor |
-| `temp.above_configured_crit` | smartctl | sin límite del fabricante: `≥ 80 °C` | crítico inmediato | ≤ 75 °C durante 3 ciclos | 15 min | id. de sensor |
-| `capacity.low` | sistema de archivos | `capacityState()` da `warn` | advertencia | vuelve a `ok` **y** se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
-| `capacity.critical` | sistema de archivos | `capacityState()` da `crit` | crítico | sube a `warn` u `ok` y se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
+| `temp.above_configured_warn` | smartctl | sin límite del fabricante: `> settings.alerts.temp_configured_warn_c` (fábrica 60 °C — ADR-036) durante 3 ciclos | advertencia | ≤ (umbral − 3 °C) durante 3 ciclos | 30 min | id. de sensor |
+| `temp.above_configured_crit` | smartctl | sin límite del fabricante: `≥ settings.alerts.temp_configured_crit_c` (fábrica 70 °C) | crítico inmediato | ≤ (umbral − 5 °C) durante 3 ciclos | 15 min | id. de sensor |
+| `capacity.low` | sistema de archivos | `estado_capacidad()` da `warn` sobre la serie `volume_free_bytes` (ADR-036: umbrales de `settings.alerts.capacity_*`) | advertencia | vuelve a `ok` **y** se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
+| `capacity.critical` | sistema de archivos | `estado_capacidad()` da `crit` | crítico | sube a `warn` u `ok` y se mantiene 3 ciclos | solo al cambiar de nivel | `volume_guid` |
 | `device.removed_unexpected` | inventario + `disk` 157 | desaparece sin solicitud de expulsión previa | crítico; **advertencia** si `bus_type = USB` | reaparece el mismo `fingerprint` | ninguno | — |
 | `events.disk_error` | registro de eventos | `disk` 7, `NvmeDisk` 500, `StorageSpaces-Driver` 202/203/209 | crítico | 24 h sin repetición | 1 h | `provider:event_id` |
 | `events.filesystem_error` | registro de eventos | `Ntfs` 55 o 131 | crítico | 24 h sin repetición | 1 h | `provider:event_id` |
@@ -1967,7 +2013,7 @@ interface AppearanceSettings {
   theme: "light" | "dark" | "system";
   language: "es" | "en" | null;   // null = seguir al sistema
   systemLocale: string;           // BCP-47 de Windows, p. ej. "es-ES". NO usar navigator.language
-  useSystemAccent: boolean;
+  useSystemAccent: boolean;       // valor de fábrica: false (v3, ADR-035) — la app estrena paleta propia
 }
 
 invoke<WindowsAccent>("get_system_accent_color")   // error si el usuario lo tiene desactivado
@@ -1988,13 +2034,27 @@ interface Settings {
     discoverySeconds: number;     // 60 s de fábrica, 30-600
   };
   alerts: {
-    tempConfiguredWarnC: number;  // 70 de fábrica, 40-95 — solo se aplica sin límite del fabricante
-    tempConfiguredCritC: number;  // 80 de fábrica, entre tempConfiguredWarnC y 100
+    profile: "cautious" | "balanced" | "quiet" | "custom";  // "balanced" de fábrica (ADR-036). Elegir un perfil concreto reescribe los 12 umbrales; editar un umbral a mano ⇒ "custom"
+    tempConfiguredWarnC: number;  // 60 de fábrica (ADR-036), 40-95 — solo sin límite del fabricante
+    tempConfiguredCritC: number;  // 70 de fábrica, entre tempConfiguredWarnC y 100
+    wearWarnPercent: number;      // 80 de fábrica, 50-99
+    wearCritPercent: number;      // 90 de fábrica, entre wearWarnPercent y 100
     capacityWarnPercent: number;  // 10 de fábrica, 1-50 (C.1/ADR-019)
     capacityCritPercent: number;  // 5 de fábrica, 1-50, menor que capacityWarnPercent
     capacityAbsoluteFloorMinCapacityBytes: number;  // 256 GiB de fábrica: a partir de aquí también cuenta el suelo absoluto
     capacityAbsoluteFloorWarnBytes: number;         // 20 GiB de fábrica
     capacityAbsoluteFloorCritBytes: number;         // 10 GiB de fábrica, menor que el de aviso
+    mediaErrorsWarnPer24h: number;  // 1 de fábrica, 1-1000. Nombre histórico: es el incremento del contador que basta para avisar, no una ventana de 24 h (ADR-036)
+    mediaErrorsCritPer24h: number;  // 5 de fábrica, entre el de aviso y 1000
+    driverRetryWarnPer24h: number;  // 5 de fábrica, 1-1000. Aún sin consumidor: la regla events.* necesita el colector de eventos
+    driverRetryCritPer24h: number;  // 12 de fábrica, entre el de aviso y 1000
+  };
+  onboarding: {
+    // ISO-8601 UTC o null. null ⇒ el guardián de `+layout.ts` redirige a `/onboarding` al arrancar,
+    // salvo que ya exista configuración previa (FR-043), en cuyo caso lo graba solo. Se escribe con
+    // `set_setting("settings.onboarding.completed_at", <fecha>|null)` (clave en la lista blanca desde
+    // PR 5). «Repetir la configuración inicial» de Ajustes lo pone a null.
+    completedAt: string | null;
   };
   retention: {
     rawDays: number;              // 7 de fábrica, 1-30 (J.14)
@@ -2006,9 +2066,13 @@ interface Settings {
   lifecycle: {
     closeAction: "minimize" | "exit";   // "minimize" de fábrica
     closeActionRemembered: boolean;
+    startWithSystem: boolean;     // false de fábrica; al activarlo se registra una tarea programada
+                                  //   elevada (`schtasks`, ADR-038). Clave: `lifecycle.start_with_system`
   };
   notifications: {
     soundEnabled: boolean;        // false de fábrica (US-072)
+    enabled: boolean;             // true de fábrica; false oculta el toast sin pausar (ADR-037).
+                                  //   Clave: `notifications.enabled`
   };
   logging: {
     verbose: boolean;             // ver `set_log_level`, §3.9: no se cambia con `set_setting`
@@ -2022,8 +2086,9 @@ valor legal. La apariencia (`theme`/`language`/`useSystemAccent`) no vive en `Se
 teniendo su propio `get_appearance_settings()`; se persiste con el mismo `set_setting(key, value)`
 genérico, con las claves `settings.appearance.theme`, `settings.appearance.language` y
 `settings.appearance.use_system_accent`. `reset_settings` con `scope: "all"` también restaura
-`lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio; nunca toca la
-apariencia.
+`lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio (y al borrar
+`lifecycle.start_with_system` también quita la tarea programada de autoarranque); nunca toca la
+apariencia ni `settings.onboarding.completedAt`.
 
 #### 3.2 Inventario
 
@@ -3539,7 +3604,11 @@ El desinstalador conserva SQLite, configuración, historial y logs en `ProgramDa
 
 ### ADR-013 — Sistema de diseño v2 vinculante
 
-Estado: aceptada.
+Estado: aceptada; **enmendada por ADR-034** (2026-09-06): el sistema de diseño evoluciona a v3
+(paleta propia «Ciruela», dos escalones tipográficos de «display», riel de navegación). El fondo de
+ADR-013 no cambia: `tokens.css` sigue siendo la fuente única de verdad, el catálogo sigue cerrado,
+el material de tres capas y los radios concéntricos no se tocan. Lo que cambia es la paleta y que la
+herencia del acento de Windows pasa a opción apagada de fábrica (ADR-035).
 
 La interfaz utilizará el paquete de diseño entregado, versión v2 de material translúcido, con su norma vinculante y `tokens.css` como fuente única de verdad visual.
 
@@ -3593,7 +3662,10 @@ Implementado en `deviceState()` y `alertCountsTowardHealth()`, un único sitio p
 
 ### ADR-017 — El acento heredado se corrige antes de aplicarse
 
-Estado: aceptada.
+Estado: aceptada; **matizada por ADR-035** (2026-09-06): la herencia del acento de Windows deja de
+ser el comportamiento de fábrica y pasa a un interruptor de Ajustes apagado por defecto. La parte
+técnica de ADR-017 se conserva entera: cuando el interruptor está encendido, `accessibleAccent()` y
+`accentOnSurface()` siguen corrigiendo el color del usuario para no romper el contraste.
 
 El acento de Windows se hereda, pero no a ciegas: `accessibleAccent()` elige texto blanco o negro
 según cuál contraste mejor y, si aun así no se alcanza 4.5:1, oscurece o aclara el acento hasta
@@ -4299,6 +4371,247 @@ cada sondeo — un único punto de parada, sea cual sea la vía de salida real.
   todavía ninguna escritura (`open-questions.md` J.40): queda como seguimiento explícito, no como
   olvido.
 
+### ADR-034 — Sistema de diseño v3: «escena de datos» con paleta propia «Ciruela»
+
+Estado: aceptada. Fecha: 2026-09-06. Enmienda ADR-013. Spec: `specs/002-rediseno-v3/`.
+
+#### El problema
+
+Las capturas de la interfaz v2 sobre un Windows real (`design/entregable-rediseno/salida/capturas/`)
+mostraron tres defectos de presentación que no son de implementación:
+
+1. El panel general parece a medio cargar: con dos discos la rejilla ocupa ~230 px y deja ~570 px de
+   lienzo vacío.
+2. Cada magnitud es texto plano del mismo tamaño y color; nada dice si «41 °C» está bien, y un dato
+   ausente pesa más que un dato presente.
+3. El acento azul heredado de Windows (`#0067c0`) es correcto pero indistinguible de cualquier
+   utilidad del sistema; en tema oscuro el conjunto queda gris plano.
+
+El diseñador entregó una propuesta (`design/propuesta-redisenov2/`) que los resuelve sin reescribir
+el sistema.
+
+#### La decisión
+
+El sistema de diseño evoluciona a **v3**. `docs/ui-design.md` pasa a describir v3. Cambios:
+
+- **Paleta «Ciruela»**: neutros malva, acento morado de tinta (`#7a3f9d` claro / `#c79aec` oscuro) y
+  crítico desplazado al bermellón (`#b03434` / `#ef8080`) para no confundirse con el acento. Todos
+  los ratios de contraste están medidos sobre el material compuesto en `docs/open-questions.md`.
+- **`--sdm-on-accent` deja de ser blanco en tema oscuro**: el acento oscuro es claro y el texto
+  blanco encima daba 2,27:1. Pasa a tinta (`#20132a`, 7,80:1). Todo texto sobre el acento usa
+  `--sdm-on-accent`, nunca `text-white`.
+- **Familia de «display»** (`--sdm-font-display`) y dos escalones nuevos (58 px, 76 px) para cifras y
+  titulares (nunca texto corrido), mediante la clase `.sdm-display`. **No se empaqueta una segunda
+  familia tipográfica**: `--sdm-font-display` resuelve a la familia sans ya empotrada. Se descartó Bricolage
+  Grotesque para no ampliar la superficie de un binario privilegiado que se distribuye a terceros
+  (constitución §III); si se revisa, `.sdm-display` y su `@font-face` son el único punto de cambio.
+- **Tres componentes nuevos** en el catálogo, cada uno con su justificación contra `ui-design.md` §3:
+  `Icon` (juego propio de 15 iconos de línea que heredan `currentColor`), `Sparkline` (trazo sin
+  ejes) y `HeroPanel` (dato dominante del panel). Ningún componente se elimina.
+- **La `Sidebar` pasa a un riel de 74 px** solo con iconos, devolviendo 176 px de ancho al contenido
+  (crítico a 1024 px). La lista de discos sale de la barra (ya está en la rejilla del panel).
+
+#### Qué NO cambia
+
+El material de tres capas y sus desenfoques (28 / 24 / 44), la escala de radios concéntricos
+(18 → 13 → 9 → cápsula), el movimiento (220 ms, `cubic-bezier(.32,.72,0,1)`, `active:scale-[0.98]`,
+`prefers-reduced-motion`), el catálogo cerrado, `tokens.css` como fuente única de verdad visual, y
+**todas** las reglas de producto. No se añade ningún comando Tauri ni ningún permiso: el rediseño es
+de presentación, salvo los cambios de frontera acotados que la spec 002 documenta (una preferencia
+de apariencia cuyo campo ya existía, la marca del asistente inicial y los umbrales de perfil de
+alerta).
+
+#### Alternativas descartadas
+
+- **Mantener el azul de Windows y ofrecer Ciruela como tema alternativo**: duplica el mantenimiento
+  de dos identidades y deja sin resolver el problema original (la aplicación no se reconoce) para la
+  mayoría de usuarios, que no cambian de tema.
+- **Empaquetar Bricolage Grotesque**: aporta carácter a las cifras grandes pero obliga a gestionar
+  un binario y una licencia OFL más en un instalador privilegiado. El coste no compensa; se deja la
+  puerta abierta con un único punto de cambio.
+
+#### Consecuencias
+
+- `docs/ui-design.md` §0, §2, §2.bis y §3 se reescriben para v3. §4 (composición), §6
+  (accesibilidad) y §8 (definición de terminado) se conservan literalmente y siguen siendo el
+  criterio de aceptación visual de cada pantalla.
+- El catálogo pasa de N a N+3 componentes.
+- La entrega se hace en nueve PR ordenados por dependencia (`specs/002-rediseno-v3/plan.md`).
+
+### ADR-035 — La herencia del acento de Windows pasa a opción apagada de fábrica
+
+Estado: aceptada. Fecha: 2026-09-06. Matiza ADR-017. Spec: `specs/002-rediseno-v3/`.
+
+#### El problema
+
+ADR-013 adoptó «la herencia del acento de Windows» como parte de la identidad visual de v2, y
+ADR-017 construyó toda la corrección de contraste (`accessibleAccent()`, `accentOnSurface()`, el
+barrido de los 262.144 acentos posibles de `open-questions.md` §O) sobre esa premisa. Pero heredar
+el acento del sistema es justo lo que hace que la aplicación no se distinga de cualquier utilidad de
+Windows (ADR-034, problema 3).
+
+#### La decisión
+
+Con la paleta Ciruela, el acento propio es el comportamiento **de fábrica**. Heredar el acento de
+Windows pasa a un interruptor en Ajustes → Apariencia, **apagado por defecto**
+(`settings.appearance.useSystemAccent`, cuyo campo ya existía en el backend; solo cambia su valor de
+fábrica de `true` a `false`, implantado en PR 8 de `specs/002-rediseno-v3/`). Al encenderlo,
+`applySystemAccent()` sobrescribe los **tres roles de acento** —`--sdm-accent` (fondo),
+`--sdm-accent-fg` (texto), `--sdm-on-accent` (texto sobre el fondo)— más sus dos derivados
+(`--sdm-accent-hi`, `--sdm-accent-soft`): cinco propiedades CSS en total. Al apagarlo,
+`clearSystemAccent()` las restaura todas.
+
+**La parte técnica de ADR-017 se conserva entera**: cuando el interruptor está encendido, el acento
+del usuario sigue pasando por `accessibleAccent()` / `accentOnSurface()` para no bajar de AA en
+ningún tema. El acento sigue sin comunicar salud y sigue siendo acción/selección: no se toca ningún
+principio de la constitución §VI, solo se precisa que la herencia es opcional (nota al pie de §VI).
+
+#### Alternativas descartadas
+
+- **Quitar la herencia por completo**: se pierde valor para el usuario que prefiere integrarse con
+  su sistema, y se tira una inversión de trabajo (ADR-017, `open-questions.md` §O) que ya está hecha
+  y probada.
+- **Dejar la herencia encendida de fábrica y Ciruela como respaldo**: no resuelve el problema para
+  la mayoría, que no toca los ajustes de apariencia.
+
+#### Consecuencias
+
+- El texto de la preferencia (`settings.appearance.useSystemAccent.label` / `.hint`) se reescribe:
+  hoy asume el comportamiento contrario.
+- La definición de terminado de `ui-design.md` §8 sigue exigiendo verificar cada pantalla con un
+  acento del sistema claro y en los dos temas: el camino de la herencia no se abandona, se hace
+  opcional.
+
+### ADR-036 — El motor de alertas se parametriza por perfil
+
+Estado: aceptada. Fecha: 2026-09-06. Spec: `specs/002-rediseno-v3/` (US10). Amplía `alert-rules.md` §2.
+
+#### El problema
+
+El rediseño v3 añade un paso al asistente inicial y una sección a Ajustes para elegir «cuánto avisa»
+la aplicación con un perfil (Prudente / Equilibrado / Solo lo grave). Para que esa elección no sea
+decorativa —y la constitución §I exige que la interfaz no mienta sobre qué está activo— el motor de
+alertas tiene que **consumir de verdad** los umbrales.
+
+Hasta ahora no lo hacía: `alerts::motor` es puro y sus umbrales estaban **escritos a mano**
+(`90/100` para desgaste, `70/80` para temperatura). `settings.alerts.temp_configured_warn_c` se
+guardaba y `get_settings` lo devolvía, pero **ninguna regla lo leía** — el mismo hueco que
+`open-questions.md` J.32 describía para las claves de capacidad.
+
+#### La decisión
+
+1. **`settings.alerts` gana siete claves**: `profile` (`cautious`|`balanced`|`quiet`|`custom`),
+   `wear_warn_percent`, `wear_crit_percent`, `media_errors_warn_per24h`, `media_errors_crit_per24h`,
+   `driver_retry_warn_per24h`, `driver_retry_crit_per24h`. Cada una con su rango, su validación
+   (`crit` más severo que `warn`) y su prueba de rechazo (constitución §XI).
+2. **El motor las lee**. `alerts::motor` sigue puro: recibe los umbrales como parámetros;
+   `commands::refresh_smart` los resuelve de `settings` una vez por ciclo y se los pasa. Reglas
+   afectadas:
+   - `smart.wear_high` → `wear_warn_percent` / `wear_crit_percent`.
+   - `temp.above_configured_warn/crit` → `temp_configured_warn_c` / `_crit_c`. La histéresis de
+     resolución conserva su margen (aviso − 3 °C, crítico − 5 °C).
+   - `smart.media_errors` → la activación pasa de «el contador aumentó» a «el **incremento** entre
+     dos lecturas alcanza `media_errors_warn/crit_per24h`». El sufijo `Per24h` es histórico: **no**
+     es una ventana de 24 h (spec 002, clarify Q1). `smart.error_log` no se parametriza.
+   - **`capacity.low` / `capacity.critical`**: este ADR las **implementa en el motor** (antes solo
+     figuraban en `alert-rules.md`, sin código). Requiere persistir `volume_free_bytes` como muestra
+     periódica de cada volumen — antes la capacidad solo vivía como instantánea en
+     `volumes.free_bytes`. `domain::capacidad::estado_capacidad` es el espejo Rust de
+     `capacityState()` de `src/lib/design/health.ts`.
+3. **El umbral térmico de fábrica baja a 60/70 °C** (era 70/80), que es el valor del perfil
+   Equilibrado. Decisión de producto adoptada (spec 002, clarify Q2): 60 °C sigue siendo temperatura
+   alta para un SSD de consumo y mantener dos números («fábrica» vs «Equilibrado») confundiría.
+4. **Elegir un perfil escribe sus doce umbrales de golpe** y guarda el identificador. **Editar a
+   mano cualquiera de esos umbrales** pone `profile = "custom"`; la única forma de volver a un perfil
+   concreto es elegirlo. La interfaz muestra «Personalizado (a partir de \<perfil anterior\>)».
+
+#### Lo que queda fuera
+
+- **`driver_retry_warn/crit_per24h` se guardan pero ninguna regla los consume todavía**: las reglas
+  `events.controller_reset` / `events.io_retry` necesitan el colector de eventos completo (Historia
+  4). El perfil escribe los doce valores igualmente, así el día que exista esa regla ya tiene su
+  umbral — el mismo patrón con el que las claves de capacidad y `logging.verbose` vivieron guardadas
+  sin consumidor (J.32, FR-029a). Registrado en `docs/open-questions.md`.
+- No se añade ningún comando Tauri ni ningún permiso: todo pasa por el `set_setting` genérico.
+
+#### Alternativas descartadas
+
+- **Guardar los perfiles pero no cablear el motor** (opción del planteamiento inicial): el paso 3 del
+  asistente y la sección de Ajustes serían decoración. El usuario eligió el alcance completo.
+- **Implementar una ventana de conteo real «por 24 h»** para errores de medios y reintentos: mucho
+  más código en el motor (mecánica de conteo nueva + sus cinco pruebas) para un matiz que la
+  reinterpretación sobre las reglas existentes ya cubre (clarify Q1).
+
+#### Consecuencias
+
+- `alert-rules.md` §2: la tabla pasa a decir «valor configurado (`settings.alerts.*`)» donde antes
+  ponía `> 70 °C` / `≥ 90` / «aumenta»; `capacity.low`/`critical` dejan de estar pendientes.
+- `metric_samples` gana un tipo de muestra: `volume_free_bytes` con `MetricTarget::Volume`. La
+  retención lo compacta igual que el resto (misma columna `volume_id` del esquema).
+- `VolumeSummary` gana `is_system_volume` (necesario para `selectHeroDisk()`, spec 002 clarify Q3),
+  calculado al leer con `GetSystemWindowsDirectoryW`, sin migración de esquema.
+
+### ADR-037 — Apagar las notificaciones es un ajuste propio, no solo pausar
+
+Estado: aceptada. Fecha: 2026-09-06. Spec: `specs/002-rediseno-v3/` (US8, paso 3 del asistente).
+
+#### El problema
+
+El paso 3 del asistente inicial (`cambios/08-onboarding.md`) ofrece un `Switch` «Avisarme con una
+notificación de Windows». Hasta v3 el toast nativo estaba **siempre activo** cuando la ventana estaba
+minimizada (`product-specification.md` §Notificaciones); lo único que se podía apagar era el
+**sonido** (`notifications.sound_enabled`). Sonido ≠ presencia: alguien puede querer el aviso sin el
+«ding», y también puede querer ningún aviso emergente sin tener que **pausar toda la recopilación**
+(que es lo que hoy silencia las notificaciones, y de paso deja de vigilar los discos).
+
+#### La decisión
+
+Clave nueva `notifications.enabled` (booleano, **fábrica: `true`**). La consume
+`alerts::notificaciones::procesar_una`: si está en `false`, no se muestra el toast, con independencia
+de la transición de la alerta. La alerta **sigue existiendo** en la lista y sigue contando para el
+color de salud — apagar el aviso emergente no apaga la vigilancia (constitución §I). Se persiste con
+el `set_setting` genérico; no añade comando ni permiso. La decisión de enviar se factoriza a una
+función pura `debe_enviar(...)` con sus pruebas (el resto de `procesar_una` necesita un proceso Tauri
+real, `research.md` R1).
+
+#### Alternativas descartadas
+
+- **Reutilizar `sound_enabled`**: cambia la semántica de una clave existente y confunde («sin sonido»
+  no es «sin aviso»).
+- **Depender de pausar**: pausar es una acción temporal y global; no es una preferencia de «no quiero
+  ventanas emergentes».
+
+### ADR-038 — El autoarranque es una tarea programada, no una entrada `Run`
+
+Estado: aceptada. Fecha: 2026-09-06. Spec: `specs/002-rediseno-v3/` (US8, paso 3 del asistente).
+
+#### El problema
+
+El paso 3 ofrece «Arrancar SmartDisk con el sistema». La aplicación corre bajo
+`requireAdministrator` (manifiesto, UAC al abrir). Una entrada en
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` la lanzaría con el **token sin elevar** en cada
+inicio de sesión: Windows mostraría un diálogo de UAC en cada login, o el arranque fallaría en
+silencio. El plugin `tauri-plugin-autostart` usa exactamente esa clave `Run` (y además sería una
+dependencia nueva).
+
+#### La decisión
+
+Clave nueva `lifecycle.start_with_system` (booleano, **fábrica: `false`**). Al activarla,
+`platform::autoarranque::aplicar(true)` registra una **tarea programada** —
+`schtasks.exe /Create /TN "SmartDisk Monitor - Autostart" /SC ONLOGON /RL HIGHEST`— que el
+Programador de tareas eleva **sin diálogo**. Al desactivarla, `/Delete`. `reset_settings` con
+`scope: "all"` también borra la tarea. Solo se mira el **código de salida** de `schtasks`: la
+codificación de su salida de texto no es fiable entre configuraciones de Windows
+(`.claude/rules/backend-rust.md`), así que no se parsea `stdout`. El comando real no se ejecuta en
+`cargo test` (crearía una tarea en el equipo del desarrollador): se prueba el formato de la línea de
+comando y se verifica a mano, igual que J.28 y `platform/sistema.rs`.
+
+#### Alternativas descartadas
+
+- **Clave `Run` de HKCU** (y `tauri-plugin-autostart`, que la usa): UAC en cada login por la
+  elevación; y el plugin es dependencia nueva sin justificación (límite duro de `AGENTS.md`).
+- **Carpeta «Inicio» del menú**: mismo problema de elevación que `Run`.
+
 
 ---
 
@@ -4628,7 +4941,7 @@ asunción del programador.
 | J.23 | Cómo se implementó el colector de contadores de rendimiento (T058), y un hallazgo medido sobre Windows real | Enlace FFI directo a `pdh.dll` (mismo criterio que `platform::locale.rs` con `kernel32`: sin añadir el crate `windows` completo por cinco funciones estables). **Medido en un Windows real en español**: los nombres de objeto y contador de PDH están **localizados** (`PhysicalDisk` = "Disco físico", `% Idle Time` = "% de tiempo inactivo"); `PdhAddCounterW`/`PdhExpandWildCardPathW` con una ruta en inglés fallan con `PDH_CSTATUS_NO_OBJECT` fuera de un Windows en inglés — se comprobó primero con `Get-Counter` (falla con el nombre inglés, funciona con el español) y confirmó el diagnóstico. Solución: **`PdhAddEnglishCounterW`**, que traduce el nombre **y** resuelve el comodín de instancia (`\PhysicalDisk(0 *)\...`) en la misma llamada, sin paso de expansión aparte — probado end-to-end contra dos discos físicos reales de esta máquina, con valores de actividad y latencia coherentes con su carga real en el momento de la medición. Una tasa (bytes/s, sec/operación) exige dos muestras separadas en el tiempo: se recoge dos veces con 1 s de espera entre medias, una sola vez para las cinco fuentes (no cinco esperas), y se cierra la consulta —autónoma, no persistente entre ciclos. **Actualizado tras T020**: el planificador en segundo plano ya existe y llama a esta función una vez por ciclo de `METRICAS_RAPIDAS` debido, pero sigue abriendo y cerrando su propia consulta PDH en cada llamada en vez de mantenerla abierta entre ciclos reales — eso sigue siendo una optimización pendiente, no relacionada con si el bucle existe (spec 001-monitor-discos-windows, T058) |
 | J.24 | Qué hash calcula `system_events.dedup_hash` (T067) | No especificado en ningún documento más allá de "hash de deduplicación" (`data-model.md` §2). La identidad real de un evento ya es `UNIQUE(channel, record_id)`, así que este campo no decide duplicados por sí solo. Se calcula como `sha256(provider \| event_id \| occurred_at_utc \| message)`: una huella de contenido pensada para el trabajo futuro de correlación por ventana temporal de `alert-rules.md` §3.5 (un mismo suceso físico produce varios eventos correlacionados en 60 s), no usada todavía por ningún módulo de esta sesión. Provisional hasta que la correlación por ventana (§3.5) se implemente y decida si necesita este campo o algo distinto |
 | J.25 | Confianza de la correlación evento→disco por número de disco (T069) según de dónde salga el número | `docs/alert-rules.md` §3.6 exige resolver contra el inventario, nunca por coincidencia textual pura, pero no distingue confianza entre las formas de identificador que "conviven" en un mismo mensaje. Decisión: **`exact`** cuando el número de disco sale de una ruta de dispositivo estructurada (`\Device\HarddiskN\...`, generada por el propio sistema en el XML crudo del evento) y coincide con un disco del inventario; **`inferred`** cuando sale del texto humano ya formateado ("disco N"/"disk N"), porque ese texto está traducido y depende de la plantilla de mensaje del proveedor, una capa menos directa que la ruta de dispositivo. `\Device\HarddiskVolumeNN` y los nombres PDO (`\Device\0003d2a5`) quedan sin resolver (`unknown`): el colector de capacidad (T059) no captura ese identificador por volumen todavía, y añadirlo es trabajo del propio colector, no de la correlación. El número que sigue a `DR` en `\Device\HarddiskN\DRxx` **nunca** se confunde con el número de disco (`alert-rules.md` §3.6, advertencia explícita) (spec 001-monitor-discos-windows, T069) |
-| J.26 | Medición de R3 (T074): 20 discos y 5.000 eventos frente al umbral de 50 ms de SC-007/SC-009 | **Medido con el plano de interfaz** (Playwright + IPC propio + `PerformanceObserver` de "long tasks", que solo informa de tareas ≥50 ms). Hallazgo real durante la medición: la **primera navegación** de la prueba produce 70-120 ms de tarea larga **incluso con 0 o 2 discos** — coste fijo de evaluar el paquete en un Chromium recién arrancado, no relacionado con la cantidad de datos. Confundir ese coste con el de renderizar 20 discos habría hecho fallar la prueba por una razón ajena a SC-007 (que habla de seguir respondiendo *durante* el trabajo, no del arranque en sí). Corregido separando ambos: cada prueba dejar pasar la carga inicial y **luego** reinicia el observador, midiendo solo la interacción real — desplazar los 5.000 eventos con `VirtualList`, o recibir 20 discos en caliente vía un `metrics:updated` simulado (`ipc-falso.ts` ganó `emitirEvento()` para poder disparar ese evento desde la prueba). Ambos escenarios pasan limpios, cero tareas largas. De camino se virtualizó también el panel general (T064 ya había virtualizado la lista de eventos): la rejilla `DiskCard` pasó de pintar todas las tarjetas de una vez a virtualizarse **por fila** con el mismo `VirtualList` genérico, agrupando tantas tarjetas por fila como columnas quepan en el ancho disponible — la primera medición (antes de aislar el coste fijo de navegación) señaló la rejilla sin virtualizar como sospechosa, y aunque el diagnóstico final mostró que el problema real estaba en la metodología de medición y no en la rejilla, la virtualización quedó aplicada por ser una mejora real y ya verificada, no se revirtió (spec 001-monitor-discos-windows, T074) |
+| J.26 | Medición de R3 (T074): 20 discos y 5.000 eventos frente al umbral de 50 ms de SC-007/SC-009 | **Medido con el plano de interfaz** (Playwright + IPC propio + `PerformanceObserver` de "long tasks", que solo informa de tareas ≥50 ms). Hallazgo real durante la medición: la **primera navegación** de la prueba produce 70-120 ms de tarea larga **incluso con 0 o 2 discos** — coste fijo de evaluar el paquete en un Chromium recién arrancado, no relacionado con la cantidad de datos. Confundir ese coste con el de renderizar 20 discos habría hecho fallar la prueba por una razón ajena a SC-007 (que habla de seguir respondiendo *durante* el trabajo, no del arranque en sí). Corregido separando ambos: cada prueba dejar pasar la carga inicial y **luego** reinicia el observador, midiendo solo la interacción real — desplazar los 5.000 eventos con `VirtualList`, o recibir 20 discos en caliente vía un `metrics:updated` simulado (`ipc-falso.ts` ganó `emitirEvento()` para poder disparar ese evento desde la prueba). Ambos escenarios pasan limpios, cero tareas largas. De camino se virtualizó también el panel general (T064 ya había virtualizado la lista de eventos): la rejilla `DiskCard` pasó de pintar todas las tarjetas de una vez a virtualizarse **por fila** con el mismo `VirtualList` genérico, agrupando tantas tarjetas por fila como columnas quepan en el ancho disponible — la primera medición (antes de aislar el coste fijo de navegación) señaló la rejilla sin virtualizar como sospechosa, y aunque el diagnóstico final mostró que el problema real estaba en la metodología de medición y no en la rejilla, la virtualización quedó aplicada por ser una mejora real y ya verificada, no se revirtió (spec 001-monitor-discos-windows, T074). **Reemplazado en parte el 2026-09-06 (§U):** el panel v3 retira la `VirtualList` de la rejilla de discos —su nuevo encuadre (héroe + pie) exige una sola región de scroll— y cubre SC-006 con la variante compacta de `DiskCard` (sin sparkline a partir de 12 discos, `ui-design.md` §7); la misma prueba de rendimiento sigue verde. La virtualización de la **lista de eventos** (T064) se mantiene |
 | J.27 | Nombre de la "carpeta controlada" del benchmark (T077), no especificado en ningún documento | `<raíz del volumen>\SmartDisk Monitor Benchmark\`: en la raíz del volumen que se está probando, no en `%ProgramData%` —tiene que vivir en el mismo volumen para medir su E/S real, no la del disco del sistema—, con el mismo nombre visible que ya usa la carpeta de datos (`platform::paths::data_dir()`). El nombre de archivo dentro de esa carpeta lleva un sufijo aleatorio (`benchmark-<aleatorio>.tmp`); "nunca se sobrescribe un archivo existente" (product-specification.md §6) se comprueba activamente antes de crear el archivo, no se asume por la aleatoriedad del nombre (spec 001-monitor-discos-windows, T077) |
 | J.28 | Forma exacta del JSON de estado del autotest SMART corto (T081), **sin verificar contra hardware real** | A diferencia de todo lo demás de esta sesión (SMART, PDH, wevtapi, chkdsk, benchmark: todo probado contra el sistema real de esta máquina), este dato concreto **no se ha verificado**: un autotest corto real tarda minutos en el disco y el usuario pidió expresamente no ejecutarlo. `tests::autotest::parse_estado_json` asume la forma documentada de `ata_smart_data.self_test.status.{value,string,passed}` y `.polling_minutes.short` que expone `smartctl -a -j`, construida a partir de conocimiento general de su formato JSON, no de una captura propia. Antes de dar el autotest por terminado hay que lanzar uno real (cuando el usuario lo autorice) y comparar el JSON verdadero con lo que este parser espera — el mismo trato que ya se dio a `smartctl_parser.rs` con sus fixtures reales (spec 001-monitor-discos-windows, T081) |
 | J.15 | Cómo distinguir "sin compatibilidad SMART" de "aún sin leer" en `get_device_detail` | Ausencia de `smartctl_path` (T025: `Get-PhysicalDisk.DeviceId` no numérico, típico de volúmenes RAID lógicos) se trata como `unsupported`; presencia de `smartctl_path` sin ninguna muestra `metric_samples.source = smartctl` se trata como `not-yet-sampled`. Deliberadamente **no** se interpreta el `exit_status` de `smartctl` como señal de soporte: sus bits documentan fallos de sintaxis/apertura/hallazgos SMART, no "este bus no expone SMART", y esa lectura no se ha podido verificar contra hardware real (`open-questions.md` I.5). Provisional hasta medir (spec 001-monitor-discos-windows, T038) |
@@ -5262,6 +5575,168 @@ siempre `*S-1-5-18`, `*S-1-5-32-544` y `*S-1-5-32-545`.
   elevada y aceptar el UAC, cosa que ninguna prueba automática de este proyecto puede hacer.
   Entra como comprobación de humo de US-060.
 
+---
+
+### S. Paleta v3 «Ciruela» — ratios de contraste medidos
+
+Cerrada el 2026-09-06 al implantar el rediseño v3 (ADR-034, `specs/002-rediseno-v3/`, US1).
+Herramienta: `scripts`/`tools/accent-check.py` reutilizado para componer cada color sobre el
+material real (`--sdm-glass` sobre la media del degradado del lienzo; y `--sdm-glass-3` encima, para
+la columna «bloque interno»; la columna «píldora» mide el color contra su propio `-soft` compuesto
+sobre el material, que es el caso de `StatusPill`). Mínimo exigido: 4,5:1 (constitución §VII, WCAG
+1.4.3), medido **como texto de píldora**, que es el uso más exigente.
+
+#### S.1 · Resultado
+
+Todos los tokens de texto y de salud de la paleta Ciruela cumplen AA en los dos temas, sobre
+material y sobre bloque interno. Los valores medidos coinciden con la tabla que entregó el diseñador
+en `design/propuesta-redisenov2/cambios/00-tokens.md` dentro de ±0,05.
+
+| | material (claro / oscuro) | bloque interno (claro / oscuro) | píldora (claro / oscuro) |
+|---|---|---|---|
+| `--sdm-text` | 16,40 / 13,81 | 14,62 / 11,58 | — |
+| `--sdm-text-dim` | 6,15 / 6,06 | 5,48 / 5,08 | — |
+| `--sdm-text-faint` | 5,42 / 5,72 | **4,83** / **4,80** | — |
+| `--sdm-accent-fg` | 6,52 / 6,86 | 5,81 / 5,75 | 5,46 / 4,82 |
+| `--sdm-ok` | 5,38 / 7,62 | 4,80 / 6,39 | **4,68** / 5,56 |
+| `--sdm-warn` | 6,13 / 8,11 | 5,46 / 6,80 | 5,31 / 5,78 |
+| `--sdm-crit` (bermellón) | 5,82 / 5,98 | 5,19 / 5,01 | 4,86 / **4,57** |
+| `--sdm-unknown` | 6,04 / 6,16 | 5,38 / 5,17 | 5,19 / 4,80 |
+
+Texto blanco sobre el acento sólido en claro: 6,94:1 (`--sdm-on-accent` sigue siendo `#ffffff`).
+`--sdm-on-accent` en oscuro pasa a tinta `#20132a`: 7,80:1 sobre el acento (en blanco daba 2,27:1).
+
+#### S.2 · Los tres valores más justos, verificados
+
+- `--sdm-text-faint` sobre bloque interno: 4,83 (claro) / 4,80 (oscuro). El diseñador ya los había
+  subido respecto a su primera propuesta (`#988ea0` daba 4,18 en oscuro); estos son los definitivos.
+- `--sdm-ok` como texto de píldora en claro: 4,68. Sin margen para aclararlo.
+- `--sdm-crit` como texto de píldora en oscuro: 4,57. El bermellón `#ef8080` está calibrado al
+  límite: no lo aclares.
+
+#### S.3 · Reglas que se derivan
+
+- **Ninguno de estos tokens se aclara.** Si un texto queda justo sobre el material, se sube la
+  opacidad de la capa, nunca se rebaja el color (misma regla que §O y que `ui-design.md` §6).
+- **No pongas texto directamente sobre `bg-glass-3`** salvo que sea uno de los tokens de esta tabla:
+  la columna «bloque interno» es el suelo.
+- El interruptor «usar el acento de Windows» (ADR-035) mantiene intacta la corrección de §O:
+  `accessibleAccent()` / `accentOnSurface()` siguen barriendo el acento del usuario.
+
+---
+
+### T. Perfiles de alerta — decisiones adoptadas (ADR-036)
+
+Cerrada el 2026-09-06 al implantar US10 del rediseño v3 (`specs/002-rediseno-v3/`).
+
+#### T.1 · El motor pasa a leer los umbrales de `settings`
+
+Hasta v3, `alerts::motor` llevaba los umbrales **escritos a mano** (`90/100` desgaste, `70/80`
+temperatura) y `settings.alerts.*` se guardaba sin que ninguna regla lo leyera — el mismo hueco que
+J.32 describía para las claves de capacidad. Con ADR-036 el motor recibe los umbrales como parámetro
+(`ConfigUmbrales`), que `commands::refresh_smart` resuelve de `settings` una vez por ciclo. Reglas
+parametrizadas: `smart.wear_high`, `temp.above_configured_warn/crit`, `smart.media_errors` y —nuevas
+en el motor— `capacity.low`/`capacity.critical`.
+
+#### T.2 · El umbral térmico de fábrica baja a 60/70 °C
+
+Era 70/80. El perfil «Equilibrado» de `cambios/08b-perfiles-de-alerta.md` lo fija en 60/70, y ese
+pasa a ser también el valor de fábrica (spec 002, clarify Q2). 60 °C sigue siendo temperatura alta
+para un SSD de consumo, y mantener dos números distintos («fábrica» vs «Equilibrado») confundiría.
+Actualizado `alert-rules.md` §2 y las pruebas de `alerts::motor` y `commands::set_setting`.
+
+#### T.3 · `media_errors_*` no es una ventana de 24 h
+
+El nombre `mediaErrorsWarnPer24h` viene de la propuesta del diseñador, pero la semántica adoptada
+(clarify Q1) es **el incremento de `media_errors_total` entre dos lecturas consecutivas** que basta
+para avisar. No se construye una mecánica de conteo por ventana de 24 h: reinterpretar sobre la regla
+existente cubre el caso. La interfaz no muestra «/24 h».
+
+#### T.4 · `driver_retry_*` se guarda pero **aún no lo consume ninguna regla**
+
+Un perfil escribe los doce umbrales, `driver_retry_warn/crit_per24h` incluidos, para que el juego
+esté completo. Pero las reglas `events.controller_reset` / `events.io_retry` que los consumirían
+**no existen en el motor**: necesitan el colector de eventos de Windows completo (Historia 4). Es el
+mismo patrón con el que las claves de capacidad y `logging.verbose` vivieron guardadas sin consumidor
+hasta que su regla se implementó (J.32, FR-029a). Cuando exista esa regla, el umbral ya está.
+
+#### T.5 · Editar un umbral a mano rompe el perfil
+
+`set_setting` sobre cualquier `alerts.*` (salvo `alerts.profile`) pone `alerts.profile = "custom"`.
+La única forma de volver a un perfil concreto es elegirlo, y entonces se reescriben sus doce valores.
+La interfaz muestra «Personalizado (a partir de \<perfil anterior\>)» derivando el «anterior» del
+último `profile` no-`custom` conocido en memoria, no de un segundo campo persistido.
+
+### U. Panel general v3 — virtualización sustituida por la variante compacta
+
+Cerrada el 2026-09-06 al implantar US5 del rediseño v3 (`specs/002-rediseno-v3/`, PR 6).
+
+#### U.1 · Por qué desaparece la `VirtualList` de la rejilla de discos
+
+El panel v2 envolvía la rejilla de `DiskCard` en una `VirtualList` que virtualizaba **por filas**
+(J.26): con 20 discos, pintar la rejilla entera producía una tarea de ~100 ms, por encima del umbral
+de 50 ms de SC-006/SC-007.
+
+El panel v3 (`cambios/01-panel-general.md`) cambia el encuadre: ahora hay un `HeroPanel` de 246 px
+arriba y una fila inferior (sucesos + reparto de estados) abajo, y **el diseñador especifica que la
+región entera hace scroll** («con más discos la región hace scroll, nada se recorta»). Anidar una
+`VirtualList` de altura fija solo para la rejilla, entre un héroe y un pie que también deben
+desplazarse con ella, va contra ese encuadre y contra la constitución §XIV (una sola región de
+scroll natural).
+
+En su lugar se aplica lo que ya prescribía `ui-design.md` §7: **a partir de 12 discos monitorizados
+la `DiskCard` pierde la sparkline de cabecera** (`conSparklines = devices.length <= 12`). El coste de
+render que J.26 midió venía casi todo del SVG por tarjeta; sin él, 20 tarjetas se pintan holgadas.
+
+#### U.2 · Medido, no estimado
+
+`e2e/ui/rendimiento.spec.ts` («recibir 20 discos en caliente … no produce ninguna tarea de 50 ms o
+más») se conserva sin cambios y **pasa** contra el panel v3 con rejilla plana: `[]` tareas largas.
+SC-006 se mantiene por medición, que era el objeto de J.26 — no por la técnica concreta.
+
+#### U.3 · Series de temperatura: carga perezosa por disco visible
+
+El panel solo trae el inventario en su `load` (constitución §XIV). Tras el primer render, un
+`$effect` pide `getMetricSeries("temperature_celsius", 24 h)` para el disco del héroe y —si
+`conSparklines`— para el resto; el store (`app.temperatureSeries`) cachea por disco para no repetir
+la petición. Un fallo por disco degrada solo esa sparkline (no se pinta) y no tumba el panel.
+
+### V. Asistente inicial — decisiones adoptadas (US8, ADR-037/038)
+
+Cerrada el 2026-09-06 al implantar US8 del rediseño v3 (`specs/002-rediseno-v3/`).
+
+#### V.1 · El guardián de `+layout.ts` detecta «ya configurado» con lo observable
+
+FR-043 pide no mostrar el asistente a quien actualiza desde una versión sin él. El frontend **no
+puede** saber si se guardó *cualquier* clave suelta de `settings` sin una señal nueva del backend
+(`get_settings` devuelve valores resueltos, no dice cuáles son de fábrica y cuáles guardados). Se
+comprueba lo que sí es observable: `theme != "system"`, `language != null`,
+`settings.alerts.profile != "balanced"`, algún `device.alias`, o `excluded.length > 0`. Cubre todos
+los casos realistas de actualización (quien ya usaba la app renombró un disco, cambió el tema o tocó
+las alertas). **Limitación aceptada**: un usuario de v3 desde cero que solo cambió, p. ej., un día de
+retención y cerró la app antes de acabar el asistente lo volverá a ver — que es justo lo que FR-043
+dice que debe pasar («interrumpida antes de guardar nada vuelve a mostrar el asistente»). No se
+añade backend por este caso.
+
+#### V.2 · El guardián nunca atrapa: cualquier fallo cae a «seguir normal»
+
+Si `get_settings` / `get_devices` / `get_appearance_settings` fallan, el `load` del layout devuelve
+`{}` sin redirigir. Un fallo de arranque real ya lo explica `+layout.svelte`; lo que no puede pasar
+es un bucle de redirección a `/onboarding` cuando el backend no responde.
+
+#### V.3 · `notifications.enabled` y el autoarranque — verificación
+
+- `notifications.enabled`: la decisión de enviar el toast se factoriza a `debe_enviar(...)` (pura,
+  con pruebas). El resto de `alerts::notificaciones::procesar_una` sigue sin prueba automática
+  porque necesita un proceso Tauri real (`research.md` R1) — mismo trato que ya tenía.
+- `lifecycle.start_with_system`: `platform::autoarranque::aplicar()` lanza `schtasks.exe` y **no se
+  ejecuta en `cargo test`** (crearía una tarea en el equipo del desarrollador). Se prueba el formato
+  de la línea de comando (`linea_de_comando`) y el nombre estable de la tarea; el registro/borrado
+  real en el Programador de tareas se verifica a mano —mismo criterio que J.28 (autotest SMART) y
+  `platform/sistema.rs`—. **Pendiente**: activar el interruptor en un Windows real, comprobar en el
+  Programador que existe «SmartDisk Monitor - Autostart» con «Ejecutar con los privilegios más
+  altos» y disparador «al iniciar sesión», reiniciar y confirmar que la app abre elevada sin UAC.
+
 
 ---
 
@@ -5270,9 +5745,17 @@ siempre `*S-1-5-18`, `*S-1-5-32-544` y `*S-1-5-32-545`.
 Fichero de origen: `docs/ui-design.md`
 
 Este documento es **vinculante** para cualquier agente (humano o IA) que escriba interfaz en este
-repositorio. Describe cómo construir pantallas con el sistema de diseño aprobado: **v2, material
-translúcido** (evolución de la dirección 1b). Si algo no está aquí, no lo inventes: pregunta o propón
+repositorio. Describe cómo construir pantallas con el sistema de diseño aprobado: **v3, «escena de
+datos»** sobre el material translúcido de v2 (paleta propia «Ciruela», tipografía de «display» para
+cifras grandes, riel de navegación; ADR-034). Si algo no está aquí, no lo inventes: pregunta o propón
 una extensión del sistema.
+
+> **v2 → v3 (ADR-034/ADR-035).** No es una reescritura: el material de tres capas, los radios
+> concéntricos, el movimiento, el catálogo cerrado y todas las reglas de producto siguen intactos.
+> Cambian la paleta (acento morado de tinta, crítico bermellón), `--sdm-on-accent` (tinta en oscuro,
+> ya no blanco), se añaden `.sdm-display` y tres componentes (`Icon`, `Sparkline`, `HeroPanel`), y la
+> `Sidebar` pasa a un riel de 74 px. La herencia del acento de Windows deja de ser el comportamiento
+> de fábrica y pasa a un interruptor apagado por defecto.
 
 Es el par visual de `docs/ui-contract.md`: aquel dice **qué** puede pedirle la interfaz al backend,
 este dice **cómo** se pinta lo que recibe. Referencias funcionales: `docs/product-specification.md`,
@@ -5292,12 +5775,14 @@ ninguna de estas rutas.
 | Los mismos tokens, legibles por herramientas | `src/design-system/tokens.json` |
 | Mapeo de tokens a utilidades Tailwind | `tailwind.config.cjs` (raíz del proyecto) |
 | **Catálogo de componentes** | `src/lib/components/` — se importa del barrel `$lib/components` |
-| Tipos, formato, salud, tema y acento | `src/lib/design/` |
+| Tipos, formato, salud, iconos, tema y acento | `src/lib/design/` (incluye `icons.ts`) |
 | Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
 | Tipografía empotrada | `src/design-system/fonts/` |
-| **Boceto aprobado** (4 pantallas, ambos temas) | `design/SmartDisk Monitor v2.dc.html` |
-| Guía visual de tokens (estilo v1, sin refrescar) | `design/Sistema de diseno SmartDisk.dc.html` |
-| Exploración inicial 1a/1b, referencia histórica | `design/Bocetos SmartDisk Monitor.dc.html` |
+| Juego de iconos de línea (sprite, 15 símbolos) | montado en `src/lib/components/AppShell.svelte`; se usa vía `<Icon name="…" />` |
+| **Boceto aprobado v3** (4 pantallas, ambos temas) | `design/propuesta-redisenov2/mockups/smartdisk-v3.html` |
+| Hoja de contacto de los iconos | `design/propuesta-redisenov2/mockups/icons-hoja-de-contacto.html` |
+| Fichas de cambio del rediseño v3 | `design/propuesta-redisenov2/cambios/` · spec: `specs/002-rediseno-v3/` |
+| Boceto v2 (referencia histórica) | `design/SmartDisk Monitor v2.dc.html` |
 | Comandos y eventos que la UI puede llamar | `docs/ui-contract.md` |
 | Verificadores que fallan la integración | `pnpm verify:tokens`, `pnpm verify:i18n` |
 
@@ -5334,9 +5819,16 @@ tailwind.config.cjs              ← mapeo de tokens a utilidades
 - El tema se conmuta con `document.documentElement.dataset.theme = "light" | "dark"`; lo gestiona
   `$lib/design/theme.svelte.ts`. **Todo componente debe verse correcto en ambos temas sin condicionales.**
 - Preferencia de tema y de idioma se persisten en la tabla `settings`, no en `localStorage`.
-- **El acento lo hereda de Windows.** `applySystemAccent()` (`$lib/design/accent.ts`) sobreescribe
-  los tokens de acento al arrancar. Nunca codifiques el azul: el respaldo ya vive en `tokens.css`.
-  El acento **no** comunica salud.
+- **El acento es propio: morado «Ciruela»** (`#7a3f9d` claro / `#c79aec` oscuro), definido en
+  `tokens.css`. Heredar el acento de Windows es un **interruptor de Ajustes → Apariencia, apagado de
+  fábrica** (`settings.appearance.useSystemAccent`, ADR-035): al encenderlo, `applySystemAccent()`
+  (`$lib/design/accent.ts`) sobrescribe los tres tokens de acento, siempre corregidos a AA por
+  `accessibleAccent()`/`accentOnSurface()`; al apagarlo, `clearSystemAccent()` restaura el morado.
+  Nunca codifiques un color de acento a mano. El acento **no** comunica salud.
+- **`--sdm-on-accent` no es blanco en tema oscuro.** El acento oscuro es claro y el texto blanco
+  encima daba 2,27:1. Todo texto o icono sobre el acento —o sobre un color de estado— usa
+  `text-fg-onAccent` (`var(--sdm-on-accent)`), **nunca `text-white`**. Excepciones (son brillos, no
+  tinta): el filo interior de `ProgressBar` en modo `display` y el punto del `Switch` activo.
 - **Hay dos tokens de acento y no son intercambiables:**
 
   | Token | Uso | Contra qué se mide su contraste |
@@ -5368,6 +5860,16 @@ tailwind.config.cjs              ← mapeo de tokens a utilidades
 - El lienzo lleva un degradado muy tenue (`--sdm-bg` → `--sdm-bg-2`): es lo que da vida al desenfoque.
   No lo sustituyas por un color plano ni por un degradado de color saturado.
 - Peso tipográfico máximo **600**. La jerarquía la aporta el material y el tamaño, no la grasa.
+- **Tipografía de «display» (v3).** Para **cifras y titulares**, nunca para texto corrido, se usa la
+  clase `.sdm-display` (`--sdm-font-display` + peso 600 + `tabular-nums` + `--sdm-tracking-display`).
+  Sus usos: la cifra del héroe (`--sdm-text-hero`, 76 px), el progreso de una prueba
+  (`--sdm-text-display`, 58 px), las cifras de `MetricCard`/`DiskCard`, el alias de la cabecera del
+  detalle y el título de la barra de herramientas. `--sdm-font-display` hoy resuelve a la familia
+  sans ya empotrada: no se empaqueta una segunda familia (ADR-034).
+- **El riel de navegación (v3).** La `Sidebar` es un riel de `--sdm-rail-width` (74 px) solo con
+  iconos; cada botón lleva `title` **y** `aria-label`. No lleva texto de sección ni lista de discos.
+- **Crítico bermellón.** `--sdm-crit` se desplazó al bermellón (`#b03434` / `#ef8080`) para no
+  confundirse con el acento morado. Sigue siendo el único rojo, y `unknown` sigue sin ser nunca rojo.
 - La escala tipográfica **no se toca sin volver a medir**. Parece pequeña sobre el papel y no lo es:
   Instrument Sans tiene una altura de x de 0,5175 em frente a los 0,50 de Segoe UI, así que el cuerpo
   denso de 12,5 px equivale ópticamente a Segoe UI 12,9 px, por encima de los 12 px (9 pt) que
@@ -5393,20 +5895,23 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 
 | Componente | Para qué | Notas de uso obligatorias |
 |---|---|---|
-| `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras |
-| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado |
-| `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado |
-| `MetricCard` | cifra destacada + procedencia | `value={null}` ⇒ "No disponible", **compuesto como texto en `text-base`, no como cifra**: a 27 px no cabe en ninguna celda realista. Es un bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
+| `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
+| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
+| `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
+| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un `polyline` por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
+| `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
+| `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
+| `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
 | `CapacityBar` | ocupación de volumen | el color lo decide `capacityState()`, no el llamante |
-| `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante |
-| `Sidebar` | navegación principal + lista de discos | material de chrome; la selección se marca con material elevado y punto de acento; navega con `<a href>`, **nunca** con callback |
-| `Toolbar` | barra de herramientas unificada | título y subtítulo de pantalla, controles contextuales, estado global y acción primaria |
+| `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante; prop `emphasis` (`inline` por defecto, `display` para la prueba en curso) |
+| `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
+| `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |
 | `SegmentedControl` | intervalos 24 h / 7 d / 30 d / personalizado | |
-| `DiskCard` | tarjeta de disco del panel | recibe `href`; sin él se renderiza como bloque no interactivo |
-| `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica |
-| `AlertCard` | grupo de alertas en lista | contador `×N`; claves técnicas solo en el detalle |
-| `EventRow` | evento de Windows | etiqueta "asociación inferida" cuando `mappingConfidence !== "exact"` |
+| `DiskCard` | tarjeta de disco del panel | recibe `href`; cabecera de 52 px que hereda el color del estado con `sparkline` de temperatura de fondo (`temperatureSeries` opcional); dato ausente como «—» discreto, no «No disponible» a 23 px |
+| `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
+| `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
+| `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
 | `TimeSeriesChart` | gráficas históricas | huecos como huecos; umbral del fabricante discontinuo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
@@ -5438,6 +5943,10 @@ Excepción ya autorizada: los cuatro componentes de la tabla "Autorizados y pend
 no requieren nueva decisión, solo revisión visual antes de darlos por terminados.
 Un componente nuevo debe: consumir solo tokens, funcionar en ambos temas, aceptar `null` en todo dato
 opcional, tener etiqueta accesible y exportarse en `src/lib/components/index.ts`.
+
+**Componentes añadidos en v3** (ADR-034): `Icon`, `Sparkline` y `HeroPanel`. Cada uno cumple el
+criterio (a)+(b) y su justificación completa está en `design/propuesta-redisenov2/cambios/componentes/`
+y en `specs/002-rediseno-v3/`. Ninguno del catálogo se elimina.
 
 ### 4. Reglas de composición de pantalla
 
@@ -5547,16 +6056,36 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
 
 ### 7. Pantallas y su composición aprobada
 
-1. **Panel general** — `HealthDonut` + leyenda + tarjeta de atención a la izquierda; rejilla 2×2 de `DiskCard`;
-   tarjeta "Sucesos recientes" con `EventRow` al pie. La lista de discos vive además en la `Sidebar`.
-2. **Detalle de disco** — cabecera con alias y estado; el `SegmentedControl` de intervalo va en la `Toolbar`; fila de 4 `MetricCard`;
-   `TimeSeriesChart` de temperatura (2/3) + panel de contadores con `DataRow` (1/3) y acciones al pie.
+1. **Panel general** (v3) — `HeroPanel` con el disco que necesita atención (`selectHeroDisk()`) y su
+   serie de temperatura de fondo; rejilla `repeat(auto-fill, minmax(272px, 1fr))` de `DiskCard`; fila
+   inferior `1fr 300px` con «Sucesos del sistema» (`EventRow`) y «Reparto de estados» (composición de
+   pantalla, sustituye a `HealthDonut` en el panel — `HealthDonut` sigue en el catálogo). La región
+   entera hace scroll; **sin `VirtualList`** en la rejilla (véase `open-questions.md` §U). La lista de
+   discos ya **no** vive en la `Sidebar` (riel de solo iconos, v3).
+2. **Detalle de disco** (v3) — cabecera de identidad (`Card` de una fila: cuadrado de `Icon` con el
+   color del estado, alias `.sdm-display`, `StatusPill` con icono, línea de identidad, botón «Probar
+   disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con
+   `TimeSeriesChart` de temperatura y panel de contadores con `DataRow`. El `SegmentedControl` de
+   intervalo va **junto a la gráfica**, ya no en la `Toolbar`.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
-   rejilla de hechos, acciones (Reconocer / Silenciar / Archivar) y cronología de ocurrencias.
-4. **Pruebas y diagnóstico** — tres tarjetas de prueba; tarjeta de ejecución en curso con `ProgressBar` y
-   cinco métricas; aviso ámbar de parada automática; historial de `test_runs`.
-5. **Informes**, **Ajustes** y **asistente inicial** (US-002) están pendientes de diseño: compón con este mismo
-   catálogo y pide revisión antes de introducir patrones nuevos.
+   rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
+   (Reconocer / Silenciar / Archivar) y cronología de ocurrencias.
+4. **Pruebas y diagnóstico** (v3) — **si hay una prueba en curso**, su bloque va arriba y a ancho
+   completo: cabecera con píldora «Prueba en curso» + tipo de prueba `.sdm-display` + cifra de progreso
+   a `text-display` (58 px, a `text-metric` por debajo de 1100 px) + botón Cancelar; `ProgressBar
+   emphasis="display"`; rejilla de métricas en cuadros `bg-glass-3`; aviso de parada automática en
+   `bg-warn-soft` con `Icon` (nunca un badge `text-white`). Debajo, las tres tarjetas de prueba (cada
+   una con su cuadrado de `Icon`, `testIcon`), y el historial con columna de icono de estado. Sin
+   prueba en curso, el bloque no se muestra y las tarjetas suben.
+5. **Ajustes** — secciones apiladas, cada una en su `Card`; controles internos sobre `bg-glass-3`
+   (no material sobre material). «Borrar todos los datos» separada al final con `border="crit"` y
+   ~32 px extra de separación; el fondo no se tiñe.
+6. **Asistente inicial** (`/onboarding`, US-002, v3) — **sin `AppShell`**: `+layout.svelte` omite el
+   riel y la barra de herramientas en esta ruta. Cabecera propia de 56 px (logo, indicador de paso,
+   «Omitir y usar los valores de fábrica» siempre visible), cuerpo `max-w-[1000px]` centrado, pie de
+   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla. El
+   guardián de redirección vive en `+layout.ts` (`open-questions.md` §V).
+7. **Informes**: hereda tokens; sin composición nueva.
 
 #### Comportamiento con muchos discos
 
@@ -5565,12 +6094,13 @@ puede tener veinte o más. Reglas obligatorias, no opcionales:
 
 - La lista de discos de la `Sidebar` tiene su propio `overflow-y: auto`; la navegación principal y el
   estado global **nunca** hacen scroll con ella.
-- El panel general pasa de rejilla fija 2×2 a `repeat(auto-fill, minmax(460px, 1fr))` (véase §4.0.bis:
-  460 es el ancho por debajo del cual las cuatro métricas dejan de caber).
-- A partir de **12 discos monitorizados**, `DiskCard` usa su variante compacta (una sola fila de
-  métricas, sin gráfica en miniatura) y el panel muestra primero los que no están en `ok`.
-- `HealthDonut` cuenta solo los discos monitorizados. Los excluidos por el usuario no aparecen en el
-  reparto ni en el recuento; se listan aparte, como exige US-011.
+- El panel general usa rejilla `repeat(auto-fill, minmax(272px, 1fr))` (v3; la `DiskCard` v3 encaja
+  tres magnitudes y la barra de capacidad en 272 px).
+- A partir de **12 discos monitorizados**, `DiskCard` usa su variante compacta: **sin la sparkline de
+  temperatura de cabecera** (`conSparklines = devices.length <= 12`). Es también lo que mantiene
+  SC-006 sin virtualizar la rejilla (`open-questions.md` §U); medido en `e2e/ui/rendimiento.spec.ts`.
+- El «Reparto de estados» y el recuento cuentan solo los discos monitorizados. Los excluidos por el
+  usuario no aparecen; se listan aparte, como exige US-011.
 
 ### 8. Definición de terminado para una pantalla
 
@@ -5820,6 +6350,11 @@ Fichero de origen: `src/design-system/tokens.css`
   /* ---- Tipografía ---- */
   --sdm-font-sans: "Instrument Sans", system-ui, "Segoe UI Variable", "Segoe UI", sans-serif;
   --sdm-font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* Familia de "display" para cifras y titulares grandes (v3, ADR-034). Hoy resuelve a la familia
+     sans ya empotrada: se descartó empaquetar una segunda familia (Bricolage Grotesque) para no
+     ampliar la superficie de un binario privilegiado. `.sdm-display` es el único punto de cambio si
+     esa decisión se revisa. */
+  --sdm-font-display: var(--sdm-font-sans);
 
   --sdm-text-2xs: 0.6875rem;    /* 11px  etiquetas de píldora y unidades */
   --sdm-text-xs: 0.75rem;       /* 12px  metadatos */
@@ -5829,14 +6364,17 @@ Fichero de origen: `src/design-system/tokens.css`
   --sdm-text-xl: 1.25rem;       /* 20px  título de pantalla */
   --sdm-text-2xl: 1.3125rem;    /* 21px  titular de alerta */
   --sdm-text-metric: 1.6875rem; /* 27px  cifra grande */
+  --sdm-text-display: 3.625rem; /* 58px  cifra de progreso de prueba (solo con .sdm-display) */
+  --sdm-text-hero: 4.75rem;     /* 76px  temperatura del héroe del panel (solo con .sdm-display) */
 
-  /* En v2 el peso máximo es 600: el material aporta la jerarquía, no la grasa tipográfica. */
+  /* En v2/v3 el peso máximo es 600: el material aporta la jerarquía, no la grasa tipográfica. */
   --sdm-weight-regular: 400;
   --sdm-weight-medium: 500;
   --sdm-weight-semibold: 600;
 
   --sdm-tracking-tight: -0.02em;
   --sdm-tracking-metric: -0.03em;
+  --sdm-tracking-display: -0.045em;  /* acompaña a .sdm-display en cifras a partir de 22px */
 
   /* ---- Espaciado (escala de 4; v2 respira más) ---- */
   --sdm-space-1: 4px;
@@ -5846,6 +6384,10 @@ Fichero de origen: `src/design-system/tokens.css`
   --sdm-space-5: 18px;   /* gap canónico entre tarjetas */
   --sdm-space-6: 20px;   /* padding de pantalla */
   --sdm-space-8: 32px;
+
+  /* ---- Dimensiones de composición fijas (v3) ---- */
+  --sdm-rail-width: 74px;    /* ancho del riel de la Sidebar (sustituye a los 250px de v2) */
+  --sdm-hero-height: 246px;  /* alto del HeroPanel del panel general */
 
   /* ---- Radios concéntricos ----
      Regla: el radio interior = radio exterior − padding. 18 → 13 → 9 → cápsula. */
@@ -5867,6 +6409,11 @@ Fichero de origen: `src/design-system/tokens.css`
   --sdm-blur-overlay: 44px;  /* diálogos */
   --sdm-saturate: 180%;
 
+  /* ---- Iconografía de línea (v3) ----
+     El juego de iconos hereda currentColor y no fija ningún color. Solo fija estos dos valores. */
+  --sdm-icon-stroke: 1.7;   /* stroke-width de todos los iconos de línea */
+  --sdm-icon-size: 24px;    /* viewBox de referencia; se renderizan a 12-28px */
+
   /* ---- Movimiento: elástico y breve ---- */
   --sdm-duration-fast: 140ms;
   --sdm-duration-base: 220ms;
@@ -5879,22 +6426,24 @@ Fichero de origen: `src/design-system/tokens.css`
 [data-theme="light"] {
   color-scheme: light;
 
-  --sdm-bg: #e9ebf0;
-  --sdm-bg-2: #dfe2ea;         /* extremo del degradado del lienzo */
+  /* v3 — paleta "Ciruela" (ADR-034). Neutros malva y acento morado de tinta. Ratios de contraste
+     medidos sobre el material compuesto en docs/open-questions.md; mínimo exigido 4,5:1. */
+  --sdm-bg: #efeaf1;
+  --sdm-bg-2: #e6dfe9;         /* extremo del degradado del lienzo */
 
   /* Capas de material. `glass` lleva backdrop-filter; `solid` es el respaldo sin soporte. */
   --sdm-glass: rgba(255, 255, 255, 0.72);
   --sdm-glass-2: rgba(255, 255, 255, 0.5);
-  --sdm-glass-3: rgba(120, 124, 140, 0.1);   /* pistas de barra, bloques internos */
-  --sdm-solid: #fdfdfe;
+  --sdm-glass-3: rgba(124, 114, 128, 0.1);   /* pistas de barra, bloques internos */
+  --sdm-solid: #fdfcfe;
 
-  --sdm-hairline: rgba(22, 24, 32, 0.09);
+  --sdm-hairline: rgba(30, 23, 35, 0.09);
   --sdm-highlight: rgba(255, 255, 255, 0.9); /* brillo superior de 1px */
-  --sdm-scrim: rgba(10, 10, 14, 0.34);       /* fondo de diálogo */
+  --sdm-scrim: rgba(14, 10, 16, 0.36);       /* fondo de diálogo */
 
-  --sdm-text: #191b22;
-  --sdm-text-dim: #5f6371;
-  --sdm-text-faint: #6a6f7b;
+  --sdm-text: #1e1723;
+  --sdm-text-dim: #635a6b;
+  --sdm-text-faint: #6c6274;
   --sdm-on-accent: #ffffff;
 
   /* Acento: se sobreescribe en runtime con el color de acento de Windows (véase accent.ts).
@@ -5907,24 +6456,28 @@ Fichero de origen: `src/design-system/tokens.css`
                         casi negra en oscuro, así que NO puede ser el mismo color en ambos temas.
      Un solo color no sirve para las dos cosas: el azul #0078d4 de Windows da 4,31:1 como texto
      sobre el material claro, por debajo de AA. Medido en tools/accent-check.py. */
-  --sdm-accent: #0067c0;
-  --sdm-accent-hi: #1a7cd4;    /* extremo claro del degradado vertical del botón */
-  --sdm-accent-soft: rgba(0, 103, 192, 0.12);
-  --sdm-accent-fg: #0067c0;    /* 5,40:1 sobre el material claro */
+  /* Acento morado de tinta (v3). #7a3f9d da 6,53:1 sobre el material claro, así que sirve de fondo
+     (--sdm-accent) y de texto (--sdm-accent-fg). Con el interruptor "usar el acento de Windows"
+     encendido, accent.ts sobrescribe estos tres tokens en runtime. */
+  --sdm-accent: #7a3f9d;
+  --sdm-accent-hi: #8b4bb0;    /* extremo claro del degradado vertical del botón */
+  --sdm-accent-soft: rgba(122, 63, 157, 0.12);
+  --sdm-accent-fg: #7a3f9d;    /* 6,53:1 sobre el material claro */
 
   /* Salud suavizada: menos saturación para convivir con el material, manteniendo 4.5:1 como texto
-     de píldora sobre el material claro. Verificado con AA; no los aclares. */
+     de píldora sobre el material claro. Verificado con AA; no los aclares. El crítico se desplaza al
+     bermellón para no confundirse con el acento morado. */
   --sdm-ok: #2f7256;
   --sdm-ok-soft: rgba(67, 144, 111, 0.13);
   --sdm-warn: #7d5619;
   --sdm-warn-soft: rgba(183, 129, 58, 0.14);
-  --sdm-crit: #a83d45;
-  --sdm-crit-soft: rgba(194, 90, 96, 0.13);
-  --sdm-unknown: #5d616d;
-  --sdm-unknown-soft: rgba(138, 141, 153, 0.13);
+  --sdm-crit: #b03434;
+  --sdm-crit-soft: rgba(176, 52, 52, 0.12);
+  --sdm-unknown: #635c69;
+  --sdm-unknown-soft: rgba(99, 92, 105, 0.11);
 
-  --sdm-shadow: 0 1px 1px rgba(20, 22, 30, 0.05), 0 8px 22px -14px rgba(20, 22, 30, 0.28);
-  --sdm-shadow-lift: 0 2px 4px rgba(20, 22, 30, 0.06), 0 24px 60px -22px rgba(20, 22, 30, 0.42);
+  --sdm-shadow: 0 1px 1px rgba(24, 18, 28, 0.05), 0 8px 22px -14px rgba(24, 18, 28, 0.28);
+  --sdm-shadow-lift: 0 2px 4px rgba(24, 18, 28, 0.06), 0 24px 60px -22px rgba(24, 18, 28, 0.42);
   --sdm-focus-ring: 0 0 0 3px color-mix(in srgb, var(--sdm-accent) 40%, transparent);
 }
 
@@ -5932,36 +6485,39 @@ Fichero de origen: `src/design-system/tokens.css`
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --sdm-bg: #101014;
-  --sdm-bg-2: #16161c;
+  /* v3 — paleta "Ciruela" en oscuro. Atención: --sdm-on-accent deja de ser blanco (daba 2,27:1
+     sobre el acento claro); pasa a tinta. Todo texto sobre el acento usa --sdm-on-accent, nunca
+     text-white (ADR-034, docs/00-tokens §2). */
+  --sdm-bg: #130f16;
+  --sdm-bg-2: #19141d;
 
-  --sdm-glass: rgba(42, 42, 50, 0.66);
-  --sdm-glass-2: rgba(58, 58, 68, 0.42);
+  --sdm-glass: rgba(48, 42, 52, 0.66);
+  --sdm-glass-2: rgba(64, 56, 68, 0.42);
   --sdm-glass-3: rgba(255, 255, 255, 0.06);
-  --sdm-solid: #1b1b21;
+  --sdm-solid: #1c1620;
 
   --sdm-hairline: rgba(255, 255, 255, 0.09);
   --sdm-highlight: rgba(255, 255, 255, 0.13);
-  --sdm-scrim: rgba(0, 0, 0, 0.5);
+  --sdm-scrim: rgba(0, 0, 0, 0.52);
 
-  --sdm-text: #f2f2f6;
-  --sdm-text-dim: #a2a4b0;
-  --sdm-text-faint: #9195a1;
-  --sdm-on-accent: #ffffff;
+  --sdm-text: #f4f0f6;
+  --sdm-text-dim: #a89eb0;
+  --sdm-text-faint: #a29aa8;
+  --sdm-on-accent: #20132a;    /* 7,80:1 sobre el acento oscuro */
 
-  --sdm-accent: #3d95ea;
-  --sdm-accent-hi: #5aa8f2;
-  --sdm-accent-soft: rgba(61, 149, 234, 0.18);
-  --sdm-accent-fg: #3d95ea;    /* 5,09:1 sobre el material oscuro */
+  --sdm-accent: #c79aec;
+  --sdm-accent-hi: #d4aef5;
+  --sdm-accent-soft: rgba(199, 154, 236, 0.18);
+  --sdm-accent-fg: #c79aec;    /* 6,89:1 sobre el material oscuro */
 
   --sdm-ok: #6cc79c;
   --sdm-ok-soft: rgba(108, 199, 156, 0.16);
   --sdm-warn: #e0b473;
   --sdm-warn-soft: rgba(224, 180, 115, 0.16);
-  --sdm-crit: #e88b90;
-  --sdm-crit-soft: rgba(232, 139, 144, 0.16);
-  --sdm-unknown: #9396a2;
-  --sdm-unknown-soft: rgba(147, 150, 162, 0.14);
+  --sdm-crit: #ef8080;
+  --sdm-crit-soft: rgba(239, 128, 128, 0.16);
+  --sdm-unknown: #a8a0b0;
+  --sdm-unknown-soft: rgba(168, 160, 176, 0.14);
 
   --sdm-shadow: 0 1px 1px rgba(0, 0, 0, 0.3), 0 10px 26px -16px rgba(0, 0, 0, 0.7);
   --sdm-shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 28px 70px -24px rgba(0, 0, 0, 0.85);
@@ -6054,6 +6610,16 @@ a:hover {
   letter-spacing: var(--sdm-tracking-tight);
 }
 
+/* Cifras y titulares de "display" (v3): nunca para texto corrido.
+   Da jerarquía sin tocar el peso (sigue topado en 600) ni inventar una negrita 700. */
+.sdm-display {
+  font-family: var(--sdm-font-display);
+  font-weight: var(--sdm-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--sdm-tracking-display);
+  line-height: 1;
+}
+
 /* ---- Comportamiento de aplicación nativa (docs/open-questions.md J.45) ----
    Tauri renderiza con un motor web, pero la aplicación debe sentirse como un programa de
    escritorio: sin selección de texto arrastrando el ratón por toda la pantalla. Desactivar
@@ -6099,8 +6665,8 @@ Fichero de origen: `src/design-system/tokens.json`
 {
   "$meta": {
     "name": "SmartDisk Monitor Design System",
-    "version": "2.0.0",
-    "direction": "v2 — material translúcido (evolución de 1b)",
+    "version": "3.0.0",
+    "direction": "v3 — «escena de datos» con paleta Ciruela (evolución de v2, material translúcido)",
     "themes": [
       "light",
       "dark",
@@ -6108,14 +6674,17 @@ Fichero de origen: `src/design-system/tokens.json`
     ],
     "notes": [
       "Los colores viven por tema; en código se consumen SIEMPRE como var(--sdm-*).",
-      "El acento se sobreescribe en runtime con el color de acento de Windows (src/lib/design/accent.ts).",
+      "La fuente de verdad es src/design-system/tokens.css. Este JSON la espeja.",
+      "El acento Ciruela es propio (ADR-034). Con el interruptor 'usar el acento de Windows' encendido, src/lib/design/accent.ts sobrescribe accent / accentHi / accentSoft en runtime (ADR-035).",
+      "--sdm-on-accent NO es blanco en oscuro: es tinta (#20132a). Todo texto sobre el acento usa on-accent, nunca text-white.",
       "Todos los tokens de texto y de salud cumplen 4.5:1 sobre el material de su tema; no los aclares.",
-      "Peso tipográfico máximo 600: la jerarquía la aporta el material, no la grasa."
+      "Peso tipográfico máximo 600. La familia 'display' solo se usa con .sdm-display, a partir de 22px."
     ]
   },
   "typography": {
     "fontSans": "\"Instrument Sans\", system-ui, \"Segoe UI Variable\", sans-serif",
     "fontMono": "ui-monospace, \"Cascadia Mono\", Consolas, monospace",
+    "fontDisplay": "var(--sdm-font-sans)",
     "scale": {
       "2xs": 11,
       "xs": 12,
@@ -6124,12 +6693,19 @@ Fichero de origen: `src/design-system/tokens.json`
       "lg": 14.5,
       "xl": 20,
       "2xl": 21,
-      "metric": 27
+      "metric": 27,
+      "display": 58,
+      "hero": 76
     },
     "weights": {
       "regular": 400,
       "medium": 500,
       "semibold": 600
+    },
+    "tracking": {
+      "tight": "-0.02em",
+      "metric": "-0.03em",
+      "display": "-0.045em"
     }
   },
   "space": {
@@ -6140,6 +6716,10 @@ Fichero de origen: `src/design-system/tokens.json`
     "5": 18,
     "6": 20,
     "8": 32
+  },
+  "layout": {
+    "railWidth": 74,
+    "heroHeight": 246
   },
   "radius": {
     "window": 18,
@@ -6161,6 +6741,10 @@ Fichero de origen: `src/design-system/tokens.json`
     "blurOverlay": 44,
     "saturate": "180%"
   },
+  "icon": {
+    "stroke": 1.7,
+    "size": 24
+  },
   "motion": {
     "fast": "140ms",
     "base": "220ms",
@@ -6169,56 +6753,56 @@ Fichero de origen: `src/design-system/tokens.json`
   },
   "color": {
     "light": {
-      "bg": "#e9ebf0",
-      "bg2": "#dfe2ea",
+      "bg": "#efeaf1",
+      "bg2": "#e6dfe9",
       "glass": "rgba(255,255,255,0.72)",
       "glass2": "rgba(255,255,255,0.5)",
-      "glass3": "rgba(120,124,140,0.1)",
-      "solid": "#fdfdfe",
-      "hairline": "rgba(22,24,32,0.09)",
+      "glass3": "rgba(124,114,128,0.1)",
+      "solid": "#fdfcfe",
+      "hairline": "rgba(30,23,35,0.09)",
       "highlight": "rgba(255,255,255,0.9)",
-      "scrim": "rgba(10,10,14,0.34)",
-      "text": "#191b22",
-      "textDim": "#5f6371",
-      "textFaint": "#6a6f7b",
+      "scrim": "rgba(14,10,16,0.36)",
+      "text": "#1e1723",
+      "textDim": "#635a6b",
+      "textFaint": "#6c6274",
       "onAccent": "#ffffff",
-      "accent": "#0067c0",
-      "accentHi": "#1a7cd4",
-      "accentSoft": "rgba(0,103,192,0.12)",
-      "accentFg": "#0067c0",
-      "ok": "#43906f",
-      "warn": "#b7813a",
-      "crit": "#c25a60",
-      "unknown": "#8a8d99"
+      "accent": "#7a3f9d",
+      "accentHi": "#8b4bb0",
+      "accentSoft": "rgba(122,63,157,0.12)",
+      "accentFg": "#7a3f9d",
+      "ok": "#2f7256",
+      "warn": "#7d5619",
+      "crit": "#b03434",
+      "unknown": "#635c69"
     },
     "dark": {
-      "bg": "#101014",
-      "bg2": "#16161c",
-      "glass": "rgba(42,42,50,0.66)",
-      "glass2": "rgba(58,58,68,0.42)",
+      "bg": "#130f16",
+      "bg2": "#19141d",
+      "glass": "rgba(48,42,52,0.66)",
+      "glass2": "rgba(64,56,68,0.42)",
       "glass3": "rgba(255,255,255,0.06)",
-      "solid": "#1b1b21",
+      "solid": "#1c1620",
       "hairline": "rgba(255,255,255,0.09)",
       "highlight": "rgba(255,255,255,0.13)",
-      "scrim": "rgba(0,0,0,0.5)",
-      "text": "#f2f2f6",
-      "textDim": "#a2a4b0",
-      "textFaint": "#9195a1",
-      "onAccent": "#ffffff",
-      "accent": "#3d95ea",
-      "accentHi": "#5aa8f2",
-      "accentSoft": "rgba(61,149,234,0.18)",
-      "accentFg": "#3d95ea",
+      "scrim": "rgba(0,0,0,0.52)",
+      "text": "#f4f0f6",
+      "textDim": "#a89eb0",
+      "textFaint": "#a29aa8",
+      "onAccent": "#20132a",
+      "accent": "#c79aec",
+      "accentHi": "#d4aef5",
+      "accentSoft": "rgba(199,154,236,0.18)",
+      "accentFg": "#c79aec",
       "ok": "#6cc79c",
       "warn": "#e0b473",
-      "crit": "#e88b90",
-      "unknown": "#9396a2"
+      "crit": "#ef8080",
+      "unknown": "#a8a0b0"
     }
   },
   "semantics": {
     "ok": "Correcto — dentro de umbrales.",
     "warn": "Advertencia — umbral cruzado o degradación no bloqueante.",
-    "crit": "Crítico — atención inmediata.",
+    "crit": "Crítico — atención inmediata. Bermellón, no el morado del acento.",
     "unknown": "Desconocido / no compatible / sin datos. NUNCA rojo.",
     "accent": "Acción primaria, selección y serie principal. No transmite salud."
   }
@@ -6264,7 +6848,11 @@ module.exports = {
         crit: { DEFAULT: "var(--sdm-crit)", soft: "var(--sdm-crit-soft)" },
         unknown: { DEFAULT: "var(--sdm-unknown)", soft: "var(--sdm-unknown-soft)" }
       },
-      fontFamily: { sans: "var(--sdm-font-sans)", mono: "var(--sdm-font-mono)" },
+      fontFamily: {
+        sans: "var(--sdm-font-sans)",
+        mono: "var(--sdm-font-mono)",
+        display: "var(--sdm-font-display)"
+      },
       fontSize: {
         "2xs": ["var(--sdm-text-2xs)", { lineHeight: "1.35" }],
         xs: ["var(--sdm-text-xs)", { lineHeight: "1.45" }],
@@ -6273,7 +6861,9 @@ module.exports = {
         lg: ["var(--sdm-text-lg)", { lineHeight: "1.3" }],
         xl: ["var(--sdm-text-xl)", { lineHeight: "1.2" }],
         "2xl": ["var(--sdm-text-2xl)", { lineHeight: "1.2" }],
-        metric: ["var(--sdm-text-metric)", { lineHeight: "1.05" }]
+        metric: ["var(--sdm-text-metric)", { lineHeight: "1.05" }],
+        display: ["var(--sdm-text-display)", { lineHeight: "1" }],
+        hero: ["var(--sdm-text-hero)", { lineHeight: "1" }]
       },
       fontWeight: { regular: "400", medium: "500", semibold: "600" },
       spacing: {
@@ -6295,7 +6885,11 @@ module.exports = {
       height: {
         "control-sm": "var(--sdm-control-sm)",
         "control-md": "var(--sdm-control-md)",
-        "control-lg": "var(--sdm-control-lg)"
+        "control-lg": "var(--sdm-control-lg)",
+        hero: "var(--sdm-hero-height)"
+      },
+      width: {
+        rail: "var(--sdm-rail-width)"
       },
       boxShadow: {
         card: "var(--sdm-shadow)",
@@ -6343,6 +6937,7 @@ export { default as DateRangePicker } from "./DateRangePicker.svelte";
 export { default as FilterBar } from "./FilterBar.svelte";
 export { default as VirtualList } from "./VirtualList.svelte";
 
+export { default as Icon } from "./Icon.svelte";
 export { default as StatusPill } from "./StatusPill.svelte";
 export { default as StatusDot } from "./StatusDot.svelte";
 export { default as MetricCard } from "./MetricCard.svelte";
@@ -6350,9 +6945,11 @@ export { default as DataRow } from "./DataRow.svelte";
 export { default as CapacityBar } from "./CapacityBar.svelte";
 export { default as ProgressBar } from "./ProgressBar.svelte";
 export { default as HealthDonut } from "./HealthDonut.svelte";
+export { default as Sparkline } from "./Sparkline.svelte";
 export { default as TimeSeriesChart } from "./TimeSeriesChart.svelte";
 
 export { default as DiskCard } from "./DiskCard.svelte";
+export { default as HeroPanel } from "./HeroPanel.svelte";
 export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 
@@ -6454,6 +7051,9 @@ export interface VolumeSummary {
   mappingConfidence: "exact" | "inferred" | "unknown";
   /** `chkdsk /scan` solo existe en NTFS: lo decide el backend, no se repite el criterio aquí. */
   chkdskAvailable: boolean;
+  /** `true` para el volumen donde vive Windows (v3, ADR-036). Lo calcula el backend; la interfaz no
+   *  lo infiere. Lo consume `selectHeroDisk()`. */
+  isSystemVolume: boolean;
 }
 
 export interface AlertGroup {
@@ -6535,6 +7135,82 @@ export function worstState(states: readonly HealthState[]): HealthState {
   if (states.includes("warn")) return "warn";
   if (states.includes("ok")) return "ok";
   return "unknown";
+}
+
+/** Estado global de la aplicación, calculado **una sola vez** y presentado en dos sitios: la píldora
+ *  de la `Toolbar` (con texto) y el pie del riel de la `Sidebar` (solo icono). Al ser la misma
+ *  función, no pueden contradecirse (`docs/ui-design.md` §7, `09-chrome-y-estados.md`).
+ *
+ *  `kind` distingue los casos que la interfaz rotula distinto; `state` es el token de color; `count`
+ *  es cuántos discos monitorizados necesitan atención. La `Sidebar`/`Toolbar` traducen `kind` a texto
+ *  con `t()` — aquí no hay literales de interfaz. */
+export type GlobalStatusKind = "loading" | "paused" | "noDevices" | "ok" | "attention";
+
+export function globalStatus(input: {
+  /** false mientras el inventario no ha llegado: NO es lo mismo que "no hay discos". */
+  loaded: boolean;
+  paused: boolean;
+  /** Estados de los discos **monitorizados** (los excluidos no cuentan). */
+  monitoredStates: readonly HealthState[];
+}): { kind: GlobalStatusKind; state: HealthState; count: number } {
+  if (!input.loaded) return { kind: "loading", state: "unknown", count: 0 };
+  if (input.paused) return { kind: "paused", state: "unknown", count: 0 };
+  if (input.monitoredStates.length === 0) return { kind: "noDevices", state: "unknown", count: 0 };
+  const count = input.monitoredStates.filter((s) => s === "warn" || s === "crit").length;
+  if (count === 0) return { kind: "ok", state: "ok", count: 0 };
+  return { kind: "attention", state: worstState(input.monitoredStates), count };
+}
+
+/** El disco que protagoniza el `HeroPanel` del panel general (v3, `HeroPanel.md`). **La pantalla
+ *  elige, no el componente**, y este es el criterio:
+ *
+ *   1. el disco con la alerta que cuenta para la salud (`active`/`acknowledged`) de mayor severidad;
+ *      empate → la de ocurrencia más reciente;
+ *   2. si no hay ninguna, el disco cuyo volumen sea el de sistema (`isSystemVolume`);
+ *   3. si no se sabe, el primero del inventario;
+ *   4. **un disco sin SMART (`unknown` por `unsupported`) nunca protagoniza**, salvo que sea el único.
+ *
+ *  Devuelve `null` solo si no hay ningún disco. */
+export function selectHeroDisk<
+  D extends {
+    id: string;
+    state: HealthState;
+    unknownReason?: UnknownReason | null;
+    volumes?: readonly { isSystemVolume?: boolean }[];
+  }
+>(
+  disks: readonly D[],
+  alerts: readonly { severity: Severity; status: AlertStatus; deduplicationKey: string; lastOccurredAt: string }[]
+): D | null {
+  if (disks.length === 0) return null;
+
+  const sinSmart = (d: D) => d.state === "unknown" && (d.unknownReason ?? "unsupported") === "unsupported";
+  const elegibles = disks.some((d) => !sinSmart(d)) ? disks.filter((d) => !sinSmart(d)) : disks;
+
+  const sev: Record<Severity, number> = { crit: 3, warn: 2, info: 1 };
+  const puntuados: { disk: D; sev: number; when: string }[] = [];
+  for (const d of elegibles) {
+    const suyas = alerts.filter(
+      (a) => alertCountsTowardHealth(a.status) && a.deduplicationKey.includes(`device:${d.id}`)
+    );
+    if (!suyas.length) continue;
+    let mejorSev = 0;
+    let mejorWhen = "";
+    for (const a of suyas) {
+      if (sev[a.severity] > mejorSev || (sev[a.severity] === mejorSev && a.lastOccurredAt > mejorWhen)) {
+        mejorSev = sev[a.severity];
+        mejorWhen = a.lastOccurredAt;
+      }
+    }
+    puntuados.push({ disk: d, sev: mejorSev, when: mejorWhen });
+  }
+
+  if (puntuados.length) {
+    puntuados.sort((a, b) => b.sev - a.sev || b.when.localeCompare(a.when));
+    return puntuados[0].disk;
+  }
+
+  return elegibles.find((d) => d.volumes?.some((v) => v.isSystemVolume)) ?? elegibles[0];
 }
 
 /** Un `unknown` que se debe a una fuente que **debería** funcionar es una degradación real y se
@@ -7046,6 +7722,7 @@ Fichero de origen: `src/lib/i18n/es.json`
 
 ```json
 {
+  "app.name": "SmartDisk Monitor",
   "common.notAvailable": "No disponible",
   "common.unsupported": "No compatible",
   "common.noData": "Sin datos",
@@ -7062,7 +7739,9 @@ Fichero de origen: `src/lib/i18n/es.json`
   "health.crit": "Crítico",
   "health.unknown": "Sin datos SMART",
   "global.allGood": "Todo en orden",
-  "global.paused": "Monitorización pausada",
+  "global.paused": "En pausa",
+  "global.loading": "Comprobando…",
+  "nav.alertsUnread": "Alertas, {count} sin revisar",
   "nav.dashboard": "Panel general",
   "nav.alerts": "Alertas",
   "nav.tests": "Pruebas y diagnóstico",
@@ -7113,8 +7792,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.theme.dark": "Oscuro",
   "settings.theme.system": "Según el sistema",
   "settings.useSystemAccent": "Usar el color de acento de Windows",
-  "chart.gaps.one": "1 tramo sin datos",
-  "chart.gaps.other": "{count} tramos sin datos",
+  "chart.gapRange": "sin datos {from} – {to}",
+  "chart.noSamples": "Sin muestras en el intervalo",
   "chart.emptyLabel": "Gráfica sin datos en el intervalo elegido.",
   "chart.summaryLabel": "Serie de {from} a {to} en {unit}. Mínimo {min}, máximo {max}, último valor {last}. Use las flechas para recorrer los puntos.",
   "chart.resolution.raw": "Muestras cada 30 s",
@@ -7140,8 +7819,62 @@ Fichero de origen: `src/lib/i18n/es.json`
   "error.unexpected": "Ha ocurrido un error inesperado al hablar con el servicio de supervisión.",
   "dashboard.noDevices": "No hay discos monitorizados",
   "dashboard.noDevicesHint": "Comprueba que la aplicación se está ejecutando con privilegios de administrador.",
+  "dashboard.noDevicesCta": "Buscar dispositivos otra vez",
+  "dashboard.hero.allGood": "Todo en orden",
+  "dashboard.hero.allGoodBody": "Ningún disco necesita atención ahora mismo.",
+  "dashboard.hero.openDisk": "Abrir el disco",
+  "dashboard.hero.viewAlert": "Ver la alerta",
+  "dashboard.hero.lastValid": "último dato válido a las {time}",
+  "dashboard.hero.noSeries": "Sin muestras en las últimas 24 h",
+  "dashboard.spread.title": "Reparto de estados",
+  "dashboard.events.title": "Sucesos del sistema",
+  "dashboard.events.empty": "Sin sucesos recientes",
+  "disk.noSmartExplain": "El bus de este disco no reenvía los comandos SMART. No es una avería: se vigila su capacidad y los sucesos de Windows, pero no la temperatura ni el desgaste.",
+  "disk.capacity": "Ocupación",
   "disk.notFound": "Disco no encontrado",
   "onboarding.title": "Configuración inicial",
+  "onboarding.step.welcome": "Bienvenida",
+  "onboarding.step.disks": "Discos",
+  "onboarding.step.alerts": "Alertas",
+  "onboarding.step.done": "Listo",
+  "onboarding.stepIndicator": "Paso {n} de {total}",
+  "onboarding.progress": "Progreso del asistente",
+  "onboarding.skip": "Omitir y usar los valores de fábrica",
+  "onboarding.welcome.title": "Te damos la bienvenida a SmartDisk Monitor",
+  "onboarding.welcome.body": "SmartDisk vigila la salud de tus discos en segundo plano y te avisa antes de que un problema sea grave. No necesitas saber nada de SMART.",
+  "onboarding.welcome.guarantee": "SmartDisk solo lee. No modifica, no repara y no borra nada de tus discos.",
+  "onboarding.welcome.cta": "Buscar mis discos",
+  "onboarding.welcome.read": "Lee los datos SMART y la salud de cada disco",
+  "onboarding.welcome.warn": "Avisa antes de que un problema sea grave",
+  "onboarding.welcome.test": "Ejecuta pruebas de disco solo cuando se lo pides",
+  "onboarding.disks.title": "Hemos encontrado {count} discos en este equipo",
+  "onboarding.disks.body": "Puedes dejar fuera los que no te interesen y ponerles un nombre reconocible. Todo esto se cambia después en Ajustes, y ningún disco se modifica: SmartDisk solo lee.",
+  "onboarding.disks.aliasLabel": "Nombre para esta aplicación",
+  "onboarding.disks.usbNote": "El disco externo por USB no expone datos SMART: su puente no reenvía esos comandos. Eso no es una avería. Si lo dejas marcado, vigilaremos su capacidad y los sucesos de Windows que lo mencionen, pero no verás temperatura ni desgaste.",
+  "onboarding.disks.cta": "Continuar con las alertas",
+  "onboarding.disks.empty": "No se ha detectado ningún disco en este equipo",
+  "onboarding.disks.rescan": "Volver a buscar",
+  "onboarding.disks.continueAnyway": "Continuar igualmente",
+  "onboarding.disks.error": "No se ha podido detectar el hardware de disco",
+  "onboarding.disks.include": "Vigilar {name}",
+  "onboarding.selectedCount": "{selected} de {total} discos seleccionados",
+  "onboarding.alerts.title": "¿Cuánto quieres que te avise?",
+  "onboarding.alerts.showThresholds": "Ver los umbrales exactos de este perfil",
+  "onboarding.alerts.notifyWindows": "Avisarme con una notificación de Windows",
+  "onboarding.alerts.notifyWindowsHint": "Aparece cuando la ventana está minimizada.",
+  "onboarding.alerts.startWithSystem": "Arrancar SmartDisk con el sistema",
+  "onboarding.alerts.startWithSystemHint": "Crea una tarea programada que abre SmartDisk al iniciar sesión.",
+  "onboarding.done.title": "Todo listo",
+  "onboarding.done.watching": "Vigilando {count} discos con el perfil «{profile}».",
+  "onboarding.done.notifyOn": "Te avisaremos con una notificación de Windows.",
+  "onboarding.done.notifyOff": "Las notificaciones de Windows están desactivadas.",
+  "onboarding.done.firstScan": "Primera lectura en marcha…",
+  "onboarding.done.cta": "Ir al panel",
+  "onboarding.done.footnote": "Todo esto se cambia en Ajustes.",
+  "settings.onboarding.repeat": "Repetir la configuración inicial",
+  "settings.onboarding.repeatHint": "Reabre el asistente con los valores actuales. No borra discos, alias ni umbrales.",
+  "common.back": "Atrás",
+  "common.retry": "Reintentar",
   "disk.noSmartData": "Sin datos SMART",
   "disk.open": "Abrir {name}",
   "global.needsAttention.one": "1 disco necesita atención",
@@ -7322,8 +8055,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.appearance.theme.system": "Sistema",
   "settings.appearance.language.es": "Español",
   "settings.appearance.language.en": "Inglés",
-  "settings.appearance.useSystemAccent.label": "Usar el acento de Windows",
-  "settings.appearance.useSystemAccent.hint": "Desactívalo para volver al azul del sistema de diseño.",
+  "settings.appearance.useSystemAccent.label": "Usar el color de acento de Windows",
+  "settings.appearance.useSystemAccent.hint": "Sustituye el morado de la aplicación por el color que tengas configurado en Windows.",
   "settings.notifications.sound.label": "Sonido en las notificaciones",
   "settings.notifications.sound.hint": "Desactivado de fábrica.",
   "settings.cta.restoreDefaults": "Restaurar valores de fábrica",
@@ -7341,6 +8074,23 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.alerts.tempCrit": "Temperatura crítica",
   "settings.alerts.capacityWarnPercent": "Capacidad libre de aviso",
   "settings.alerts.capacityCritPercent": "Capacidad libre crítica",
+  "settings.alerts.profile.title": "Perfil",
+  "settings.alerts.profile.hint": "Elige cuánto quieres que te avise. Ajusta los doce umbrales de golpe; puedes afinar cualquiera abajo.",
+  "settings.alerts.profile.cautious": "Prudente",
+  "settings.alerts.profile.cautiousHint": "Avisa antes. Más avisos.",
+  "settings.alerts.profile.balanced": "Equilibrado",
+  "settings.alerts.profile.balancedHint": "Recomendado.",
+  "settings.alerts.profile.quiet": "Solo lo grave",
+  "settings.alerts.profile.quietHint": "Solo condiciones críticas. Menos avisos.",
+  "settings.alerts.profile.custom": "Personalizado (a partir de {base})",
+  "settings.alerts.wearWarn": "Desgaste de aviso",
+  "settings.alerts.wearCrit": "Desgaste crítico",
+  "settings.alerts.mediaErrorsWarn": "Errores de medios de aviso",
+  "settings.alerts.mediaErrorsCrit": "Errores de medios críticos",
+  "settings.alerts.mediaErrorsHint": "Incremento del contador entre dos lecturas que basta para avisar.",
+  "settings.alerts.driverRetryWarn": "Reintentos del controlador de aviso",
+  "settings.alerts.driverRetryCrit": "Reintentos del controlador críticos",
+  "settings.alerts.driverRetryHint": "Pendiente: aún no hay ninguna regla que vigile los reintentos del controlador.",
   "settings.retention.title": "Retención e historial",
   "settings.retention.neverPurged": "Las alertas, sus ocurrencias críticas, los eventos vinculados y las ejecuciones de pruebas nunca se borran por retención.",
   "settings.retention.raw": "Muestras crudas",
@@ -7348,6 +8098,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.retention.hourly": "Agregados horarios",
   "settings.retention.freeSpaceGuard": "La escritura de historial avisa por debajo de {warn} y se detiene por debajo de {halt}, sin afectar a la monitorización ni a las alertas en vivo.",
   "settings.logging.title": "Registro de actividad",
+  "settings.collection.label": "Recopilación de datos activa",
+  "settings.collection.hint": "Desactívala para pausar la lectura de SMART, contadores y eventos. Una actualización manual sigue disponible.",
   "settings.logging.verbose.label": "Modo detallado",
   "settings.logging.verbose.hint": "Actívalo para reproducir un fallo con más información.",
   "settings.logging.cta.openFolder": "Abrir carpeta del registro",
@@ -7382,6 +8134,7 @@ Fichero de origen: `src/lib/i18n/en.json`
 
 ```json
 {
+  "app.name": "SmartDisk Monitor",
   "common.notAvailable": "Not available",
   "common.unsupported": "Not supported",
   "common.noData": "No data",
@@ -7398,7 +8151,9 @@ Fichero de origen: `src/lib/i18n/en.json`
   "health.crit": "Critical",
   "health.unknown": "No SMART data",
   "global.allGood": "All good",
-  "global.paused": "Monitoring paused",
+  "global.paused": "Paused",
+  "global.loading": "Checking…",
+  "nav.alertsUnread": "Alerts, {count} unread",
   "nav.dashboard": "Overview",
   "nav.alerts": "Alerts",
   "nav.tests": "Tests & diagnostics",
@@ -7449,8 +8204,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.theme.dark": "Dark",
   "settings.theme.system": "Follow system",
   "settings.useSystemAccent": "Use the Windows accent colour",
-  "chart.gaps.one": "1 gap with no data",
-  "chart.gaps.other": "{count} gaps with no data",
+  "chart.gapRange": "no data {from} – {to}",
+  "chart.noSamples": "No samples in the range",
   "chart.emptyLabel": "No data in the selected range.",
   "chart.summaryLabel": "Series from {from} to {to} in {unit}. Minimum {min}, maximum {max}, latest {last}. Use the arrow keys to step through the points.",
   "chart.resolution.raw": "Samples every 30 s",
@@ -7476,8 +8231,62 @@ Fichero de origen: `src/lib/i18n/en.json`
   "error.unexpected": "An unexpected error occurred while talking to the monitoring service.",
   "dashboard.noDevices": "No monitored disks",
   "dashboard.noDevicesHint": "Check that the application is running with administrator privileges.",
+  "dashboard.noDevicesCta": "Look for devices again",
+  "dashboard.hero.allGood": "All good",
+  "dashboard.hero.allGoodBody": "No disk needs attention right now.",
+  "dashboard.hero.openDisk": "Open disk",
+  "dashboard.hero.viewAlert": "View alert",
+  "dashboard.hero.lastValid": "last valid reading at {time}",
+  "dashboard.hero.noSeries": "No samples in the last 24 h",
+  "dashboard.spread.title": "Status spread",
+  "dashboard.events.title": "System events",
+  "dashboard.events.empty": "No recent events",
+  "disk.noSmartExplain": "This disk's bus does not forward SMART commands. That is not a fault: its capacity and Windows events are still watched, but not temperature or wear.",
+  "disk.capacity": "Usage",
   "disk.notFound": "Disk not found",
   "onboarding.title": "Initial setup",
+  "onboarding.step.welcome": "Welcome",
+  "onboarding.step.disks": "Disks",
+  "onboarding.step.alerts": "Alerts",
+  "onboarding.step.done": "Done",
+  "onboarding.stepIndicator": "Step {n} of {total}",
+  "onboarding.progress": "Wizard progress",
+  "onboarding.skip": "Skip and use factory defaults",
+  "onboarding.welcome.title": "Welcome to SmartDisk Monitor",
+  "onboarding.welcome.body": "SmartDisk watches your disks' health in the background and warns you before a problem becomes serious. You don't need to know anything about SMART.",
+  "onboarding.welcome.guarantee": "SmartDisk only reads. It does not modify, repair or delete anything on your disks.",
+  "onboarding.welcome.cta": "Find my disks",
+  "onboarding.welcome.read": "Reads each disk's SMART data and health",
+  "onboarding.welcome.warn": "Warns you before a problem becomes serious",
+  "onboarding.welcome.test": "Runs disk tests only when you ask",
+  "onboarding.disks.title": "We found {count} disks on this PC",
+  "onboarding.disks.body": "You can leave out the ones you don't care about and give them a recognisable name. All of this can be changed later in Settings, and no disk is modified: SmartDisk only reads.",
+  "onboarding.disks.aliasLabel": "Name inside this app",
+  "onboarding.disks.usbNote": "The external USB disk does not expose SMART data: its bridge does not forward those commands. That is not a fault. If you leave it checked we will watch its capacity and the Windows events that mention it, but you will not see temperature or wear.",
+  "onboarding.disks.cta": "Continue to alerts",
+  "onboarding.disks.empty": "No disks detected on this PC",
+  "onboarding.disks.rescan": "Search again",
+  "onboarding.disks.continueAnyway": "Continue anyway",
+  "onboarding.disks.error": "Could not detect the disk hardware",
+  "onboarding.disks.include": "Watch {name}",
+  "onboarding.selectedCount": "{selected} of {total} disks selected",
+  "onboarding.alerts.title": "How much should it warn you?",
+  "onboarding.alerts.showThresholds": "Show this profile's exact thresholds",
+  "onboarding.alerts.notifyWindows": "Notify me with a Windows notification",
+  "onboarding.alerts.notifyWindowsHint": "Shows when the window is minimised.",
+  "onboarding.alerts.startWithSystem": "Start SmartDisk with the system",
+  "onboarding.alerts.startWithSystemHint": "Creates a scheduled task that opens SmartDisk at sign-in.",
+  "onboarding.done.title": "You're all set",
+  "onboarding.done.watching": "Watching {count} disks with the “{profile}” profile.",
+  "onboarding.done.notifyOn": "We'll notify you with a Windows notification.",
+  "onboarding.done.notifyOff": "Windows notifications are turned off.",
+  "onboarding.done.firstScan": "First reading under way…",
+  "onboarding.done.cta": "Go to the dashboard",
+  "onboarding.done.footnote": "All of this can be changed in Settings.",
+  "settings.onboarding.repeat": "Repeat the initial setup",
+  "settings.onboarding.repeatHint": "Reopens the wizard with your current values. It does not delete disks, aliases or thresholds.",
+  "common.back": "Back",
+  "common.retry": "Retry",
   "disk.noSmartData": "No SMART data",
   "disk.open": "Open {name}",
   "global.needsAttention.one": "1 disk needs attention",
@@ -7658,8 +8467,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.appearance.theme.system": "System",
   "settings.appearance.language.es": "Spanish",
   "settings.appearance.language.en": "English",
-  "settings.appearance.useSystemAccent.label": "Use the Windows accent",
-  "settings.appearance.useSystemAccent.hint": "Turn it off to go back to the design system's blue.",
+  "settings.appearance.useSystemAccent.label": "Use the Windows accent colour",
+  "settings.appearance.useSystemAccent.hint": "Replaces the app's purple with the colour configured in Windows.",
   "settings.notifications.sound.label": "Notification sound",
   "settings.notifications.sound.hint": "Off by default.",
   "settings.cta.restoreDefaults": "Restore factory values",
@@ -7677,6 +8486,23 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.alerts.tempCrit": "Critical temperature",
   "settings.alerts.capacityWarnPercent": "Free capacity warning",
   "settings.alerts.capacityCritPercent": "Free capacity critical",
+  "settings.alerts.profile.title": "Profile",
+  "settings.alerts.profile.hint": "Choose how much you want to be warned. Sets all twelve thresholds at once; you can fine-tune any of them below.",
+  "settings.alerts.profile.cautious": "Cautious",
+  "settings.alerts.profile.cautiousHint": "Warns earlier. More alerts.",
+  "settings.alerts.profile.balanced": "Balanced",
+  "settings.alerts.profile.balancedHint": "Recommended.",
+  "settings.alerts.profile.quiet": "Only serious",
+  "settings.alerts.profile.quietHint": "Critical conditions only. Fewer alerts.",
+  "settings.alerts.profile.custom": "Custom (based on {base})",
+  "settings.alerts.wearWarn": "Wear warning",
+  "settings.alerts.wearCrit": "Wear critical",
+  "settings.alerts.mediaErrorsWarn": "Media errors warning",
+  "settings.alerts.mediaErrorsCrit": "Media errors critical",
+  "settings.alerts.mediaErrorsHint": "Counter increase between two reads that is enough to warn.",
+  "settings.alerts.driverRetryWarn": "Controller retries warning",
+  "settings.alerts.driverRetryCrit": "Controller retries critical",
+  "settings.alerts.driverRetryHint": "Pending: no rule watches controller retries yet.",
   "settings.retention.title": "Retention and history",
   "settings.retention.neverPurged": "Alerts, their critical occurrences, linked events and test runs are never deleted by retention.",
   "settings.retention.raw": "Raw samples",
@@ -7684,6 +8510,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.retention.hourly": "Hourly aggregates",
   "settings.retention.freeSpaceGuard": "History writing warns below {warn} and stops below {halt}, without affecting monitoring or live alerts.",
   "settings.logging.title": "Activity log",
+  "settings.collection.label": "Data collection active",
+  "settings.collection.hint": "Turn it off to pause SMART, counter and event reads. A manual refresh stays available.",
   "settings.logging.verbose.label": "Verbose mode",
   "settings.logging.verbose.hint": "Turn it on to reproduce a failure with more detail.",
   "settings.logging.cta.openFolder": "Open log folder",

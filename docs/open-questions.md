@@ -322,7 +322,7 @@ asunción del programador.
 | J.23 | Cómo se implementó el colector de contadores de rendimiento (T058), y un hallazgo medido sobre Windows real | Enlace FFI directo a `pdh.dll` (mismo criterio que `platform::locale.rs` con `kernel32`: sin añadir el crate `windows` completo por cinco funciones estables). **Medido en un Windows real en español**: los nombres de objeto y contador de PDH están **localizados** (`PhysicalDisk` = "Disco físico", `% Idle Time` = "% de tiempo inactivo"); `PdhAddCounterW`/`PdhExpandWildCardPathW` con una ruta en inglés fallan con `PDH_CSTATUS_NO_OBJECT` fuera de un Windows en inglés — se comprobó primero con `Get-Counter` (falla con el nombre inglés, funciona con el español) y confirmó el diagnóstico. Solución: **`PdhAddEnglishCounterW`**, que traduce el nombre **y** resuelve el comodín de instancia (`\PhysicalDisk(0 *)\...`) en la misma llamada, sin paso de expansión aparte — probado end-to-end contra dos discos físicos reales de esta máquina, con valores de actividad y latencia coherentes con su carga real en el momento de la medición. Una tasa (bytes/s, sec/operación) exige dos muestras separadas en el tiempo: se recoge dos veces con 1 s de espera entre medias, una sola vez para las cinco fuentes (no cinco esperas), y se cierra la consulta —autónoma, no persistente entre ciclos. **Actualizado tras T020**: el planificador en segundo plano ya existe y llama a esta función una vez por ciclo de `METRICAS_RAPIDAS` debido, pero sigue abriendo y cerrando su propia consulta PDH en cada llamada en vez de mantenerla abierta entre ciclos reales — eso sigue siendo una optimización pendiente, no relacionada con si el bucle existe (spec 001-monitor-discos-windows, T058) |
 | J.24 | Qué hash calcula `system_events.dedup_hash` (T067) | No especificado en ningún documento más allá de "hash de deduplicación" (`data-model.md` §2). La identidad real de un evento ya es `UNIQUE(channel, record_id)`, así que este campo no decide duplicados por sí solo. Se calcula como `sha256(provider \| event_id \| occurred_at_utc \| message)`: una huella de contenido pensada para el trabajo futuro de correlación por ventana temporal de `alert-rules.md` §3.5 (un mismo suceso físico produce varios eventos correlacionados en 60 s), no usada todavía por ningún módulo de esta sesión. Provisional hasta que la correlación por ventana (§3.5) se implemente y decida si necesita este campo o algo distinto |
 | J.25 | Confianza de la correlación evento→disco por número de disco (T069) según de dónde salga el número | `docs/alert-rules.md` §3.6 exige resolver contra el inventario, nunca por coincidencia textual pura, pero no distingue confianza entre las formas de identificador que "conviven" en un mismo mensaje. Decisión: **`exact`** cuando el número de disco sale de una ruta de dispositivo estructurada (`\Device\HarddiskN\...`, generada por el propio sistema en el XML crudo del evento) y coincide con un disco del inventario; **`inferred`** cuando sale del texto humano ya formateado ("disco N"/"disk N"), porque ese texto está traducido y depende de la plantilla de mensaje del proveedor, una capa menos directa que la ruta de dispositivo. `\Device\HarddiskVolumeNN` y los nombres PDO (`\Device\0003d2a5`) quedan sin resolver (`unknown`): el colector de capacidad (T059) no captura ese identificador por volumen todavía, y añadirlo es trabajo del propio colector, no de la correlación. El número que sigue a `DR` en `\Device\HarddiskN\DRxx` **nunca** se confunde con el número de disco (`alert-rules.md` §3.6, advertencia explícita) (spec 001-monitor-discos-windows, T069) |
-| J.26 | Medición de R3 (T074): 20 discos y 5.000 eventos frente al umbral de 50 ms de SC-007/SC-009 | **Medido con el plano de interfaz** (Playwright + IPC propio + `PerformanceObserver` de "long tasks", que solo informa de tareas ≥50 ms). Hallazgo real durante la medición: la **primera navegación** de la prueba produce 70-120 ms de tarea larga **incluso con 0 o 2 discos** — coste fijo de evaluar el paquete en un Chromium recién arrancado, no relacionado con la cantidad de datos. Confundir ese coste con el de renderizar 20 discos habría hecho fallar la prueba por una razón ajena a SC-007 (que habla de seguir respondiendo *durante* el trabajo, no del arranque en sí). Corregido separando ambos: cada prueba dejar pasar la carga inicial y **luego** reinicia el observador, midiendo solo la interacción real — desplazar los 5.000 eventos con `VirtualList`, o recibir 20 discos en caliente vía un `metrics:updated` simulado (`ipc-falso.ts` ganó `emitirEvento()` para poder disparar ese evento desde la prueba). Ambos escenarios pasan limpios, cero tareas largas. De camino se virtualizó también el panel general (T064 ya había virtualizado la lista de eventos): la rejilla `DiskCard` pasó de pintar todas las tarjetas de una vez a virtualizarse **por fila** con el mismo `VirtualList` genérico, agrupando tantas tarjetas por fila como columnas quepan en el ancho disponible — la primera medición (antes de aislar el coste fijo de navegación) señaló la rejilla sin virtualizar como sospechosa, y aunque el diagnóstico final mostró que el problema real estaba en la metodología de medición y no en la rejilla, la virtualización quedó aplicada por ser una mejora real y ya verificada, no se revirtió (spec 001-monitor-discos-windows, T074) |
+| J.26 | Medición de R3 (T074): 20 discos y 5.000 eventos frente al umbral de 50 ms de SC-007/SC-009 | **Medido con el plano de interfaz** (Playwright + IPC propio + `PerformanceObserver` de "long tasks", que solo informa de tareas ≥50 ms). Hallazgo real durante la medición: la **primera navegación** de la prueba produce 70-120 ms de tarea larga **incluso con 0 o 2 discos** — coste fijo de evaluar el paquete en un Chromium recién arrancado, no relacionado con la cantidad de datos. Confundir ese coste con el de renderizar 20 discos habría hecho fallar la prueba por una razón ajena a SC-007 (que habla de seguir respondiendo *durante* el trabajo, no del arranque en sí). Corregido separando ambos: cada prueba dejar pasar la carga inicial y **luego** reinicia el observador, midiendo solo la interacción real — desplazar los 5.000 eventos con `VirtualList`, o recibir 20 discos en caliente vía un `metrics:updated` simulado (`ipc-falso.ts` ganó `emitirEvento()` para poder disparar ese evento desde la prueba). Ambos escenarios pasan limpios, cero tareas largas. De camino se virtualizó también el panel general (T064 ya había virtualizado la lista de eventos): la rejilla `DiskCard` pasó de pintar todas las tarjetas de una vez a virtualizarse **por fila** con el mismo `VirtualList` genérico, agrupando tantas tarjetas por fila como columnas quepan en el ancho disponible — la primera medición (antes de aislar el coste fijo de navegación) señaló la rejilla sin virtualizar como sospechosa, y aunque el diagnóstico final mostró que el problema real estaba en la metodología de medición y no en la rejilla, la virtualización quedó aplicada por ser una mejora real y ya verificada, no se revirtió (spec 001-monitor-discos-windows, T074). **Reemplazado en parte el 2026-09-06 (§U):** el panel v3 retira la `VirtualList` de la rejilla de discos —su nuevo encuadre (héroe + pie) exige una sola región de scroll— y cubre SC-006 con la variante compacta de `DiskCard` (sin sparkline a partir de 12 discos, `ui-design.md` §7); la misma prueba de rendimiento sigue verde. La virtualización de la **lista de eventos** (T064) se mantiene |
 | J.27 | Nombre de la "carpeta controlada" del benchmark (T077), no especificado en ningún documento | `<raíz del volumen>\SmartDisk Monitor Benchmark\`: en la raíz del volumen que se está probando, no en `%ProgramData%` —tiene que vivir en el mismo volumen para medir su E/S real, no la del disco del sistema—, con el mismo nombre visible que ya usa la carpeta de datos (`platform::paths::data_dir()`). El nombre de archivo dentro de esa carpeta lleva un sufijo aleatorio (`benchmark-<aleatorio>.tmp`); "nunca se sobrescribe un archivo existente" (product-specification.md §6) se comprueba activamente antes de crear el archivo, no se asume por la aleatoriedad del nombre (spec 001-monitor-discos-windows, T077) |
 | J.28 | Forma exacta del JSON de estado del autotest SMART corto (T081), **sin verificar contra hardware real** | A diferencia de todo lo demás de esta sesión (SMART, PDH, wevtapi, chkdsk, benchmark: todo probado contra el sistema real de esta máquina), este dato concreto **no se ha verificado**: un autotest corto real tarda minutos en el disco y el usuario pidió expresamente no ejecutarlo. `tests::autotest::parse_estado_json` asume la forma documentada de `ata_smart_data.self_test.status.{value,string,passed}` y `.polling_minutes.short` que expone `smartctl -a -j`, construida a partir de conocimiento general de su formato JSON, no de una captura propia. Antes de dar el autotest por terminado hay que lanzar uno real (cuando el usuario lo autorice) y comparar el JSON verdadero con lo que este parser espera — el mismo trato que ya se dio a `smartctl_parser.rs` con sus fixtures reales (spec 001-monitor-discos-windows, T081) |
 | J.15 | Cómo distinguir "sin compatibilidad SMART" de "aún sin leer" en `get_device_detail` | Ausencia de `smartctl_path` (T025: `Get-PhysicalDisk.DeviceId` no numérico, típico de volúmenes RAID lógicos) se trata como `unsupported`; presencia de `smartctl_path` sin ninguna muestra `metric_samples.source = smartctl` se trata como `not-yet-sampled`. Deliberadamente **no** se interpreta el `exit_status` de `smartctl` como señal de soporte: sus bits documentan fallos de sintaxis/apertura/hallazgos SMART, no "este bus no expone SMART", y esa lectura no se ha podido verificar contra hardware real (`open-questions.md` I.5). Provisional hasta medir (spec 001-monitor-discos-windows, T038) |
@@ -955,3 +955,165 @@ siempre `*S-1-5-18`, `*S-1-5-32-544` y `*S-1-5-32-545`.
   primera. El código está cableado y compila, pero comprobarlo exige arrancar la aplicación
   elevada y aceptar el UAC, cosa que ninguna prueba automática de este proyecto puede hacer.
   Entra como comprobación de humo de US-060.
+
+---
+
+## S. Paleta v3 «Ciruela» — ratios de contraste medidos
+
+Cerrada el 2026-09-06 al implantar el rediseño v3 (ADR-034, `specs/002-rediseno-v3/`, US1).
+Herramienta: `scripts`/`tools/accent-check.py` reutilizado para componer cada color sobre el
+material real (`--sdm-glass` sobre la media del degradado del lienzo; y `--sdm-glass-3` encima, para
+la columna «bloque interno»; la columna «píldora» mide el color contra su propio `-soft` compuesto
+sobre el material, que es el caso de `StatusPill`). Mínimo exigido: 4,5:1 (constitución §VII, WCAG
+1.4.3), medido **como texto de píldora**, que es el uso más exigente.
+
+### S.1 · Resultado
+
+Todos los tokens de texto y de salud de la paleta Ciruela cumplen AA en los dos temas, sobre
+material y sobre bloque interno. Los valores medidos coinciden con la tabla que entregó el diseñador
+en `design/propuesta-redisenov2/cambios/00-tokens.md` dentro de ±0,05.
+
+| | material (claro / oscuro) | bloque interno (claro / oscuro) | píldora (claro / oscuro) |
+|---|---|---|---|
+| `--sdm-text` | 16,40 / 13,81 | 14,62 / 11,58 | — |
+| `--sdm-text-dim` | 6,15 / 6,06 | 5,48 / 5,08 | — |
+| `--sdm-text-faint` | 5,42 / 5,72 | **4,83** / **4,80** | — |
+| `--sdm-accent-fg` | 6,52 / 6,86 | 5,81 / 5,75 | 5,46 / 4,82 |
+| `--sdm-ok` | 5,38 / 7,62 | 4,80 / 6,39 | **4,68** / 5,56 |
+| `--sdm-warn` | 6,13 / 8,11 | 5,46 / 6,80 | 5,31 / 5,78 |
+| `--sdm-crit` (bermellón) | 5,82 / 5,98 | 5,19 / 5,01 | 4,86 / **4,57** |
+| `--sdm-unknown` | 6,04 / 6,16 | 5,38 / 5,17 | 5,19 / 4,80 |
+
+Texto blanco sobre el acento sólido en claro: 6,94:1 (`--sdm-on-accent` sigue siendo `#ffffff`).
+`--sdm-on-accent` en oscuro pasa a tinta `#20132a`: 7,80:1 sobre el acento (en blanco daba 2,27:1).
+
+### S.2 · Los tres valores más justos, verificados
+
+- `--sdm-text-faint` sobre bloque interno: 4,83 (claro) / 4,80 (oscuro). El diseñador ya los había
+  subido respecto a su primera propuesta (`#988ea0` daba 4,18 en oscuro); estos son los definitivos.
+- `--sdm-ok` como texto de píldora en claro: 4,68. Sin margen para aclararlo.
+- `--sdm-crit` como texto de píldora en oscuro: 4,57. El bermellón `#ef8080` está calibrado al
+  límite: no lo aclares.
+
+### S.3 · Reglas que se derivan
+
+- **Ninguno de estos tokens se aclara.** Si un texto queda justo sobre el material, se sube la
+  opacidad de la capa, nunca se rebaja el color (misma regla que §O y que `ui-design.md` §6).
+- **No pongas texto directamente sobre `bg-glass-3`** salvo que sea uno de los tokens de esta tabla:
+  la columna «bloque interno» es el suelo.
+- El interruptor «usar el acento de Windows» (ADR-035) mantiene intacta la corrección de §O:
+  `accessibleAccent()` / `accentOnSurface()` siguen barriendo el acento del usuario.
+
+---
+
+## T. Perfiles de alerta — decisiones adoptadas (ADR-036)
+
+Cerrada el 2026-09-06 al implantar US10 del rediseño v3 (`specs/002-rediseno-v3/`).
+
+### T.1 · El motor pasa a leer los umbrales de `settings`
+
+Hasta v3, `alerts::motor` llevaba los umbrales **escritos a mano** (`90/100` desgaste, `70/80`
+temperatura) y `settings.alerts.*` se guardaba sin que ninguna regla lo leyera — el mismo hueco que
+J.32 describía para las claves de capacidad. Con ADR-036 el motor recibe los umbrales como parámetro
+(`ConfigUmbrales`), que `commands::refresh_smart` resuelve de `settings` una vez por ciclo. Reglas
+parametrizadas: `smart.wear_high`, `temp.above_configured_warn/crit`, `smart.media_errors` y —nuevas
+en el motor— `capacity.low`/`capacity.critical`.
+
+### T.2 · El umbral térmico de fábrica baja a 60/70 °C
+
+Era 70/80. El perfil «Equilibrado» de `cambios/08b-perfiles-de-alerta.md` lo fija en 60/70, y ese
+pasa a ser también el valor de fábrica (spec 002, clarify Q2). 60 °C sigue siendo temperatura alta
+para un SSD de consumo, y mantener dos números distintos («fábrica» vs «Equilibrado») confundiría.
+Actualizado `alert-rules.md` §2 y las pruebas de `alerts::motor` y `commands::set_setting`.
+
+### T.3 · `media_errors_*` no es una ventana de 24 h
+
+El nombre `mediaErrorsWarnPer24h` viene de la propuesta del diseñador, pero la semántica adoptada
+(clarify Q1) es **el incremento de `media_errors_total` entre dos lecturas consecutivas** que basta
+para avisar. No se construye una mecánica de conteo por ventana de 24 h: reinterpretar sobre la regla
+existente cubre el caso. La interfaz no muestra «/24 h».
+
+### T.4 · `driver_retry_*` se guarda pero **aún no lo consume ninguna regla**
+
+Un perfil escribe los doce umbrales, `driver_retry_warn/crit_per24h` incluidos, para que el juego
+esté completo. Pero las reglas `events.controller_reset` / `events.io_retry` que los consumirían
+**no existen en el motor**: necesitan el colector de eventos de Windows completo (Historia 4). Es el
+mismo patrón con el que las claves de capacidad y `logging.verbose` vivieron guardadas sin consumidor
+hasta que su regla se implementó (J.32, FR-029a). Cuando exista esa regla, el umbral ya está.
+
+### T.5 · Editar un umbral a mano rompe el perfil
+
+`set_setting` sobre cualquier `alerts.*` (salvo `alerts.profile`) pone `alerts.profile = "custom"`.
+La única forma de volver a un perfil concreto es elegirlo, y entonces se reescriben sus doce valores.
+La interfaz muestra «Personalizado (a partir de \<perfil anterior\>)» derivando el «anterior» del
+último `profile` no-`custom` conocido en memoria, no de un segundo campo persistido.
+
+## U. Panel general v3 — virtualización sustituida por la variante compacta
+
+Cerrada el 2026-09-06 al implantar US5 del rediseño v3 (`specs/002-rediseno-v3/`, PR 6).
+
+### U.1 · Por qué desaparece la `VirtualList` de la rejilla de discos
+
+El panel v2 envolvía la rejilla de `DiskCard` en una `VirtualList` que virtualizaba **por filas**
+(J.26): con 20 discos, pintar la rejilla entera producía una tarea de ~100 ms, por encima del umbral
+de 50 ms de SC-006/SC-007.
+
+El panel v3 (`cambios/01-panel-general.md`) cambia el encuadre: ahora hay un `HeroPanel` de 246 px
+arriba y una fila inferior (sucesos + reparto de estados) abajo, y **el diseñador especifica que la
+región entera hace scroll** («con más discos la región hace scroll, nada se recorta»). Anidar una
+`VirtualList` de altura fija solo para la rejilla, entre un héroe y un pie que también deben
+desplazarse con ella, va contra ese encuadre y contra la constitución §XIV (una sola región de
+scroll natural).
+
+En su lugar se aplica lo que ya prescribía `ui-design.md` §7: **a partir de 12 discos monitorizados
+la `DiskCard` pierde la sparkline de cabecera** (`conSparklines = devices.length <= 12`). El coste de
+render que J.26 midió venía casi todo del SVG por tarjeta; sin él, 20 tarjetas se pintan holgadas.
+
+### U.2 · Medido, no estimado
+
+`e2e/ui/rendimiento.spec.ts` («recibir 20 discos en caliente … no produce ninguna tarea de 50 ms o
+más») se conserva sin cambios y **pasa** contra el panel v3 con rejilla plana: `[]` tareas largas.
+SC-006 se mantiene por medición, que era el objeto de J.26 — no por la técnica concreta.
+
+### U.3 · Series de temperatura: carga perezosa por disco visible
+
+El panel solo trae el inventario en su `load` (constitución §XIV). Tras el primer render, un
+`$effect` pide `getMetricSeries("temperature_celsius", 24 h)` para el disco del héroe y —si
+`conSparklines`— para el resto; el store (`app.temperatureSeries`) cachea por disco para no repetir
+la petición. Un fallo por disco degrada solo esa sparkline (no se pinta) y no tumba el panel.
+
+## V. Asistente inicial — decisiones adoptadas (US8, ADR-037/038)
+
+Cerrada el 2026-09-06 al implantar US8 del rediseño v3 (`specs/002-rediseno-v3/`).
+
+### V.1 · El guardián de `+layout.ts` detecta «ya configurado» con lo observable
+
+FR-043 pide no mostrar el asistente a quien actualiza desde una versión sin él. El frontend **no
+puede** saber si se guardó *cualquier* clave suelta de `settings` sin una señal nueva del backend
+(`get_settings` devuelve valores resueltos, no dice cuáles son de fábrica y cuáles guardados). Se
+comprueba lo que sí es observable: `theme != "system"`, `language != null`,
+`settings.alerts.profile != "balanced"`, algún `device.alias`, o `excluded.length > 0`. Cubre todos
+los casos realistas de actualización (quien ya usaba la app renombró un disco, cambió el tema o tocó
+las alertas). **Limitación aceptada**: un usuario de v3 desde cero que solo cambió, p. ej., un día de
+retención y cerró la app antes de acabar el asistente lo volverá a ver — que es justo lo que FR-043
+dice que debe pasar («interrumpida antes de guardar nada vuelve a mostrar el asistente»). No se
+añade backend por este caso.
+
+### V.2 · El guardián nunca atrapa: cualquier fallo cae a «seguir normal»
+
+Si `get_settings` / `get_devices` / `get_appearance_settings` fallan, el `load` del layout devuelve
+`{}` sin redirigir. Un fallo de arranque real ya lo explica `+layout.svelte`; lo que no puede pasar
+es un bucle de redirección a `/onboarding` cuando el backend no responde.
+
+### V.3 · `notifications.enabled` y el autoarranque — verificación
+
+- `notifications.enabled`: la decisión de enviar el toast se factoriza a `debe_enviar(...)` (pura,
+  con pruebas). El resto de `alerts::notificaciones::procesar_una` sigue sin prueba automática
+  porque necesita un proceso Tauri real (`research.md` R1) — mismo trato que ya tenía.
+- `lifecycle.start_with_system`: `platform::autoarranque::aplicar()` lanza `schtasks.exe` y **no se
+  ejecuta en `cargo test`** (crearía una tarea en el equipo del desarrollador). Se prueba el formato
+  de la línea de comando (`linea_de_comando`) y el nombre estable de la tarea; el registro/borrado
+  real en el Programador de tareas se verifica a mano —mismo criterio que J.28 (autotest SMART) y
+  `platform/sistema.rs`—. **Pendiente**: activar el interruptor en un Windows real, comprobar en el
+  Programador que existe «SmartDisk Monitor - Autostart» con «Ejecutar con los privilegios más
+  altos» y disparador «al iniciar sesión», reiniciar y confirmar que la app abre elevada sin UAC.

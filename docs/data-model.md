@@ -105,6 +105,40 @@
   detiene la escritura de historial sin afectar a la monitorización ni a las alertas en vivo. Valor
   por defecto 1 GB / 256 MB, no medido (`open-questions.md` J.13).
 - `logging.verbose`: booleano, modo detallado de registro de actividad (US-071).
+- `notifications.enabled`: booleano, **fábrica `true`** (ADR-037). `false` oculta el toast nativo sin
+  necesidad de pausar la recopilación. La alerta sigue existiendo y contando para el color de salud.
+- `lifecycle.start_with_system`: booleano, **fábrica `false`** (ADR-038). Al activarlo, el backend
+  registra una tarea programada elevada (`schtasks /SC ONLOGON /RL HIGHEST`); al desactivarlo o al
+  hacer `reset_settings("all")`, la borra. Fuente de verdad = esta clave, no el estado real de la
+  tarea.
+- **`alerts.profile`** (`cautious` | `balanced` | `quiet` | `custom`) y los umbrales que un perfil
+  escribe (ADR-036, `cambios/08b-perfiles-de-alerta.md`). Fábrica: `balanced`. Umbrales nuevos frente
+  a v2, con su rango de edición y su valor de fábrica (perfil Equilibrado):
+
+  | Clave | Rango | Fábrica |
+  |---|---|---|
+  | `alerts.temp_configured_warn_c` | 40–95 | **60** (baja de 70) |
+  | `alerts.temp_configured_crit_c` | warn–100 | **70** (baja de 80) |
+  | `alerts.wear_warn_percent` | 50–99 | 80 |
+  | `alerts.wear_crit_percent` | warn–100 | 90 |
+  | `alerts.media_errors_warn_per24h` | 1–1000 | 1 — es el incremento del contador que basta para avisar, **no** una ventana de 24 h (clarify Q1) |
+  | `alerts.media_errors_crit_per24h` | warn–1000 | 5 |
+  | `alerts.driver_retry_warn_per24h` | 1–1000 | 5 — **aún sin consumidor** (necesita el colector de eventos, Historia 4) |
+  | `alerts.driver_retry_crit_per24h` | warn–1000 | 12 |
+
+  Perfiles: Prudente 55/65 · 70/85 · … · Equilibrado (= fábrica) · Solo lo grave 70/80 · 90/95 · …
+  Tabla completa en `specs/002-rediseno-v3/data-model.md` y en `cambios/08b`.
+- **`settings.onboarding.completed_at`**: fecha ISO-8601 UTC o nula. Nula ⇒ el guardián de
+  `+layout.ts` redirige al asistente inicial al arrancar, **salvo** que ya haya configuración previa
+  observable (tema ≠ `system`, idioma forzado, perfil de alerta ≠ `balanced`, algún alias o alguna
+  exclusión), en cuyo caso la graba y sigue sin mostrarlo (FR-043, sin migración). No la restaura
+  `reset_settings`.
+- **`volume_free_bytes`** (`metric_samples`, `MetricTarget::Volume`): muestra periódica del espacio
+  libre de cada volumen monitorizado, persistida en el ciclo de descubrimiento (ADR-036). Antes la
+  capacidad solo vivía como instantánea en `volumes.free_bytes`; ahora también como serie, para que
+  `capacity.low`/`capacity.critical` tengan histéresis. La retención la compacta igual que el resto.
+- `VolumeSummary` gana `is_system_volume` (booleano): `true` para el volumen donde vive Windows. Lo
+  calcula el backend al leer (`GetSystemWindowsDirectoryW`), **sin columna nueva ni migración**.
 
 ### `event_cursors`
 

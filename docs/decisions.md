@@ -91,7 +91,11 @@ El desinstalador conserva SQLite, configuración, historial y logs en `ProgramDa
 
 ## ADR-013 — Sistema de diseño v2 vinculante
 
-Estado: aceptada.
+Estado: aceptada; **enmendada por ADR-034** (2026-09-06): el sistema de diseño evoluciona a v3
+(paleta propia «Ciruela», dos escalones tipográficos de «display», riel de navegación). El fondo de
+ADR-013 no cambia: `tokens.css` sigue siendo la fuente única de verdad, el catálogo sigue cerrado,
+el material de tres capas y los radios concéntricos no se tocan. Lo que cambia es la paleta y que la
+herencia del acento de Windows pasa a opción apagada de fábrica (ADR-035).
 
 La interfaz utilizará el paquete de diseño entregado, versión v2 de material translúcido, con su norma vinculante y `tokens.css` como fuente única de verdad visual.
 
@@ -145,7 +149,10 @@ Implementado en `deviceState()` y `alertCountsTowardHealth()`, un único sitio p
 
 ## ADR-017 — El acento heredado se corrige antes de aplicarse
 
-Estado: aceptada.
+Estado: aceptada; **matizada por ADR-035** (2026-09-06): la herencia del acento de Windows deja de
+ser el comportamiento de fábrica y pasa a un interruptor de Ajustes apagado por defecto. La parte
+técnica de ADR-017 se conserva entera: cuando el interruptor está encendido, `accessibleAccent()` y
+`accentOnSurface()` siguen corrigiendo el color del usuario para no romper el contraste.
 
 El acento de Windows se hereda, pero no a ciegas: `accessibleAccent()` elige texto blanco o negro
 según cuál contraste mejor y, si aun así no se alcanza 4.5:1, oscurece o aclara el acento hasta
@@ -850,3 +857,244 @@ cada sondeo — un único punto de parada, sea cual sea la vía de salida real.
 - `metrics:updated.historyWriteHalted` refleja un cálculo real de espacio libre, pero **no** detiene
   todavía ninguna escritura (`open-questions.md` J.40): queda como seguimiento explícito, no como
   olvido.
+
+## ADR-034 — Sistema de diseño v3: «escena de datos» con paleta propia «Ciruela»
+
+Estado: aceptada. Fecha: 2026-09-06. Enmienda ADR-013. Spec: `specs/002-rediseno-v3/`.
+
+### El problema
+
+Las capturas de la interfaz v2 sobre un Windows real (`design/entregable-rediseno/salida/capturas/`)
+mostraron tres defectos de presentación que no son de implementación:
+
+1. El panel general parece a medio cargar: con dos discos la rejilla ocupa ~230 px y deja ~570 px de
+   lienzo vacío.
+2. Cada magnitud es texto plano del mismo tamaño y color; nada dice si «41 °C» está bien, y un dato
+   ausente pesa más que un dato presente.
+3. El acento azul heredado de Windows (`#0067c0`) es correcto pero indistinguible de cualquier
+   utilidad del sistema; en tema oscuro el conjunto queda gris plano.
+
+El diseñador entregó una propuesta (`design/propuesta-redisenov2/`) que los resuelve sin reescribir
+el sistema.
+
+### La decisión
+
+El sistema de diseño evoluciona a **v3**. `docs/ui-design.md` pasa a describir v3. Cambios:
+
+- **Paleta «Ciruela»**: neutros malva, acento morado de tinta (`#7a3f9d` claro / `#c79aec` oscuro) y
+  crítico desplazado al bermellón (`#b03434` / `#ef8080`) para no confundirse con el acento. Todos
+  los ratios de contraste están medidos sobre el material compuesto en `docs/open-questions.md`.
+- **`--sdm-on-accent` deja de ser blanco en tema oscuro**: el acento oscuro es claro y el texto
+  blanco encima daba 2,27:1. Pasa a tinta (`#20132a`, 7,80:1). Todo texto sobre el acento usa
+  `--sdm-on-accent`, nunca `text-white`.
+- **Familia de «display»** (`--sdm-font-display`) y dos escalones nuevos (58 px, 76 px) para cifras y
+  titulares (nunca texto corrido), mediante la clase `.sdm-display`. **No se empaqueta una segunda
+  familia tipográfica**: `--sdm-font-display` resuelve a la familia sans ya empotrada. Se descartó Bricolage
+  Grotesque para no ampliar la superficie de un binario privilegiado que se distribuye a terceros
+  (constitución §III); si se revisa, `.sdm-display` y su `@font-face` son el único punto de cambio.
+- **Tres componentes nuevos** en el catálogo, cada uno con su justificación contra `ui-design.md` §3:
+  `Icon` (juego propio de 15 iconos de línea que heredan `currentColor`), `Sparkline` (trazo sin
+  ejes) y `HeroPanel` (dato dominante del panel). Ningún componente se elimina.
+- **La `Sidebar` pasa a un riel de 74 px** solo con iconos, devolviendo 176 px de ancho al contenido
+  (crítico a 1024 px). La lista de discos sale de la barra (ya está en la rejilla del panel).
+
+### Qué NO cambia
+
+El material de tres capas y sus desenfoques (28 / 24 / 44), la escala de radios concéntricos
+(18 → 13 → 9 → cápsula), el movimiento (220 ms, `cubic-bezier(.32,.72,0,1)`, `active:scale-[0.98]`,
+`prefers-reduced-motion`), el catálogo cerrado, `tokens.css` como fuente única de verdad visual, y
+**todas** las reglas de producto. No se añade ningún comando Tauri ni ningún permiso: el rediseño es
+de presentación, salvo los cambios de frontera acotados que la spec 002 documenta (una preferencia
+de apariencia cuyo campo ya existía, la marca del asistente inicial y los umbrales de perfil de
+alerta).
+
+### Alternativas descartadas
+
+- **Mantener el azul de Windows y ofrecer Ciruela como tema alternativo**: duplica el mantenimiento
+  de dos identidades y deja sin resolver el problema original (la aplicación no se reconoce) para la
+  mayoría de usuarios, que no cambian de tema.
+- **Empaquetar Bricolage Grotesque**: aporta carácter a las cifras grandes pero obliga a gestionar
+  un binario y una licencia OFL más en un instalador privilegiado. El coste no compensa; se deja la
+  puerta abierta con un único punto de cambio.
+
+### Consecuencias
+
+- `docs/ui-design.md` §0, §2, §2.bis y §3 se reescriben para v3. §4 (composición), §6
+  (accesibilidad) y §8 (definición de terminado) se conservan literalmente y siguen siendo el
+  criterio de aceptación visual de cada pantalla.
+- El catálogo pasa de N a N+3 componentes.
+- La entrega se hace en nueve PR ordenados por dependencia (`specs/002-rediseno-v3/plan.md`).
+
+## ADR-035 — La herencia del acento de Windows pasa a opción apagada de fábrica
+
+Estado: aceptada. Fecha: 2026-09-06. Matiza ADR-017. Spec: `specs/002-rediseno-v3/`.
+
+### El problema
+
+ADR-013 adoptó «la herencia del acento de Windows» como parte de la identidad visual de v2, y
+ADR-017 construyó toda la corrección de contraste (`accessibleAccent()`, `accentOnSurface()`, el
+barrido de los 262.144 acentos posibles de `open-questions.md` §O) sobre esa premisa. Pero heredar
+el acento del sistema es justo lo que hace que la aplicación no se distinga de cualquier utilidad de
+Windows (ADR-034, problema 3).
+
+### La decisión
+
+Con la paleta Ciruela, el acento propio es el comportamiento **de fábrica**. Heredar el acento de
+Windows pasa a un interruptor en Ajustes → Apariencia, **apagado por defecto**
+(`settings.appearance.useSystemAccent`, cuyo campo ya existía en el backend; solo cambia su valor de
+fábrica de `true` a `false`, implantado en PR 8 de `specs/002-rediseno-v3/`). Al encenderlo,
+`applySystemAccent()` sobrescribe los **tres roles de acento** —`--sdm-accent` (fondo),
+`--sdm-accent-fg` (texto), `--sdm-on-accent` (texto sobre el fondo)— más sus dos derivados
+(`--sdm-accent-hi`, `--sdm-accent-soft`): cinco propiedades CSS en total. Al apagarlo,
+`clearSystemAccent()` las restaura todas.
+
+**La parte técnica de ADR-017 se conserva entera**: cuando el interruptor está encendido, el acento
+del usuario sigue pasando por `accessibleAccent()` / `accentOnSurface()` para no bajar de AA en
+ningún tema. El acento sigue sin comunicar salud y sigue siendo acción/selección: no se toca ningún
+principio de la constitución §VI, solo se precisa que la herencia es opcional (nota al pie de §VI).
+
+### Alternativas descartadas
+
+- **Quitar la herencia por completo**: se pierde valor para el usuario que prefiere integrarse con
+  su sistema, y se tira una inversión de trabajo (ADR-017, `open-questions.md` §O) que ya está hecha
+  y probada.
+- **Dejar la herencia encendida de fábrica y Ciruela como respaldo**: no resuelve el problema para
+  la mayoría, que no toca los ajustes de apariencia.
+
+### Consecuencias
+
+- El texto de la preferencia (`settings.appearance.useSystemAccent.label` / `.hint`) se reescribe:
+  hoy asume el comportamiento contrario.
+- La definición de terminado de `ui-design.md` §8 sigue exigiendo verificar cada pantalla con un
+  acento del sistema claro y en los dos temas: el camino de la herencia no se abandona, se hace
+  opcional.
+
+## ADR-036 — El motor de alertas se parametriza por perfil
+
+Estado: aceptada. Fecha: 2026-09-06. Spec: `specs/002-rediseno-v3/` (US10). Amplía `alert-rules.md` §2.
+
+### El problema
+
+El rediseño v3 añade un paso al asistente inicial y una sección a Ajustes para elegir «cuánto avisa»
+la aplicación con un perfil (Prudente / Equilibrado / Solo lo grave). Para que esa elección no sea
+decorativa —y la constitución §I exige que la interfaz no mienta sobre qué está activo— el motor de
+alertas tiene que **consumir de verdad** los umbrales.
+
+Hasta ahora no lo hacía: `alerts::motor` es puro y sus umbrales estaban **escritos a mano**
+(`90/100` para desgaste, `70/80` para temperatura). `settings.alerts.temp_configured_warn_c` se
+guardaba y `get_settings` lo devolvía, pero **ninguna regla lo leía** — el mismo hueco que
+`open-questions.md` J.32 describía para las claves de capacidad.
+
+### La decisión
+
+1. **`settings.alerts` gana siete claves**: `profile` (`cautious`|`balanced`|`quiet`|`custom`),
+   `wear_warn_percent`, `wear_crit_percent`, `media_errors_warn_per24h`, `media_errors_crit_per24h`,
+   `driver_retry_warn_per24h`, `driver_retry_crit_per24h`. Cada una con su rango, su validación
+   (`crit` más severo que `warn`) y su prueba de rechazo (constitución §XI).
+2. **El motor las lee**. `alerts::motor` sigue puro: recibe los umbrales como parámetros;
+   `commands::refresh_smart` los resuelve de `settings` una vez por ciclo y se los pasa. Reglas
+   afectadas:
+   - `smart.wear_high` → `wear_warn_percent` / `wear_crit_percent`.
+   - `temp.above_configured_warn/crit` → `temp_configured_warn_c` / `_crit_c`. La histéresis de
+     resolución conserva su margen (aviso − 3 °C, crítico − 5 °C).
+   - `smart.media_errors` → la activación pasa de «el contador aumentó» a «el **incremento** entre
+     dos lecturas alcanza `media_errors_warn/crit_per24h`». El sufijo `Per24h` es histórico: **no**
+     es una ventana de 24 h (spec 002, clarify Q1). `smart.error_log` no se parametriza.
+   - **`capacity.low` / `capacity.critical`**: este ADR las **implementa en el motor** (antes solo
+     figuraban en `alert-rules.md`, sin código). Requiere persistir `volume_free_bytes` como muestra
+     periódica de cada volumen — antes la capacidad solo vivía como instantánea en
+     `volumes.free_bytes`. `domain::capacidad::estado_capacidad` es el espejo Rust de
+     `capacityState()` de `src/lib/design/health.ts`.
+3. **El umbral térmico de fábrica baja a 60/70 °C** (era 70/80), que es el valor del perfil
+   Equilibrado. Decisión de producto adoptada (spec 002, clarify Q2): 60 °C sigue siendo temperatura
+   alta para un SSD de consumo y mantener dos números («fábrica» vs «Equilibrado») confundiría.
+4. **Elegir un perfil escribe sus doce umbrales de golpe** y guarda el identificador. **Editar a
+   mano cualquiera de esos umbrales** pone `profile = "custom"`; la única forma de volver a un perfil
+   concreto es elegirlo. La interfaz muestra «Personalizado (a partir de \<perfil anterior\>)».
+
+### Lo que queda fuera
+
+- **`driver_retry_warn/crit_per24h` se guardan pero ninguna regla los consume todavía**: las reglas
+  `events.controller_reset` / `events.io_retry` necesitan el colector de eventos completo (Historia
+  4). El perfil escribe los doce valores igualmente, así el día que exista esa regla ya tiene su
+  umbral — el mismo patrón con el que las claves de capacidad y `logging.verbose` vivieron guardadas
+  sin consumidor (J.32, FR-029a). Registrado en `docs/open-questions.md`.
+- No se añade ningún comando Tauri ni ningún permiso: todo pasa por el `set_setting` genérico.
+
+### Alternativas descartadas
+
+- **Guardar los perfiles pero no cablear el motor** (opción del planteamiento inicial): el paso 3 del
+  asistente y la sección de Ajustes serían decoración. El usuario eligió el alcance completo.
+- **Implementar una ventana de conteo real «por 24 h»** para errores de medios y reintentos: mucho
+  más código en el motor (mecánica de conteo nueva + sus cinco pruebas) para un matiz que la
+  reinterpretación sobre las reglas existentes ya cubre (clarify Q1).
+
+### Consecuencias
+
+- `alert-rules.md` §2: la tabla pasa a decir «valor configurado (`settings.alerts.*`)» donde antes
+  ponía `> 70 °C` / `≥ 90` / «aumenta»; `capacity.low`/`critical` dejan de estar pendientes.
+- `metric_samples` gana un tipo de muestra: `volume_free_bytes` con `MetricTarget::Volume`. La
+  retención lo compacta igual que el resto (misma columna `volume_id` del esquema).
+- `VolumeSummary` gana `is_system_volume` (necesario para `selectHeroDisk()`, spec 002 clarify Q3),
+  calculado al leer con `GetSystemWindowsDirectoryW`, sin migración de esquema.
+
+## ADR-037 — Apagar las notificaciones es un ajuste propio, no solo pausar
+
+Estado: aceptada. Fecha: 2026-09-06. Spec: `specs/002-rediseno-v3/` (US8, paso 3 del asistente).
+
+### El problema
+
+El paso 3 del asistente inicial (`cambios/08-onboarding.md`) ofrece un `Switch` «Avisarme con una
+notificación de Windows». Hasta v3 el toast nativo estaba **siempre activo** cuando la ventana estaba
+minimizada (`product-specification.md` §Notificaciones); lo único que se podía apagar era el
+**sonido** (`notifications.sound_enabled`). Sonido ≠ presencia: alguien puede querer el aviso sin el
+«ding», y también puede querer ningún aviso emergente sin tener que **pausar toda la recopilación**
+(que es lo que hoy silencia las notificaciones, y de paso deja de vigilar los discos).
+
+### La decisión
+
+Clave nueva `notifications.enabled` (booleano, **fábrica: `true`**). La consume
+`alerts::notificaciones::procesar_una`: si está en `false`, no se muestra el toast, con independencia
+de la transición de la alerta. La alerta **sigue existiendo** en la lista y sigue contando para el
+color de salud — apagar el aviso emergente no apaga la vigilancia (constitución §I). Se persiste con
+el `set_setting` genérico; no añade comando ni permiso. La decisión de enviar se factoriza a una
+función pura `debe_enviar(...)` con sus pruebas (el resto de `procesar_una` necesita un proceso Tauri
+real, `research.md` R1).
+
+### Alternativas descartadas
+
+- **Reutilizar `sound_enabled`**: cambia la semántica de una clave existente y confunde («sin sonido»
+  no es «sin aviso»).
+- **Depender de pausar**: pausar es una acción temporal y global; no es una preferencia de «no quiero
+  ventanas emergentes».
+
+## ADR-038 — El autoarranque es una tarea programada, no una entrada `Run`
+
+Estado: aceptada. Fecha: 2026-09-06. Spec: `specs/002-rediseno-v3/` (US8, paso 3 del asistente).
+
+### El problema
+
+El paso 3 ofrece «Arrancar SmartDisk con el sistema». La aplicación corre bajo
+`requireAdministrator` (manifiesto, UAC al abrir). Una entrada en
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` la lanzaría con el **token sin elevar** en cada
+inicio de sesión: Windows mostraría un diálogo de UAC en cada login, o el arranque fallaría en
+silencio. El plugin `tauri-plugin-autostart` usa exactamente esa clave `Run` (y además sería una
+dependencia nueva).
+
+### La decisión
+
+Clave nueva `lifecycle.start_with_system` (booleano, **fábrica: `false`**). Al activarla,
+`platform::autoarranque::aplicar(true)` registra una **tarea programada** —
+`schtasks.exe /Create /TN "SmartDisk Monitor - Autostart" /SC ONLOGON /RL HIGHEST`— que el
+Programador de tareas eleva **sin diálogo**. Al desactivarla, `/Delete`. `reset_settings` con
+`scope: "all"` también borra la tarea. Solo se mira el **código de salida** de `schtasks`: la
+codificación de su salida de texto no es fiable entre configuraciones de Windows
+(`.claude/rules/backend-rust.md`), así que no se parsea `stdout`. El comando real no se ejecuta en
+`cargo test` (crearía una tarea en el equipo del desarrollador): se prueba el formato de la línea de
+comando y se verifica a mano, igual que J.28 y `platform/sistema.rs`.
+
+### Alternativas descartadas
+
+- **Clave `Run` de HKCU** (y `tauri-plugin-autostart`, que la usa): UAC en cada login por la
+  elevación; y el plugin es dependencia nueva sin justificación (límite duro de `AGENTS.md`).
+- **Carpeta «Inicio» del menú**: mismo problema de elevación que `Run`.

@@ -1,7 +1,13 @@
 <script lang="ts">
-  /** Fila del registro de eventos de Windows (US-021). El nivel es una píldora; la asociación
-   *  inferida se etiqueta explícitamente — nunca se presenta como certeza. */
-  import StatusPill from "./StatusPill.svelte";
+  /** Fila del registro de eventos de Windows (US-021). Va dentro de una `VirtualList` de miles de
+   *  filas, así que la altura **no cambia** (42 px): el cuadrado de nivel de 26 px cabe dentro.
+   *
+   *  v3 (`03-eventos.md`): el nivel pasa de píldora de texto a cuadrado con icono en el color del
+   *  token. El color nunca viaja solo — el cuadrado lleva `aria-label` con el nombre del nivel. La
+   *  píldora de texto solo aparece en el panel de detalle, no en la fila. */
+  import Icon from "./Icon.svelte";
+  import { healthToken } from "$lib/design/health";
+  import { eventLevelIcon } from "$lib/design/icons";
   import { formatTime } from "$lib/design/format";
   import { t } from "$lib/i18n";
   import type { HealthState } from "$lib/design/types";
@@ -22,16 +28,22 @@
     info: "unknown"
   };
   const etiquetaNivel = $derived(t(`events.level.${level}`));
+  const tono = $derived(healthToken[estadoPorNivel[level]]);
 </script>
 
 <button
   class="flex w-full items-center gap-3 border-t border-hairline py-2 text-left"
   onclick={() => onselect?.()}
 >
-  <StatusPill state={estadoPorNivel[level]} label={etiquetaNivel} />
+  <span
+    class="grid size-[26px] shrink-0 place-items-center rounded-nav"
+    style="background: {tono.soft}; color: {tono.fg}"
+  >
+    <Icon name={eventLevelIcon[level]} size={15} label={etiquetaNivel} />
+  </span>
   <span class="flex-1 truncate text-sm">{message}</span>
   {#if mappingConfidence !== "exact"}
-    <span class="rounded-pill bg-unknown-soft px-2 py-0.5 text-2xs font-semibold text-unknown"
+    <span class="rounded-pill bg-unknown-soft px-2 py-0.5 text-2xs text-unknown"
       >{t("events.inferredMapping")}</span
     >
   {/if}
