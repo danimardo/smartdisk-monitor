@@ -249,3 +249,37 @@ notificaciones, `platform/autoarranque.rs`) y `src/routes/+layout.ts` (guardián
 - **T007** (nota al pie de la constitución §VI, ADR-035): sigue pendiente de autorización explícita del usuario. No entra aquí.
 - **Fase 13 (Polish)** T121–T128: cierre transversal de la feature, después de este PR.
 - Prueba de componente del `+page.svelte` del asistente: no se hace (necesita simular `$app/navigation`); el nivel e2e cubre los estados a menor coste.
+
+---
+
+## Fase 13 · Cierre — verificación manual pendiente (usuario)
+
+La puerta automática entera está verde (`cargo test` 468, `clippy`, `check` 0/0, `verify`,
+`lint`, `test` 229, `test:component` 89, `test:e2e` 95, `a11y` 16, `escalado` 40, `docs:check`).
+Lo que **solo** puede comprobar una persona con la app compilada y elevada (`pnpm app:build`,
+UAC):
+
+- [ ] Recorrer `quickstart.md` entero (un escenario por historia) sobre el instalador real.
+- [ ] Las 8 pantallas + el asistente en **claro y oscuro** contra `mockups/smartdisk-v3.html`.
+- [ ] El riel de 74 px y el estado global (píldora de la barra = pie del riel).
+- [ ] La gráfica del detalle con una serie real con hueco: trazo, eje Y y banda.
+- [ ] Perfil de alerta: elegir «Prudente» en Ajustes → los 12 campos y la temperatura cambian;
+      editar uno → «Personalizado (a partir de Prudente)».
+- [ ] Acento de Windows: instalación nueva → morado Ciruela; activar con un acento claro real →
+      botón primario y enlaces AA en los dos temas; desactivar → vuelve el morado.
+- [ ] Asistente: primer arranque → aparece; «Ir al panel» → no reaparece; «Repetir…» desde
+      Ajustes → reaparece con los valores actuales.
+- [ ] Autoarranque: activarlo → en el Programador de tareas existe «SmartDisk Monitor - Autostart»
+      con «privilegios más altos» y disparador «al iniciar sesión»; reiniciar → abre elevada sin
+      UAC; desactivar → desaparece.
+- [ ] `notifications.enabled` a `false` → forzar una alerta → no sale toast (pero sí entra en la
+      lista y cuenta para el color).
+- [ ] Icono provisional de «Acerca de» (`tag`) y de «horas encendido» (`clock`): confirmar o
+      cambiar (son props, sin tocar estructura).
+
+## Pendiente con autorización del usuario
+
+- **T007** — nota al pie de la constitución §VI apuntando a ADR-035. `.specify/memory/constitution.md`
+  está protegida por hook; además tiene cambios sin commitear de K.6 (no del rediseño). Requiere
+  que el usuario lo pida explícitamente.
+- **Archivar `design/propuesta-rediseno/`** (v1, superada). Sin trackear por ahora.

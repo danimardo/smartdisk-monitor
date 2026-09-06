@@ -310,14 +310,14 @@ description: "Lista de tareas — Rediseño visual «SmartDisk Monitor v3»"
 
 **Propósito**: cierre transversal.
 
-- [ ] T121 [P] Ejecutar `quickstart.md` entero (todos los escenarios por historia) sobre la app compilada.
-- [ ] T122 [P] `pnpm test:e2e` y `pnpm test:a11y` completos, sin regresiones.
-- [ ] T123 Verificar SC-002 (950 px de contenido a 1024 px), SC-003 (100 % AA), SC-006 (20 discos sin bloqueo), SC-010 (catálogo +3, ninguno eliminado).
-- [ ] T124 [P] Revisar que `design/propuesta-rediseno/` (v1) y `design/propuesta-redisenov2/` no dejan copias del sistema de diseño que hagan fallar `verify:tokens` (son bocetos, no `src/`); si el usuario lo pide, archivar la v1.
-- [ ] T125 [P] `pnpm docs:build` final + `pnpm docs:check`; confirmar que `historias.md` refleja US-002, los ADR nuevos y las claves de `settings`.
-- [ ] T126 Repasar `docs/known-issues.md`: todo `svelte-ignore` / `eslint-disable` nuevo enlaza a una entrada (lo comprueba `pnpm verify`).
-- [ ] T127 Actualizar la memoria automática del proyecto si procede (dónde viven los tokens v3, el sprite, `selectHeroDisk`).
-- [ ] T128 Pasar la skill `cierre-tarea` sobre el conjunto antes de proponer el cierre de la feature.
+- [ ] T121 [P] Ejecutar `quickstart.md` entero sobre la app compilada — **pendiente**: requiere `pnpm app:build` y la app elevada (UAC), fuera del alcance de esta automatización. Lista de comprobación manual en `regresion-visual.md`.
+- [x] T122 [P] `pnpm test:e2e` (95) y `pnpm test:a11y` (16) completos, sin regresiones. `escalado.spec.ts` (40, +5 de `/onboarding`).
+- [x] T123 SC-002: `escalado.spec.ts` — sin desbordamiento horizontal en las 8 pantallas × 5 escalados, `/onboarding` incluido. SC-003: `a11y.spec.ts` (axe, 2 temas) + `accent.test.ts`. SC-006: `rendimiento.spec.ts` (20 discos, cero tareas ≥ 50 ms). SC-010: catálogo 31 componentes exportados (28 + `Icon`/`Sparkline`/`HeroPanel`), **ninguno eliminado** (`HealthDonut` sigue).
+- [x] T124 [P] `verify:tokens` solo escanea `src/lib/components` + `src/routes` (`scripts/verify-tokens.mjs:22`): los bocetos HTML de `design/` no pueden hacerlo fallar. `design/propuesta-redisenov2/` se commiteó (lo citan la spec y los comentarios del código). **Archivar la v1 (`design/propuesta-rediseno/`) queda a decisión del usuario** — sin trackear por ahora.
+- [x] T125 [P] `pnpm docs:build` + `docs:check` al día; `historias.md` regenerado (8832 líneas) refleja US-002, ADR-034…038 y las claves nuevas de `settings`.
+- [x] T126 Sin `svelte-ignore` / `eslint-disable` / `@ts-` nuevos en el commit `45e6767`; `pnpm verify` (fronteras) verde. Nada que enlazar en `known-issues.md`.
+- [x] T127 Memoria del proyecto: `rediseno-v3-estado.md` (estado, lo pendiente, los dos ficheros que no commitear). Lo demás (tokens, sprite, `selectHeroDisk`) ya vive en `ui-design.md` §0 — no se duplica en memoria.
+- [ ] T128 Skill `cierre-tarea`: la documentación de todo cambio observable está hecha (ADR, `ui-contract`, `data-model`, `alert-rules`, `open-questions`, `user-stories`, `product-specification`). Queda la revisión manual del usuario (T121) antes del cierre formal de la feature.
 
 ---
 

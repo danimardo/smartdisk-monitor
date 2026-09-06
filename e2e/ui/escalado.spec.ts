@@ -16,7 +16,16 @@ import { instalarIpcFalso } from "./ipc-falso";
  *  para la revisión visual humana que ningún assert sustituye.
  */
 
-const PANTALLAS = ["/", "/alerts", "/disks/disk-0", "/events", "/tests", "/reports", "/settings"];
+const PANTALLAS = [
+  "/",
+  "/alerts",
+  "/disks/disk-0",
+  "/events",
+  "/tests",
+  "/reports",
+  "/settings",
+  "/onboarding"
+];
 
 const TAMANOS: { nombre: string; width: number; height: number }[] = [
   { nombre: "1024x560-minimo-tecnico", width: 1024, height: 560 },
