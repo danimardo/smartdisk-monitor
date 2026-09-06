@@ -1153,3 +1153,56 @@ Reglas que cumple, como cualquier pieza del catálogo:
 - `docs/ui-design.md` §3 lo recoge y §7.6 (asistente) menciona la escena por paso.
 - Si en el futuro otra pantalla quiere una ilustración, se decide entonces con el criterio de
   `ui-design.md` §3, no por analogía con esta.
+
+## ADR-040 — La geometría de la ventana se recuerda en `settings`, no con un plugin
+
+Estado: aceptada. Fecha: 2026-09-06.
+
+### El problema
+
+La ventana principal nacía siempre con el tamaño fijo de `tauri.conf.json` (1360 × 880, centrada).
+Se quiere que la primera vez abra a **1695 × 988** y que, a partir de ahí, recuerde entre sesiones
+el **tamaño, la posición y si estaba maximizada**.
+
+### La decisión
+
+El estado de la ventana se persiste en la tabla **`settings`** de SQLite, en cinco claves
+internas (`window.width`, `window.height`, `window.x`, `window.y`, `window.maximized`), en
+**píxeles lógicos** (independientes del escalado de Windows, igual que `tauri.conf.json`).
+
+- **El frontend no participa.** No hay comando nuevo ni evento nuevo. Todo ocurre en Rust:
+  `platform::ventana::aplicar_geometria_guardada` se llama en `.setup()` **antes** de mostrar la
+  ventana (que nace `visible: false`, así que no hay salto), y `persistir_geometria` se llama al
+  cerrar (`CloseRequested`) y al salir (`RunEvent::ExitRequested`, que cubre «Salir» de la bandeja
+  y el apagado).
+- **Ausente ⇒ valor de fábrica.** Sin filas `window.*` manda `tauri.conf.json`: el primer
+  arranque abre a 1695 × 988 centrada. `reset_settings` (ámbito «resto» o «all») borra las claves.
+- **Maximizada**: se guarda solo `window.maximized = true` y no se tocan tamaño/posición, para que
+  al restaurar y quitar la maximización la ventana vuelva al tamaño que el usuario había elegido.
+- **Posición fuera de pantalla**: `aplicar_geometria_guardada` comprueba con `geometria_visible`
+  (función pura, con pruebas) que la barra de título cae dentro de algún monitor actual con margen;
+  si el monitor donde estaba se ha desconectado, se ignora la posición y la ventana abre centrada.
+- **Cuándo se guarda**: al pulsar la X (aunque esa X minimice a la bandeja) y en `ExitRequested`.
+  Una muerte dura del proceso (Administrador de tareas) pierde el último movimiento; es aceptable
+  (constitución §II.5, simplicidad antes que generalidad) y evita un temporizador de *debounce*
+  sobre `Resized`/`Moved`.
+
+### Alternativas descartadas
+
+- **`tauri-plugin-window-state`** (el estándar de Tauri para esto): guarda su estado en un fichero
+  JSON propio, fuera de SQLite — choca de frente con el principio **V** (INNEGOCIABLE): «`localStorage`
+  está prohibido para estado del producto… Todo se almacena en SQLite… Ningún otro almacén de datos
+  estructurados». Además, añadirlo sería **dependencia nueva** (enmienda de la constitución, §III) y
+  traería **permisos de Tauri nuevos** (su ADR). La vía `settings` no necesita nada de eso.
+- **`localStorage` + redimensionar al arrancar desde el frontend**: mismo choque con el principio V,
+  y produce un salto visible (la ventana ya está pintada cuando se redimensiona), y el
+  almacenamiento del WebView es frágil ante limpiezas.
+- **Debounce sobre `Resized`/`Moved`**: más robusto ante una muerte dura, pero necesita un
+  temporizador y escribe en SQLite durante el arrastre. No compensa para el caso que se da.
+
+### Consecuencias
+
+- `docs/data-model.md` §2 documenta las cinco claves `window.*`.
+- `docs/open-questions.md` J.8 y `docs/ui-design.md` §4.0 pasan la predeterminada a 1695 × 988; el
+  **objetivo de diseño** (1280 × 720) y el **mínimo técnico** (1024 × 560) no cambian.
+- Sin contrato nuevo, sin DTO `ts-rs`, sin esquema Zod, sin permiso de Tauri, sin dependencia.

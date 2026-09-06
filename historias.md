@@ -479,9 +479,11 @@ pedido y resolución servida está en [`open-questions.md`](docs/open-questions.
 - El usuario puede cambiar el idioma sin reinstalar.
 - Tema inicial según Windows, con selección manual claro/oscuro/sistema.
 - Tamaño de ventana: mínimo técnico 1024 × 560, objetivo de diseño 1280 × 720, predeterminado
-  1360 × 880 acotado a la pantalla. El mínimo es bajo por una razón medida: el escalado de Windows
-  no encoge el texto, encoge el espacio en píxeles CSS, y un portátil de 1920 × 1080 al 150 % solo
-  deja 1280 × 672 de ventana. La interfaz debe ser correcta al 125 %, 150 % y 200 %.
+  1695 × 988 acotado a la pantalla **solo el primer arranque**. A partir de ahí la aplicación
+  recuerda entre sesiones el tamaño, la posición y si estaba maximizada (ADR-040); si el monitor
+  donde estaba ya no existe, abre centrada. El mínimo es bajo por una razón medida: el escalado de
+  Windows no encoge el texto, encoge el espacio en píxeles CSS, y un portátil de 1920 × 1080 al
+  150 % solo deja 1280 × 672 de ventana. La interfaz debe ser correcta al 125 %, 150 % y 200 %.
 - Por debajo de 1180 px de ancho la barra lateral se reduce a iconos, conservando el punto de estado
   de cada disco.
 - El formato de números y fechas sigue al **idioma elegido en la aplicación**, no al de Windows,
@@ -1542,6 +1544,13 @@ Fichero de origen: `docs/data-model.md`
   registra una tarea programada elevada (`schtasks /SC ONLOGON /RL HIGHEST`); al desactivarlo o al
   hacer `reset_settings("all")`, la borra. Fuente de verdad = esta clave, no el estado real de la
   tarea.
+- **`window.width` / `window.height` / `window.x` / `window.y` / `window.maximized`** (ADR-040):
+  geometría de la ventana principal de la última sesión, en **píxeles lógicos**. Enteros y un
+  booleano. Las escribe **solo el backend** (al cerrar y al salir), nunca el frontend ni
+  `set_setting`. Ausentes ⇒ se usa `tauri.conf.json` (primer arranque: 1695 × 988 centrada). Si la
+  posición guardada queda fuera de todo monitor actual, se ignora y la ventana abre centrada. Con
+  `window.maximized` activo no se tocan tamaño ni posición: se conservan los previos a maximizar.
+  `reset_settings` (ámbito «resto» o «all») las borra.
 - **`alerts.profile`** (`cautious` | `balanced` | `quiet` | `custom`) y los umbrales que un perfil
   escribe (ADR-036, `cambios/08b-perfiles-de-alerta.md`). Fábrica: `balanced`. Umbrales nuevos frente
   a v2, con su rango de edición y su valor de fábrica (perfil Equilibrado):
@@ -4667,6 +4676,59 @@ Reglas que cumple, como cualquier pieza del catálogo:
 - Si en el futuro otra pantalla quiere una ilustración, se decide entonces con el criterio de
   `ui-design.md` §3, no por analogía con esta.
 
+### ADR-040 — La geometría de la ventana se recuerda en `settings`, no con un plugin
+
+Estado: aceptada. Fecha: 2026-09-06.
+
+#### El problema
+
+La ventana principal nacía siempre con el tamaño fijo de `tauri.conf.json` (1360 × 880, centrada).
+Se quiere que la primera vez abra a **1695 × 988** y que, a partir de ahí, recuerde entre sesiones
+el **tamaño, la posición y si estaba maximizada**.
+
+#### La decisión
+
+El estado de la ventana se persiste en la tabla **`settings`** de SQLite, en cinco claves
+internas (`window.width`, `window.height`, `window.x`, `window.y`, `window.maximized`), en
+**píxeles lógicos** (independientes del escalado de Windows, igual que `tauri.conf.json`).
+
+- **El frontend no participa.** No hay comando nuevo ni evento nuevo. Todo ocurre en Rust:
+  `platform::ventana::aplicar_geometria_guardada` se llama en `.setup()` **antes** de mostrar la
+  ventana (que nace `visible: false`, así que no hay salto), y `persistir_geometria` se llama al
+  cerrar (`CloseRequested`) y al salir (`RunEvent::ExitRequested`, que cubre «Salir» de la bandeja
+  y el apagado).
+- **Ausente ⇒ valor de fábrica.** Sin filas `window.*` manda `tauri.conf.json`: el primer
+  arranque abre a 1695 × 988 centrada. `reset_settings` (ámbito «resto» o «all») borra las claves.
+- **Maximizada**: se guarda solo `window.maximized = true` y no se tocan tamaño/posición, para que
+  al restaurar y quitar la maximización la ventana vuelva al tamaño que el usuario había elegido.
+- **Posición fuera de pantalla**: `aplicar_geometria_guardada` comprueba con `geometria_visible`
+  (función pura, con pruebas) que la barra de título cae dentro de algún monitor actual con margen;
+  si el monitor donde estaba se ha desconectado, se ignora la posición y la ventana abre centrada.
+- **Cuándo se guarda**: al pulsar la X (aunque esa X minimice a la bandeja) y en `ExitRequested`.
+  Una muerte dura del proceso (Administrador de tareas) pierde el último movimiento; es aceptable
+  (constitución §II.5, simplicidad antes que generalidad) y evita un temporizador de *debounce*
+  sobre `Resized`/`Moved`.
+
+#### Alternativas descartadas
+
+- **`tauri-plugin-window-state`** (el estándar de Tauri para esto): guarda su estado en un fichero
+  JSON propio, fuera de SQLite — choca de frente con el principio **V** (INNEGOCIABLE): «`localStorage`
+  está prohibido para estado del producto… Todo se almacena en SQLite… Ningún otro almacén de datos
+  estructurados». Además, añadirlo sería **dependencia nueva** (enmienda de la constitución, §III) y
+  traería **permisos de Tauri nuevos** (su ADR). La vía `settings` no necesita nada de eso.
+- **`localStorage` + redimensionar al arrancar desde el frontend**: mismo choque con el principio V,
+  y produce un salto visible (la ventana ya está pintada cuando se redimensiona), y el
+  almacenamiento del WebView es frágil ante limpiezas.
+- **Debounce sobre `Resized`/`Moved`**: más robusto ante una muerte dura, pero necesita un
+  temporizador y escribe en SQLite durante el arrastre. No compensa para el caso que se da.
+
+#### Consecuencias
+
+- `docs/data-model.md` §2 documenta las cinco claves `window.*`.
+- `docs/open-questions.md` J.8 y `docs/ui-design.md` §4.0 pasan la predeterminada a 1695 × 988; el
+  **objetivo de diseño** (1280 × 720) y el **mínimo técnico** (1024 × 560) no cambian.
+- Sin contrato nuevo, sin DTO `ts-rs`, sin esquema Zod, sin permiso de Tauri, sin dependencia.
+
 
 ---
 
@@ -4981,7 +5043,7 @@ asunción del programador.
 | J.5 | Informe HTML exportado | Autónomo: CSS embebido, sin fuentes ni recursos remotos, tema claro forzado y hoja de impresión propia |
 | J.6 | Versionado de exportaciones | Campo `schemaVersion` en JSON, ZIP y cabecera de CSV |
 | J.7 | Cursor del registro de eventos | *Bookmark* del Event Log, no `RecordId` suelto: al limpiar un canal los identificadores se reinician y se perderían eventos en silencio |
-| J.8 | Tamaño de ventana | Mínimo técnico 1024 × 560, objetivo de diseño 1280 × 720, predeterminada 1360 × 880. Medido en §L.2 |
+| J.8 | Tamaño de ventana | Mínimo técnico 1024 × 560, objetivo de diseño 1280 × 720, **predeterminada 1695 × 988** (solo el primer arranque; luego manda la geometría guardada, §W y ADR-040). Medido en §L.2 |
 | J.9 | Acerca de | Diálogo modal sobre la pantalla actual, no sección de la `Sidebar` |
 | J.10 | Eventos en la navegación | Sección propia en la `Sidebar`, con filtro preaplicado al entrar desde el detalle de un disco |
 | J.11 | Plurales en i18n | Función `tp()` con `Intl.PluralRules`; claves `<clave>.one` / `<clave>.other` |
@@ -5792,6 +5854,37 @@ es un bucle de redirección a `/onboarding` cuando el backend no responde.
   Programador que existe «SmartDisk Monitor - Autostart» con «Ejecutar con los privilegios más
   altos» y disparador «al iniciar sesión», reiniciar y confirmar que la app abre elevada sin UAC.
 
+### W. Geometría de la ventana entre sesiones — decisión adoptada (ADR-040)
+
+Cerrada el 2026-09-06.
+
+#### W.1 · Por qué en `settings` y no con `tauri-plugin-window-state`
+
+El plugin estándar guarda su estado en un fichero JSON propio, fuera de SQLite: choca con el
+principio **V** (INNEGOCIABLE, «ningún otro almacén de datos estructurados»). Además sería
+dependencia nueva (enmienda de la constitución) y permisos de Tauri nuevos. La vía elegida —cinco
+claves `window.*` en la tabla `settings`, escritas solo por el backend— no necesita ninguna de esas
+tres cosas. El detalle completo, en ADR-040.
+
+#### W.2 · La predeterminada 1695 × 988 y las pantallas pequeñas
+
+Es lo que pidió el usuario para el **primer** arranque. No cabe entera en configuraciones con
+mucho escalado (1920 × 1080 al 150 % deja ~1280 × 720): en ese primer arranque Windows/Tauri acota
+la ventana al área de trabajo, y a partir de ahí manda la geometría que el usuario dejó, que por
+definición cabía. El mínimo técnico (1024 × 560, §L) protege el caso extremo. El objetivo de
+diseño (1280 × 720) no cambia: se sigue componiendo y revisando contra él.
+
+#### W.3 · Qué se verifica a mano
+
+`geometria_visible` (la comprobación de «¿queda dentro de algún monitor?») es pura y tiene pruebas.
+`aplicar_geometria_guardada` / `persistir_geometria` **no** se prueban en `cargo test`: necesitan
+un proceso Tauri con ventana real, mismo criterio que `platform::autoarranque` (V.3) y
+`platform/sistema.rs`. **Pendiente** (recorrido en `specs/002-rediseno-v3/regresion-visual.md` o
+al empaquetar): primer arranque a 1695 × 988; redimensionar/mover/cerrar y reabrir en la misma
+geometría; maximizar/cerrar/reabrir maximizada; mover a un segundo monitor, cerrarlo y reabrir sin
+que la ventana quede fuera de pantalla; «Restaurar valores de fábrica» vuelve a 1695 × 988; salir
+desde la bandeja también guarda.
+
 
 ---
 
@@ -6012,7 +6105,7 @@ y en `specs/002-rediseno-v3/`. Ninguno del catálogo se elimina.
    |---|---|---|
    | Mínimo técnico | **1024 × 560** | `minWidth`/`minHeight` de `tauri.conf.json`. Nada puede romperse aquí |
    | Objetivo de diseño | **1280 × 720** | El tamaño contra el que se compone y se revisa |
-   | Predeterminado | **1360 × 880** | Acotado a lo que quepa en la pantalla del usuario |
+   | Predeterminado | **1695 × 988** | Solo el **primer** arranque (`tauri.conf.json`). Después manda la geometría que el usuario dejó, que se recuerda en `settings` (ADR-040). Windows la acota si no cabe en la pantalla |
 
    El mínimo técnico no es un capricho: el escalado de Windows **no encoge el texto, encoge el
    espacio disponible en píxeles CSS**. Un portátil de 1920 × 1080 al 150 % deja una ventana máxima

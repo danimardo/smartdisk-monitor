@@ -213,7 +213,7 @@ y en `specs/002-rediseno-v3/`. Ninguno del catálogo se elimina.
    |---|---|---|
    | Mínimo técnico | **1024 × 560** | `minWidth`/`minHeight` de `tauri.conf.json`. Nada puede romperse aquí |
    | Objetivo de diseño | **1280 × 720** | El tamaño contra el que se compone y se revisa |
-   | Predeterminado | **1360 × 880** | Acotado a lo que quepa en la pantalla del usuario |
+   | Predeterminado | **1695 × 988** | Solo el **primer** arranque (`tauri.conf.json`). Después manda la geometría que el usuario dejó, que se recuerda en `settings` (ADR-040). Windows la acota si no cabe en la pantalla |
 
    El mínimo técnico no es un capricho: el escalado de Windows **no encoge el texto, encoge el
    espacio disponible en píxeles CSS**. Un portátil de 1920 × 1080 al 150 % deja una ventana máxima

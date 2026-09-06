@@ -117,7 +117,16 @@ pub fn run() {
             app.manage(estado);
 
             // La ventana nace oculta y se muestra cuando el frontend ha pintado: así no se ve un
-            // rectángulo blanco antes de que se aplique el tema.
+            // rectángulo blanco antes de que se aplique el tema. Antes de mostrarla se le aplica la
+            // geometría de la última sesión (ADR-040): al estar oculta, no hay salto.
+            if let Some(ventana) = app.get_webview_window(platform::ventana::VENTANA_PRINCIPAL) {
+                let estado = app.state::<persistence::db::AppState>();
+                let conn = estado
+                    .conn
+                    .lock()
+                    .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+                platform::ventana::aplicar_geometria_guardada(&ventana, &conn);
+            }
             platform::ventana::restaurar_ventana_principal(app.handle());
 
             // El icono de la bandeja vive mientras la aplicación vive (FR-012): se construye una
@@ -145,6 +154,9 @@ pub fn run() {
                             let conn = estado.conn.lock().expect(
                                 "el mutex de la conexión no se envenena: sin pánicos dentro",
                             );
+                            // La ventana sigue visible aquí: es el momento de guardar su geometría
+                            // (ADR-040), tanto si se minimiza como si se cierra de verdad.
+                            platform::ventana::persistir_geometria(&ventana_a_ocultar, &conn);
                             commands::leer_ajuste_string(
                                 &conn,
                                 "lifecycle.close_action",
@@ -171,6 +183,21 @@ pub fn run() {
                 estado
                     .detener_planificador
                     .store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            // «Salir» desde la bandeja llama a `app.exit(0)` directamente (no pasa por
+            // `CloseRequested`): se guarda aquí la geometría para esa vía y para el apagado del
+            // sistema (ADR-040). La ventana sigue accesible en `ExitRequested`.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                if let Some(ventana) =
+                    app_handle.get_webview_window(platform::ventana::VENTANA_PRINCIPAL)
+                {
+                    let estado = app_handle.state::<persistence::db::AppState>();
+                    let conn = estado
+                        .conn
+                        .lock()
+                        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+                    platform::ventana::persistir_geometria(&ventana, &conn);
+                }
             }
         });
 }

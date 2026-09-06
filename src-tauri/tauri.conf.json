@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "SmartDisk Monitor",
-        "width": 1360,
-        "height": 880,
+        "width": 1695,
+        "height": 988,
         "minWidth": 1024,
         "minHeight": 560,
         "resizable": true,

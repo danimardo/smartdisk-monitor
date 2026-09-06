@@ -307,7 +307,7 @@ asunción del programador.
 | J.5 | Informe HTML exportado | Autónomo: CSS embebido, sin fuentes ni recursos remotos, tema claro forzado y hoja de impresión propia |
 | J.6 | Versionado de exportaciones | Campo `schemaVersion` en JSON, ZIP y cabecera de CSV |
 | J.7 | Cursor del registro de eventos | *Bookmark* del Event Log, no `RecordId` suelto: al limpiar un canal los identificadores se reinician y se perderían eventos en silencio |
-| J.8 | Tamaño de ventana | Mínimo técnico 1024 × 560, objetivo de diseño 1280 × 720, predeterminada 1360 × 880. Medido en §L.2 |
+| J.8 | Tamaño de ventana | Mínimo técnico 1024 × 560, objetivo de diseño 1280 × 720, **predeterminada 1695 × 988** (solo el primer arranque; luego manda la geometría guardada, §W y ADR-040). Medido en §L.2 |
 | J.9 | Acerca de | Diálogo modal sobre la pantalla actual, no sección de la `Sidebar` |
 | J.10 | Eventos en la navegación | Sección propia en la `Sidebar`, con filtro preaplicado al entrar desde el detalle de un disco |
 | J.11 | Plurales en i18n | Función `tp()` con `Intl.PluralRules`; claves `<clave>.one` / `<clave>.other` |
@@ -1117,3 +1117,34 @@ es un bucle de redirección a `/onboarding` cuando el backend no responde.
   `platform/sistema.rs`—. **Pendiente**: activar el interruptor en un Windows real, comprobar en el
   Programador que existe «SmartDisk Monitor - Autostart» con «Ejecutar con los privilegios más
   altos» y disparador «al iniciar sesión», reiniciar y confirmar que la app abre elevada sin UAC.
+
+## W. Geometría de la ventana entre sesiones — decisión adoptada (ADR-040)
+
+Cerrada el 2026-09-06.
+
+### W.1 · Por qué en `settings` y no con `tauri-plugin-window-state`
+
+El plugin estándar guarda su estado en un fichero JSON propio, fuera de SQLite: choca con el
+principio **V** (INNEGOCIABLE, «ningún otro almacén de datos estructurados»). Además sería
+dependencia nueva (enmienda de la constitución) y permisos de Tauri nuevos. La vía elegida —cinco
+claves `window.*` en la tabla `settings`, escritas solo por el backend— no necesita ninguna de esas
+tres cosas. El detalle completo, en ADR-040.
+
+### W.2 · La predeterminada 1695 × 988 y las pantallas pequeñas
+
+Es lo que pidió el usuario para el **primer** arranque. No cabe entera en configuraciones con
+mucho escalado (1920 × 1080 al 150 % deja ~1280 × 720): en ese primer arranque Windows/Tauri acota
+la ventana al área de trabajo, y a partir de ahí manda la geometría que el usuario dejó, que por
+definición cabía. El mínimo técnico (1024 × 560, §L) protege el caso extremo. El objetivo de
+diseño (1280 × 720) no cambia: se sigue componiendo y revisando contra él.
+
+### W.3 · Qué se verifica a mano
+
+`geometria_visible` (la comprobación de «¿queda dentro de algún monitor?») es pura y tiene pruebas.
+`aplicar_geometria_guardada` / `persistir_geometria` **no** se prueban en `cargo test`: necesitan
+un proceso Tauri con ventana real, mismo criterio que `platform::autoarranque` (V.3) y
+`platform/sistema.rs`. **Pendiente** (recorrido en `specs/002-rediseno-v3/regresion-visual.md` o
+al empaquetar): primer arranque a 1695 × 988; redimensionar/mover/cerrar y reabrir en la misma
+geometría; maximizar/cerrar/reabrir maximizada; mover a un segundo monitor, cerrarlo y reabrir sin
+que la ventana quede fuera de pantalla; «Restaurar valores de fábrica» vuelve a 1695 × 988; salir
+desde la bandeja también guarda.

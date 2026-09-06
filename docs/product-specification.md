@@ -243,9 +243,11 @@ pedido y resolución servida está en [`open-questions.md`](open-questions.md) �
 - El usuario puede cambiar el idioma sin reinstalar.
 - Tema inicial según Windows, con selección manual claro/oscuro/sistema.
 - Tamaño de ventana: mínimo técnico 1024 × 560, objetivo de diseño 1280 × 720, predeterminado
-  1360 × 880 acotado a la pantalla. El mínimo es bajo por una razón medida: el escalado de Windows
-  no encoge el texto, encoge el espacio en píxeles CSS, y un portátil de 1920 × 1080 al 150 % solo
-  deja 1280 × 672 de ventana. La interfaz debe ser correcta al 125 %, 150 % y 200 %.
+  1695 × 988 acotado a la pantalla **solo el primer arranque**. A partir de ahí la aplicación
+  recuerda entre sesiones el tamaño, la posición y si estaba maximizada (ADR-040); si el monitor
+  donde estaba ya no existe, abre centrada. El mínimo es bajo por una razón medida: el escalado de
+  Windows no encoge el texto, encoge el espacio en píxeles CSS, y un portátil de 1920 × 1080 al
+  150 % solo deja 1280 × 672 de ventana. La interfaz debe ser correcta al 125 %, 150 % y 200 %.
 - Por debajo de 1180 px de ancho la barra lateral se reduce a iconos, conservando el punto de estado
   de cada disco.
 - El formato de números y fechas sigue al **idioma elegido en la aplicación**, no al de Windows,

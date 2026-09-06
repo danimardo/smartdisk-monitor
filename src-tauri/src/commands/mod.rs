@@ -313,7 +313,7 @@ const CLAVE_APARIENCIA_TEMA: &str = "settings.appearance.theme";
 const CLAVE_APARIENCIA_IDIOMA: &str = "settings.appearance.language";
 const CLAVE_APARIENCIA_ACENTO_SISTEMA: &str = "settings.appearance.use_system_accent";
 
-fn leer_ajuste_i64(conn: &rusqlite::Connection, key: &str, default: i64) -> i64 {
+pub(crate) fn leer_ajuste_i64(conn: &rusqlite::Connection, key: &str, default: i64) -> i64 {
     repo_varios::get_setting_raw(conn, key)
         .ok()
         .flatten()
@@ -352,7 +352,7 @@ fn leer_ajuste_string_opcional(conn: &rusqlite::Connection, key: &str) -> Option
         .and_then(|s| serde_json::from_str::<String>(&s).ok())
 }
 
-fn guardar_ajuste<T: Serialize>(
+pub(crate) fn guardar_ajuste<T: Serialize>(
     conn: &rusqlite::Connection,
     key: &str,
     value: &T,
@@ -1174,6 +1174,13 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
         "notifications.sound_enabled",
         "notifications.enabled",
         "logging.verbose",
+        // Geometría de la ventana (ADR-040): «restaurar valores de fábrica» también la olvida, y
+        // el siguiente arranque vuelve a abrir a lo de `tauri.conf.json`.
+        "window.width",
+        "window.height",
+        "window.x",
+        "window.y",
+        "window.maximized",
     ];
     match scope {
         "schedule" => SCHEDULE.to_vec(),
@@ -3693,7 +3700,7 @@ pub struct TestRunWire {
     pub orphan_path: Option<String>,
 }
 
-fn ahora_rfc3339() -> String {
+pub(crate) fn ahora_rfc3339() -> String {
     time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default()

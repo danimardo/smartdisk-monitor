@@ -111,6 +111,13 @@
   registra una tarea programada elevada (`schtasks /SC ONLOGON /RL HIGHEST`); al desactivarlo o al
   hacer `reset_settings("all")`, la borra. Fuente de verdad = esta clave, no el estado real de la
   tarea.
+- **`window.width` / `window.height` / `window.x` / `window.y` / `window.maximized`** (ADR-040):
+  geometría de la ventana principal de la última sesión, en **píxeles lógicos**. Enteros y un
+  booleano. Las escribe **solo el backend** (al cerrar y al salir), nunca el frontend ni
+  `set_setting`. Ausentes ⇒ se usa `tauri.conf.json` (primer arranque: 1695 × 988 centrada). Si la
+  posición guardada queda fuera de todo monitor actual, se ignora y la ventana abre centrada. Con
+  `window.maximized` activo no se tocan tamaño ni posición: se conservan los previos a maximizar.
+  `reset_settings` (ámbito «resto» o «all») las borra.
 - **`alerts.profile`** (`cautious` | `balanced` | `quiet` | `custom`) y los umbrales que un perfil
   escribe (ADR-036, `cambios/08b-perfiles-de-alerta.md`). Fábrica: `balanced`. Umbrales nuevos frente
   a v2, con su rango de edición y su valor de fábrica (perfil Equilibrado):
