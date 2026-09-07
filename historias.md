@@ -5300,6 +5300,7 @@ asunción del programador.
 | J.50 | **DECIDIDO** e implementado (spec `003`, research.md D5). Cómo llega al detalle de una alerta de evento el suceso que la disparó | `alert_occurrences.triggering_event_id` (columna que ya existe en el esquema, hoy nunca escrita) se empieza a rellenar. El DTO de ocurrencia gana `triggeringEventId: number \| null`; el detalle de alerta muestra, para las filas que lo tengan, un enlace `<a href="/events?focus=<id>">` a la pantalla de sucesos, que ya renderiza el XML crudo y la etiqueta de certeza. No se duplica el contenido del evento dentro del detalle de alerta |
 | J.51 | **DECIDIDO** e implementado (spec `003`, research.md D6). Alcance de la primera activación del puente de eventos: ¿evalúa los eventos ya ingeridos con anterioridad? (clarify Q1 → «solo hacia delante») | **Sin marcador de corte nuevo.** El puente evalúa solo los eventos que `repo_varios::insert_event_if_new` devuelve como nuevos (`Ok(true)`) en ese ciclo. Los eventos ya presentes en `system_events` al desplegar nunca se re-leen (el bookmark del canal está por delante) y, si el bookmark se invalidara y el canal se releyera entero, `insert_event_if_new` devuelve `Ok(false)` para los conocidos → no se evalúan. El «punto de corte» lo da el bookmark existente (J.7) más la unicidad `(channel, record_id)` |
 | J.52 | **DECIDIDO** e implementado (spec `004-navegacion-sin-congelacion`, ADR-042). Usando la aplicación real, el usuario reportó que casi siempre que cambiaba de sección en el sidebar la interfaz se congelaba varios segundos y parecía colgada. Causa: el bucle de recopilación retenía el mutex de `AppState.conn` mientras lanzaba `smartctl.exe` (cascada de hasta 75 s/disco), dormía entre muestras PDH y leía el registro de eventos; cualquier `load` de ruta que hiciera `conn.lock()` esperaba todo ese tiempo. J.39 solo cubría el reparto de dominios de fallo, no la retención del candado | `refresh_smart`, `refresh_metricas_rendimiento` y `refresh_events` pasan a **tres fases**: candado breve para planificar → E/S externa **sin candado** → candado único para persistir. Guarda `AppState.recoleccion_smart: Mutex<()>` para que el refresco manual siga esperando al ciclo en curso sin retener `conn`. `refresh_inventory` ya cumplía y no se toca. Como red de seguridad —no como sustituto de que la interfaz responda al instante— `AppShell` pinta una barra de progreso fina arriba mientras `navigating` sea no nulo, con retardo de 150 ms para no parpadear. Descartada una 2ª conexión de solo lectura: abre `SQLITE_BUSY` real y no arregla el lado escritor (`set_setting`, `acknowledge_alert`) |
+| J.53 | **DECIDIDO** e implementado. Usando la aplicación real, el usuario notó que el icono de la bandeja era un cuadrado de color liso (indistinguible a 16 px de otras aplicaciones) y que el texto emergente decía solo «Todo en orden», sin nombrar a qué aplicación pertenece. `decisions.md` (línea 106) ya marcaba el systray como pantalla sin revisión visual; esto es un primer paso, no el rediseño fino | El icono pasa a un **tile redondeado del color de estado B.5 + un glifo que también cambia con el estado**: cilindro de datos lleno (todo en orden), con «!» (advertencia), con «×» (crítico), hueco (sin datos / sin discos / fallo de recopilador), dos barras (en pausa). Así el color no es el único portador de significado (constitución §VII) y se distingue a 16 px. Se sigue generando en memoria (búfer RGBA supermuestreado 4×, dibujo procedural, sin biblioteca ni fichero `.ico`). El texto emergente pasa a `«SmartDisk Monitor — <resumen>»` (clave `tray.tooltip`), aplicado en `instalar()` y `actualizar()`. Ayuda de QA: `cargo test volcar_iconos_bmp -- --ignored` vuelca los cinco iconos a `src-tauri/target/bandeja/`. El rediseño visual completo del systray (y del resto de pantallas del Apéndice C de `ui-design.md`) sigue abierto |
 
 ---
 
@@ -6579,7 +6580,16 @@ que falta es la composición visual, no la definición funcional.
 - **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
 - **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
 - **Asistente inicial** (US-002): detección, exclusión de discos y alias.
-- **Acerca de** (US-061) y estados de systray.
+- **Acerca de** (US-061).
+
+**Icono de la bandeja del sistema** — primer paso visual hecho (`platform/bandeja.rs`,
+`open-questions.md` J.53); el rediseño fino sigue pendiente. Se genera en memoria, sin fichero
+`.ico`: un **tile redondeado del color de estado** (los cuatro de la regla B.5: verde, ámbar, rojo,
+gris) con un **glifo que también cambia con el estado** —cilindro de datos lleno (todo en orden),
+con «!» (advertencia), con «×» (crítico), hueco (sin datos / sin discos / fallo de recopilador),
+dos barras (en pausa)—: a 16 px el color y la forma van juntos (§VII). El texto emergente es
+`«SmartDisk Monitor — <resumen>»` (`tray.tooltip`), nunca el resumen a secas: entre muchos iconos
+de bandeja tiene que decir de quién es.
 
 Casi todo se compone con el catálogo actual (`Switch`, `Select`, `TextField`, `RadioGroup`,
 `SegmentedControl`, `ConfirmDialog`, `EmptyState`, `CodeOutput`). Las excepciones ya están
@@ -8500,6 +8510,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alert.fact.lastValue": "Último valor",
   "tray.open": "Abrir SmartDisk Monitor",
   "tray.exit": "Salir",
+  "tray.tooltip": "SmartDisk Monitor — {summary}",
   "tray.minimizedTitle": "SmartDisk Monitor sigue activo",
   "tray.minimizedBody": "Se minimizó a la bandeja del sistema y sigue vigilando tus discos. Haz clic en el icono para volver a abrirla, o elige «Salir» para cerrarla del todo.",
   "alert.rule.smart.error_log.title": "Errores registrados en el disco",
@@ -8960,6 +8971,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alert.fact.lastValue": "Last value",
   "tray.open": "Open SmartDisk Monitor",
   "tray.exit": "Exit",
+  "tray.tooltip": "SmartDisk Monitor — {summary}",
   "tray.minimizedTitle": "SmartDisk Monitor is still running",
   "tray.minimizedBody": "It minimized to the system tray and keeps watching your disks. Click the icon to reopen it, or choose \"Exit\" to close it completely.",
   "alert.rule.smart.error_log.title": "Errors logged on the disk",

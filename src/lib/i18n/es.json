@@ -231,6 +231,7 @@
   "alert.fact.lastValue": "Último valor",
   "tray.open": "Abrir SmartDisk Monitor",
   "tray.exit": "Salir",
+  "tray.tooltip": "SmartDisk Monitor — {summary}",
   "tray.minimizedTitle": "SmartDisk Monitor sigue activo",
   "tray.minimizedBody": "Se minimizó a la bandeja del sistema y sigue vigilando tus discos. Haz clic en el icono para volver a abrirla, o elige «Salir» para cerrarla del todo.",
   "alert.rule.smart.error_log.title": "Errores registrados en el disco",

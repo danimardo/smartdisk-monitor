@@ -231,6 +231,7 @@
   "alert.fact.lastValue": "Last value",
   "tray.open": "Open SmartDisk Monitor",
   "tray.exit": "Exit",
+  "tray.tooltip": "SmartDisk Monitor — {summary}",
   "tray.minimizedTitle": "SmartDisk Monitor is still running",
   "tray.minimizedBody": "It minimized to the system tray and keeps watching your disks. Click the icon to reopen it, or choose \"Exit\" to close it completely.",
   "alert.rule.smart.error_log.title": "Errors logged on the disk",

@@ -469,7 +469,16 @@ que falta es la composición visual, no la definición funcional.
 - **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
 - **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
 - **Asistente inicial** (US-002): detección, exclusión de discos y alias.
-- **Acerca de** (US-061) y estados de systray.
+- **Acerca de** (US-061).
+
+**Icono de la bandeja del sistema** — primer paso visual hecho (`platform/bandeja.rs`,
+`open-questions.md` J.53); el rediseño fino sigue pendiente. Se genera en memoria, sin fichero
+`.ico`: un **tile redondeado del color de estado** (los cuatro de la regla B.5: verde, ámbar, rojo,
+gris) con un **glifo que también cambia con el estado** —cilindro de datos lleno (todo en orden),
+con «!» (advertencia), con «×» (crítico), hueco (sin datos / sin discos / fallo de recopilador),
+dos barras (en pausa)—: a 16 px el color y la forma van juntos (§VII). El texto emergente es
+`«SmartDisk Monitor — <resumen>»` (`tray.tooltip`), nunca el resumen a secas: entre muchos iconos
+de bandeja tiene que decir de quién es.
 
 Casi todo se compone con el catálogo actual (`Switch`, `Select`, `TextField`, `RadioGroup`,
 `SegmentedControl`, `ConfirmDialog`, `EmptyState`, `CodeOutput`). Las excepciones ya están
