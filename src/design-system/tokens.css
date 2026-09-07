@@ -253,6 +253,29 @@ a.sdm-block-link:hover {
   cursor: default;
 }
 
+/* Realce al pasar el ratón para una zona pulsable de bloque (tarjeta de disco, fila de suceso,
+   grupo de alerta): una pátina del violeta de acento a media intensidad (`--sdm-accent-soft` al
+   50 %), no un aclarado. Va en `::after` para poder graduar la opacidad y para superponerse al
+   material que a veces tapa el fondo del propio elemento (`Card` dentro de la tarjeta de disco).
+   Hereda el radio del elemento: quien la use fija su `border-radius`. `prefers-reduced-motion` ya
+   anula la transición globalmente (más abajo). */
+.sdm-hover-bloque {
+  position: relative;
+}
+.sdm-hover-bloque::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--sdm-accent-soft);
+  opacity: 0;
+  transition: opacity var(--sdm-duration-fast) var(--sdm-ease);
+  pointer-events: none;
+}
+.sdm-hover-bloque:hover::after {
+  opacity: 0.5;
+}
+
 /* La doble pseudoclase NO es un descuido: sube la especificidad a (0,2,0) a propósito.
    Con `:focus-visible` a secas (0,1,0) empata con cualquier utilidad de Tailwind —`shadow-edge`,
    `shadow-[...]`— y pierde por orden de aparición, porque las utilidades se generan después de

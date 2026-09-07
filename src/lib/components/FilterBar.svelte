@@ -26,7 +26,9 @@
           type="button"
           aria-pressed={activo}
           class="rounded-pill px-3 py-1 text-xs font-semibold transition-all duration-base ease-sdm
-                 {activo ? 'bg-glass text-fg shadow-card shadow-edge' : 'text-fg-dim hover:text-fg'}"
+                 {activo
+            ? 'bg-glass text-fg shadow-card shadow-edge'
+            : 'text-fg-dim hover:bg-glass-2 hover:text-fg'}"
           onclick={() => alternar(group.id, opt.id)}
         >
           {opt.label}

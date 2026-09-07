@@ -115,6 +115,19 @@ describe("DiskCard", () => {
     await expect.element(enlace).toHaveAttribute("href", "/disks/d1");
   });
 
+  it("como enlace lleva la marca del realce de fondo al pasar el ratón (pátina de acento, no aclarado)", async () => {
+    // La `::after` que pinta el violeta translúcido cuelga de `.sdm-hover-bloque`; sin ese enganche
+    // la tarjeta no tendría feedback de que se puede pulsar. El color se verifica sobre el material
+    // compuesto en la prueba de contraste, no aquí.
+    const { container } = await render(DiskCard, { props: { disk: discoBase(), href: "/disks/d1" } });
+    expect(container.querySelector("a")?.classList.contains("sdm-hover-bloque")).toBe(true);
+  });
+
+  it("sin href no lleva la marca del realce: un bloque no interactivo no responde al ratón", async () => {
+    const { container } = await render(DiskCard, { props: { disk: discoBase() } });
+    expect(container.querySelector(".sdm-hover-bloque")).toBeNull();
+  });
+
   it("sin href se renderiza como bloque no interactivo, sin rol de enlace ni de botón", async () => {
     const { container } = await render(DiskCard, { props: { disk: discoBase() } });
     expect(container.querySelector("a")).toBeNull();

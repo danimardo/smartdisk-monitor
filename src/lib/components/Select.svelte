@@ -15,7 +15,7 @@
   {#if label}<span class="text-sm font-medium">{label}</span>{/if}
   <select
     class="h-control-lg rounded-pill border border-hairline bg-glass-2 px-4 text-xs font-medium text-fg shadow-edge
-           transition-all duration-base ease-sdm disabled:opacity-45"
+           transition-all duration-base ease-sdm hover:border-fg-faint hover:bg-glass disabled:opacity-45"
     {value}
     {disabled}
     aria-label={label}

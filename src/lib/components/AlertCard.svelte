@@ -25,7 +25,7 @@
 {#if alert}
   <button
     class="flex flex-col gap-2 sdm-material rounded-inner border p-4 text-left transition-all duration-base ease-sdm
-           {selected ? 'border-accent' : 'border-hairline hover:border-fg-faint'}"
+           {selected ? 'border-accent' : 'sdm-hover-bloque border-hairline hover:border-fg-faint'}"
     aria-current={selected}
     onclick={() => onselect?.(alert.id)}
   >

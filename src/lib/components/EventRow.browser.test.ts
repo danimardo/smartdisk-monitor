@@ -44,17 +44,18 @@ describe("EventRow", () => {
     });
     const enlace = container.querySelector("a");
     expect(enlace?.getAttribute("href")).toBe("/events?focus=42");
-    // Enlace de bloque: no se subraya ni muestra el cursor de mano, pero sí realza el fondo al
-    // pasar el ratón (feedback de que se puede pulsar, como una lista nativa de Windows).
+    // Enlace de bloque: no se subraya ni muestra el cursor de mano, pero sí tiñe el fondo con el
+    // violeta de acento al pasar el ratón (feedback de que se puede pulsar, como una lista nativa
+    // de Windows) — no un aclarado. El tinte lo pinta una `::after` colgada de `sdm-hover-bloque`.
     expect(enlace?.classList.contains("sdm-block-link")).toBe(true);
-    expect(enlace?.classList.contains("hover:bg-glass-2")).toBe(true);
+    expect(enlace?.classList.contains("sdm-hover-bloque")).toBe(true);
     expect(container.querySelector("button")).toBeNull();
   });
 
-  it("como botón (pantalla de eventos) también realza el fondo al pasar el ratón", async () => {
+  it("como botón (pantalla de eventos) también tiñe el fondo de acento al pasar el ratón", async () => {
     const { container } = await render(EventRow, {
       props: { level: "warning", message: "m", onselect: () => {} }
     });
-    expect(container.querySelector("button")?.classList.contains("hover:bg-glass-2")).toBe(true);
+    expect(container.querySelector("button")?.classList.contains("sdm-hover-bloque")).toBe(true);
   });
 });

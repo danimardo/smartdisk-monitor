@@ -10,7 +10,9 @@
       role="radio"
       aria-checked={value === opt.id}
       class="rounded-pill px-3 py-1 text-xs font-semibold transition-all duration-base ease-sdm
-             {value === opt.id ? 'bg-glass text-fg shadow-card shadow-edge' : 'text-fg-dim hover:text-fg'}"
+             {value === opt.id
+        ? 'bg-glass text-fg shadow-card shadow-edge'
+        : 'text-fg-dim hover:bg-glass-2 hover:text-fg'}"
       onclick={() => onchange?.(opt.id)}
     >
       {opt.label}

@@ -35,9 +35,9 @@
   const tono = $derived(healthToken[estadoPorNivel[level]]);
 
   const clase = $derived(
-    `flex w-full items-center gap-3 border-t border-hairline py-2 text-left transition-colors duration-fast${
+    `flex w-full items-center gap-3 border-t border-hairline py-2 text-left${
       href ? " sdm-block-link" : ""
-    }${highlighted ? " bg-accent-soft" : " hover:bg-glass-2"}`
+    }${highlighted ? " bg-accent-soft" : ""}`
   );
 </script>
 
@@ -59,7 +59,9 @@
 {/snippet}
 
 {#if href}
-  <a {href} class={clase}>{@render contenido()}</a>
+  <a {href} class="sdm-hover-bloque {clase}">{@render contenido()}</a>
 {:else}
-  <button type="button" class={clase} onclick={() => onselect?.()}>{@render contenido()}</button>
+  <button type="button" class="sdm-hover-bloque {clase}" onclick={() => onselect?.()}>
+    {@render contenido()}
+  </button>
 {/if}

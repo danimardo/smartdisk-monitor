@@ -6546,10 +6546,21 @@ Errores que se cometen aunque las reglas de arriba estén leídas:
   clase `sdm-block-link`: no se subraya al pasar el ratón ni muestra el cursor de mano. Es una zona
   pulsable, no texto; debe comportarse como una lista nativa de Windows, no como una página web. El
   subrayado en `:hover` y el `cursor: pointer` se reservan para los enlaces **de texto en línea**
-  («Ver todos», «Ver el suceso»). Sí lleva un **realce de fondo tenue al pasar el ratón**
-  (`hover:bg-glass-2` en `EventRow`, `hover:brightness-105` en `DiskCard` porque su `Card` no acepta
-  utilidades de color): es la única señal de que la zona es pulsable, igual que las listas del
-  Explorador o de Configuración de Windows.
+  («Ver todos», «Ver el suceso»).
+- **Realce de hover de una zona pulsable de bloque** (tarjeta de disco, fila de suceso, **grupo de
+  alerta**): clase `sdm-hover-bloque` de `tokens.css`. Pinta una **pátina del violeta de acento a
+  media intensidad** (`--sdm-accent-soft` al 50 %) mediante una capa `::after` — no un aclarado, y
+  no un `hover:bg-*`: el `::after` hace falta porque el material de `Card` taparía cualquier fondo
+  del propio elemento y `overflow-hidden` recortaría su sombra. Hereda el radio del elemento (quien
+  la use fija su `border-radius`). Es la única señal de que la zona es pulsable, igual que las
+  listas del Explorador o de Configuración de Windows. Un elemento **seleccionado** no la lleva: ya
+  lo marca su borde de acento.
+- **Todo control pulsable tiene estado de hover visible.** Los botones cápsula (`Button`) lo traen
+  por variante; los controles de formulario que no lo tenían (`Select`, `Switch`) ganan
+  `hover:border-fg-faint` (+ `hover:bg-glass` en `Select`); los selectores de segmento
+  (`SegmentedControl`, `FilterBar`) realzan el fondo del segmento inactivo con `hover:bg-glass-2`
+  además del texto. El riel (`Sidebar`) y las opciones de `RadioGroup` ya realzaban con `bg-glass-3`
+  / `bg-glass`.
 - **Indicador de navegación.** `AppShell` pinta una barra fina (2 px) pegada al borde superior de la
   ventana mientras `navigating` (de `$app/state`) sea no nulo: `role="progressbar"`, color
   `bg-accent`, con un `animation-delay` de ~150 ms para que una navegación instantánea no la haga
@@ -6947,6 +6958,29 @@ a.sdm-block-link:hover {
   color: inherit;
   text-decoration: none;
   cursor: default;
+}
+
+/* Realce al pasar el ratón para una zona pulsable de bloque (tarjeta de disco, fila de suceso,
+   grupo de alerta): una pátina del violeta de acento a media intensidad (`--sdm-accent-soft` al
+   50 %), no un aclarado. Va en `::after` para poder graduar la opacidad y para superponerse al
+   material que a veces tapa el fondo del propio elemento (`Card` dentro de la tarjeta de disco).
+   Hereda el radio del elemento: quien la use fija su `border-radius`. `prefers-reduced-motion` ya
+   anula la transición globalmente (más abajo). */
+.sdm-hover-bloque {
+  position: relative;
+}
+.sdm-hover-bloque::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--sdm-accent-soft);
+  opacity: 0;
+  transition: opacity var(--sdm-duration-fast) var(--sdm-ease);
+  pointer-events: none;
+}
+.sdm-hover-bloque:hover::after {
+  opacity: 0.5;
 }
 
 /* La doble pseudoclase NO es un descuido: sube la especificidad a (0,2,0) a propósito.

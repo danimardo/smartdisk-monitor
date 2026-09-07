@@ -13,7 +13,7 @@
     aria-checked={checked}
     aria-label={label}
     {disabled}
-    class="mt-0.5 h-[22px] w-[38px] shrink-0 rounded-pill border border-hairline p-[2px] transition-all duration-base ease-sdm
+    class="mt-0.5 h-[22px] w-[38px] shrink-0 rounded-pill border border-hairline p-[2px] transition-all duration-base ease-sdm hover:border-fg-faint
            {checked
       ? 'bg-[linear-gradient(180deg,var(--sdm-accent-hi),var(--sdm-accent))] shadow-[inset_0_1px_0_rgba(255,255,255,.35)]'
       : 'bg-glass-3'}"

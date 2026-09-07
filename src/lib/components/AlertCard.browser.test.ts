@@ -43,6 +43,16 @@ describe("AlertCard", () => {
     expect(onselect).toHaveBeenCalledWith("g1");
   });
 
+  it("sin seleccionar lleva el realce de hover (pátina de acento); seleccionada no, ya la marca el borde", async () => {
+    const { container: sinSel } = await render(AlertCard, { props: { alert: grupoDePrueba() } });
+    expect(sinSel.querySelector("button")?.classList.contains("sdm-hover-bloque")).toBe(true);
+
+    const { container: conSel } = await render(AlertCard, {
+      props: { alert: grupoDePrueba(), selected: true }
+    });
+    expect(conSel.querySelector("button")?.classList.contains("sdm-hover-bloque")).toBe(false);
+  });
+
   it("v3: la píldora de severidad lleva su icono (crit → bolt) y el contador va en `.sdm-num`", async () => {
     const { container } = await render(AlertCard, {
       props: { alert: grupoDePrueba({ severity: "crit", count: 7 }) }
