@@ -35,9 +35,9 @@
   const tono = $derived(healthToken[estadoPorNivel[level]]);
 
   const clase = $derived(
-    `flex w-full items-center gap-3 border-t border-hairline py-2 text-left${
+    `flex w-full items-center gap-3 border-t border-hairline py-2 text-left transition-colors duration-fast${
       href ? " sdm-block-link" : ""
-    }${highlighted ? " bg-accent-soft" : ""}`
+    }${highlighted ? " bg-accent-soft" : " hover:bg-glass-2"}`
   );
 </script>
 

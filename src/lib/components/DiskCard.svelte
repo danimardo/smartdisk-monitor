@@ -72,7 +72,9 @@
   <svelte:element
     this={href ? "a" : "div"}
     href={href || undefined}
-    class="sdm-block-link flex flex-col text-left"
+    class="sdm-block-link flex flex-col text-left transition-[filter] duration-fast {href
+      ? 'hover:brightness-105'
+      : ''}"
     aria-label={href ? t("disk.open", { name: disk.alias ?? disk.model }) : undefined}
   >
     <Card padding="none" class="flex-1">

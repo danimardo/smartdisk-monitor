@@ -81,6 +81,20 @@ test.describe("smoke @smoke", () => {
     expect(fallos, "errores de consola durante la navegación").toEqual([]);
   });
 
+  test("una navegación lenta muestra la barra de progreso, no una interfaz congelada (spec 004)", async ({
+    page
+  }) => {
+    // El `load` de `/events` tarda: antes esto congelaba la aplicación sin ninguna señal.
+    await instalarIpcFalso(page, RESPUESTAS, { retardoMs: { get_system_events: 600 } });
+    await page.goto("/");
+
+    await page.locator('a[href="/events"]').first().click();
+    await expect(page.getByRole("progressbar")).toBeVisible();
+    // Y desaparece al terminar.
+    await expect(page).toHaveURL(/\/events/);
+    await expect(page.getByRole("progressbar")).toHaveCount(0);
+  });
+
   test("aplica el tema y resuelve el material", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/");
