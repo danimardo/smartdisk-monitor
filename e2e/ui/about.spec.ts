@@ -32,4 +32,16 @@ test.describe("acerca de", () => {
     await page.keyboard.press("Escape");
     await expect(dialogo).not.toBeVisible();
   });
+
+  test("la cruz de la esquina cierra el diálogo", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/");
+
+    await page.getByRole("button", { name: es["nav.about"] }).click();
+    const dialogo = page.getByRole("dialog");
+    await expect(dialogo).toBeVisible();
+
+    await dialogo.getByRole("button", { name: es["common.close"] }).click();
+    await expect(dialogo).not.toBeVisible();
+  });
 });

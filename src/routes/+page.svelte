@@ -203,6 +203,7 @@
               eventId={ev.eventId}
               occurredAt={ev.occurredAt}
               mappingConfidence={ev.mappingConfidence}
+              href="/events?focus={ev.id}"
             />
           {/each}
         {:else}

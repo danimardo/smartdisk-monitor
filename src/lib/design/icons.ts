@@ -26,7 +26,8 @@ export type IconName =
   | "plug"
   | "diskStack"
   | "check"
-  | "tag";
+  | "tag"
+  | "close";
 
 /** Todos los `IconName`, para pruebas y para validar el sprite. */
 export const ICON_NAMES: readonly IconName[] = [
@@ -44,7 +45,8 @@ export const ICON_NAMES: readonly IconName[] = [
   "plug",
   "diskStack",
   "check",
-  "tag"
+  "tag",
+  "close"
 ];
 
 /** Estado de salud → icono. `unknown` usa `usb` porque el 90 % de los casos reales son puentes USB

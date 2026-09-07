@@ -432,6 +432,14 @@ Errores que se cometen aunque las reglas de arriba estén leídas:
 - **La navegación se hace con enlaces, no con callbacks.** `DiskCard` recibe `href` y `Sidebar`
   recibe secciones con su `href`: un `onclick` con `goto()` rompe el ctrl+clic, el menú contextual y
   el anuncio como enlace de un lector de pantalla.
+- **Un enlace que envuelve un bloque entero** (tarjeta de disco, fila de suceso del panel) lleva la
+  clase `sdm-block-link`: no se subraya al pasar el ratón ni muestra el cursor de mano. Es una zona
+  pulsable, no texto; debe comportarse como una lista nativa de Windows, no como una página web. El
+  subrayado en `:hover` y el `cursor: pointer` se reservan para los enlaces **de texto en línea**
+  («Ver todos», «Ver el suceso»).
+- **`ConfirmDialog` con `dismissible`** muestra una cruz de cerrar en la esquina. Se usa solo en
+  diálogos **informativos** (Acerca de), donde cerrar y «cancelar» son lo mismo; una confirmación
+  real de escritura/carga no la lleva — se decide con sus botones.
 
 ## Apéndice C. Pantallas pendientes de diseño
 

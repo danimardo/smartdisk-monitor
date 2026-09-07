@@ -313,6 +313,7 @@
 
 <ConfirmDialog
   open={aboutOpen}
+  dismissible
   title={appInfo ? `${appInfo.name} ${appInfo.version}` : t("about.title")}
   body={appInfo
     ? t("about.body", { author: appInfo.author })

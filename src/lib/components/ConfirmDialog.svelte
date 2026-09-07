@@ -13,6 +13,9 @@
     impact = "",
     confirmLabel = "",
     destructive = false,
+    /** Muestra la cruz de cerrar en la esquina (diálogos informativos como «Acerca de», que no
+     *  son una confirmación real: cerrar y «cancelar» son lo mismo). */
+    dismissible = false,
     onconfirm = undefined,
     oncancel = undefined
   } = $props();
@@ -41,7 +44,7 @@
   >
     <div
       bind:this={panel}
-      class="sdm-material-overlay flex w-full max-w-lg flex-col gap-4 rounded-window p-6"
+      class="sdm-material-overlay relative flex w-full max-w-lg flex-col gap-4 rounded-window p-6"
       style="animation: sdm-dialog var(--sdm-duration-overlay) var(--sdm-ease)"
       role="dialog"
       aria-modal="true"
@@ -49,6 +52,16 @@
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
     >
+      {#if dismissible}
+        <button
+          type="button"
+          class="absolute right-4 top-4 grid size-[30px] place-items-center rounded-nav text-fg-dim hover:bg-glass-3 hover:text-fg"
+          aria-label={t("common.close")}
+          onclick={() => oncancel?.()}
+        >
+          <Icon name="close" size={16} />
+        </button>
+      {/if}
       <h2 class="m-0 text-xl font-semibold tracking-tight">{title}</h2>
       <p class="m-0 text-sm leading-relaxed text-fg-dim" style="text-wrap: pretty">{body}</p>
 

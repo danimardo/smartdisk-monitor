@@ -42,6 +42,17 @@ test.describe("panel general v3", () => {
     await expect(page.getByText(es["dashboard.spread.title"])).toBeVisible();
   });
 
+  test("pulsar un suceso del panel lleva a ese suceso en la pantalla de eventos", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/");
+
+    // El primer suceso del fixture (`eventos[0]`, id "1") es un enlace, no un botón.
+    const fila = page.getByRole("link", { name: /Volumen C: es correcto/ });
+    await expect(fila).toHaveAttribute("href", "/events?focus=1");
+    await fila.click();
+    await expect(page).toHaveURL(/\/events\?focus=1/);
+  });
+
   test("un disco que dejó de responder a SMART (unreadable) cuenta como advertencia, no se calla (§B.5)", async ({
     page
   }) => {

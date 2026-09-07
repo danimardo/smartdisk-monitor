@@ -37,4 +37,15 @@ describe("EventRow", () => {
     await page.getByRole("button").click();
     expect(onselect).toHaveBeenCalledOnce();
   });
+
+  it("con `href` es un enlace de bloque (panel general), no un botón", async () => {
+    const { container } = await render(EventRow, {
+      props: { level: "error", message: "m", href: "/events?focus=42" }
+    });
+    const enlace = container.querySelector("a");
+    expect(enlace?.getAttribute("href")).toBe("/events?focus=42");
+    // Enlace de bloque: no se subraya ni muestra el cursor de mano (sensación de app nativa).
+    expect(enlace?.classList.contains("sdm-block-link")).toBe(true);
+    expect(container.querySelector("button")).toBeNull();
+  });
 });

@@ -20,6 +20,9 @@
     occurredAt = "",
     mappingConfidence = "exact" as "exact" | "inferred" | "unknown",
     highlighted = false,
+    /** Si se pasa, la fila es un enlace a esa ruta (panel general → detalle del suceso). Sin él,
+     *  es un botón que abre el panel de detalle en la propia pantalla de eventos. */
+    href = undefined as string | undefined,
     onselect = undefined as (() => void) | undefined
   } = $props();
 
@@ -30,14 +33,15 @@
   };
   const etiquetaNivel = $derived(t(`events.level.${level}`));
   const tono = $derived(healthToken[estadoPorNivel[level]]);
+
+  const clase = $derived(
+    `flex w-full items-center gap-3 border-t border-hairline py-2 text-left${
+      href ? " sdm-block-link" : ""
+    }${highlighted ? " bg-accent-soft" : ""}`
+  );
 </script>
 
-<button
-  class="flex w-full items-center gap-3 border-t border-hairline py-2 text-left {highlighted
-    ? 'bg-accent-soft'
-    : ''}"
-  onclick={() => onselect?.()}
->
+{#snippet contenido()}
   <span
     class="grid size-[26px] shrink-0 place-items-center rounded-nav"
     style="background: {tono.soft}; color: {tono.fg}"
@@ -52,4 +56,10 @@
   {/if}
   <span class="text-xs text-fg-dim">{provider} · {eventId}</span>
   <span class="w-14 text-right text-xs text-fg-faint">{formatTime(occurredAt)}</span>
-</button>
+{/snippet}
+
+{#if href}
+  <a {href} class={clase}>{@render contenido()}</a>
+{:else}
+  <button type="button" class={clase} onclick={() => onselect?.()}>{@render contenido()}</button>
+{/if}

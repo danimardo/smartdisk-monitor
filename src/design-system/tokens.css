@@ -242,6 +242,17 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Enlaces que envuelven un bloque entero (tarjeta de disco, fila de suceso del panel): no son
+   texto, son una zona pulsable. No se subrayan al pasar el ratón ni muestran el cursor de mano —
+   se comportan como una lista nativa de Windows (Explorador, Configuración), no como una página
+   web. La doble pseudoclase iguala la especificidad de `a:hover` (0,2,x) y gana por orden. */
+a.sdm-block-link,
+a.sdm-block-link:hover {
+  color: inherit;
+  text-decoration: none;
+  cursor: default;
+}
+
 /* La doble pseudoclase NO es un descuido: sube la especificidad a (0,2,0) a propósito.
    Con `:focus-visible` a secas (0,1,0) empata con cualquier utilidad de Tailwind —`shadow-edge`,
    `shadow-[...]`— y pierde por orden de aparición, porque las utilidades se generan después de
