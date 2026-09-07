@@ -436,7 +436,16 @@ Errores que se cometen aunque las reglas de arriba estén leídas:
   clase `sdm-block-link`: no se subraya al pasar el ratón ni muestra el cursor de mano. Es una zona
   pulsable, no texto; debe comportarse como una lista nativa de Windows, no como una página web. El
   subrayado en `:hover` y el `cursor: pointer` se reservan para los enlaces **de texto en línea**
-  («Ver todos», «Ver el suceso»).
+  («Ver todos», «Ver el suceso»). Sí lleva un **realce de fondo tenue al pasar el ratón**
+  (`hover:bg-glass-2` en `EventRow`, `hover:brightness-105` en `DiskCard` porque su `Card` no acepta
+  utilidades de color): es la única señal de que la zona es pulsable, igual que las listas del
+  Explorador o de Configuración de Windows.
+- **Indicador de navegación.** `AppShell` pinta una barra fina (2 px) pegada al borde superior de la
+  ventana mientras `navigating` (de `$app/state`) sea no nulo: `role="progressbar"`, color
+  `bg-accent`, con un `animation-delay` de ~150 ms para que una navegación instantánea no la haga
+  parpadear (bajo `prefers-reduced-motion` el retardo sigue vigente; solo se anula el avance). Es la
+  red de seguridad para cuando un `load` tarda —no sustituye a que la interfaz responda al instante,
+  que es lo normal tras ADR-042—.
 - **`ConfirmDialog` con `dismissible`** muestra una cruz de cerrar en la esquina. Se usa solo en
   diálogos **informativos** (Acerca de), donde cerrar y «cancelar» son lo mismo; una confirmación
   real de escritura/carga no la lleva — se decide con sus botones.

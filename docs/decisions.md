@@ -1250,3 +1250,65 @@ firmware, desgaste, actividad, horas.
 - Esquema Zod (`schemas.ts`) y su prueba de rechazo; interfaz en `src/lib/design/types.ts`;
   `docs/ui-contract.md` §3.2.
 - Sin comando nuevo, sin permiso de Tauri, sin dependencia.
+
+## ADR-042 — Los colectores no retienen el mutex de la conexión durante la E/S externa
+
+Estado: aceptada. Fecha: 2026-09-07.
+
+### El problema
+
+`AppState` tiene una única `Mutex<Connection>`. El bucle de recopilación en segundo plano
+(`iniciar_planificador` → `ejecutar_ciclo`) tomaba ese candado y, **con el candado en la mano**,
+lanzaba la E/S externa lenta de cada colector:
+
+- `refresh_smart`: por cada disco, una cascada de hasta 5 modos de `smartctl.exe` × 15 s de límite
+  = **hasta 75 s por disco**.
+- `refresh_metricas_rendimiento`: `perf_counters::leer` **duerme 1 s** entre las dos muestras PDH
+  que exige calcular una tasa → ≥ N s con N discos.
+- `refresh_events`: la lectura del registro de eventos por FFI (`wevtapi.dll`), segundos con
+  backlog grande.
+
+Cualquier comando de consulta de la interfaz (`get_system_events`, `get_alert_groups`,
+`get_devices`, `set_setting`…) hace `conn.lock()` y se quedaba esperando todo ese tiempo. El
+usuario lo vivía como **congelación de varios segundos al cambiar de sección** en el sidebar: la
+navegación de SvelteKit espera al `load` de la ruta, el `load` espera al comando, y el comando
+espera al candado. `docs/architecture.md` §4 ya decía «la UI y los colectores no comparten
+operaciones bloqueantes» y la constitución §V exige «transacciones breves»: el código lo incumplía.
+
+### La decisión
+
+Reestructurar `refresh_smart`, `refresh_metricas_rendimiento` y `refresh_events` en **tres fases**:
+
+1. **Planificar** — candado breve: leer los dispositivos y la configuración necesarios y construir
+   un plan de trabajo.
+2. **Recopilar** — **sin candado**: toda la E/S externa (subprocesos, PDH, FFI).
+3. **Persistir** — candado único: escribir muestras, registrar fallos y evaluar alertas.
+
+Los orquestadores reciben `&Mutex<…>` (no una guarda) y toman y sueltan el candado ellos mismos;
+`conn` y `source_health` nunca se anidan. Una guarda `AppState.recoleccion_smart: Mutex<()>`
+conserva la semántica de «el refresco manual espera al ciclo en curso» sin retener `conn`.
+`refresh_inventory` ya cumplía (su E/S por PowerShell corre antes del candado) y no se toca.
+
+### Alternativas descartadas
+
+- **Una segunda `Connection` de solo lectura en `AppState`.** La interfaz leería por su conexión
+  mientras el colector escribe por la suya. Se descarta: introduce `SQLITE_BUSY` real entre las dos
+  conexiones (que hoy no existe con una sola), obliga a manejar reintentos, y **no arregla el lado
+  escritor** —`set_setting`, `acknowledge_alert` y demás comandos que escriben seguirían detrás del
+  candado del colector—. Queda como posible mejora futura independiente para las lecturas pesadas
+  de informes.
+- **Bajar el límite de la cascada de `smartctl`.** Reduce el síntoma, no la causa: con dos discos
+  lentos se vuelve a notar, y perder modos de sondeo deja discos sin leer.
+
+### Consecuencias
+
+- El bucle de fondo y un `refresh_now` manual pueden **solapar sus subprocesos `smartctl` en la
+  fase 2**. Sin corrupción —filas nuevas, borrado lógico de `devices`, evaluación de alertas
+  serializada en la fase 3— y la guarda `recoleccion_smart` lo evita del todo.
+- Hay un desfase entre el `ahora` de la fase 1 y la escritura de la fase 3; ya ocurría antes y la
+  fase 3 dura milisegundos.
+- La asimetría de contabilidad de `smartctl` (fallo de consulta suma intento y fallo; JSON
+  inválido suma solo intento; fallo de persistencia no toca contadores) se traslada intacta y
+  ahora está cubierta por pruebas de `smart_planificar` y `smart_persistir`.
+- Sin comando nuevo, sin permiso de Tauri, sin dependencia. `.claude/rules/backend-rust.md` recoge
+  la trampa.

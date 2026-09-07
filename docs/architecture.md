@@ -146,6 +146,12 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
 - La UI y los colectores no comparten operaciones bloqueantes.
 - Los trabajos se ejecutan en tareas asíncronas o pools apropiados.
 - SQLite usa WAL, transacciones breves y migraciones versionadas.
+- Hay **una sola conexión a la base de datos**, protegida por un mutex de Rust: todo acceso queda
+  serializado por ese candado, no por SQLite. Por eso **ningún colector retiene el candado mientras
+  hace E/S externa** (subprocesos `smartctl`, muestreo PDH con su pausa entre lecturas, FFI del
+  registro de eventos): el ciclo de recopilación se estructura en tres fases —candado breve para
+  planificar, E/S sin candado, candado único para persistir— para que una consulta de la interfaz
+  no espere nunca detrás de un `smartctl.exe` de decenas de segundos (ADR-042).
 - Al cerrar hacia la bandeja, todos los trabajos continúan.
 - Al salir, se solicita cancelación, se termina cualquier auxiliar propio y se vacían las escrituras pendientes.
 - Ante cierre inesperado, el siguiente inicio reconcilia pruebas incompletas y archivos temporales

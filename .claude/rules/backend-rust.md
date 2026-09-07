@@ -70,4 +70,13 @@ Están documentadas porque volver a descubrirlas cuesta horas:
   primero que este bloque sigue en el manifiesto antes de sospechar de la caché de compilación o
   del antivirus (ambos se descartaron primero, sin necesidad, en esta misma investigación).
 
+- **Nunca se hace E/S externa con el candado de `AppState.conn` tomado.** Hay una sola
+  `Mutex<Connection>`: si un colector lanza `smartctl.exe` (cascada de hasta 75 s/disco), duerme
+  entre muestras PDH o entra a `wevtapi` con el candado en la mano, cualquier comando de la interfaz
+  que haga `conn.lock()` se cuelga ese mismo tiempo y la navegación de la interfaz se congela. Los
+  colectores van en tres fases: candado breve para planificar → E/S sin candado → candado único
+  para persistir. Los orquestadores reciben `&Mutex<…>`, no una guarda, y no anidan `conn` con
+  `source_health`. La guarda `recoleccion_smart` serializa ciclo y refresco manual sin retener
+  `conn` (ADR-042).
+
 Al terminar: `cargo clippy --all-targets -- -D warnings` y `cargo fmt --check` en verde.

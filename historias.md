@@ -1341,6 +1341,12 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
 - La UI y los colectores no comparten operaciones bloqueantes.
 - Los trabajos se ejecutan en tareas asíncronas o pools apropiados.
 - SQLite usa WAL, transacciones breves y migraciones versionadas.
+- Hay **una sola conexión a la base de datos**, protegida por un mutex de Rust: todo acceso queda
+  serializado por ese candado, no por SQLite. Por eso **ningún colector retiene el candado mientras
+  hace E/S externa** (subprocesos `smartctl`, muestreo PDH con su pausa entre lecturas, FFI del
+  registro de eventos): el ciclo de recopilación se estructura en tres fases —candado breve para
+  planificar, E/S sin candado, candado único para persistir— para que una consulta de la interfaz
+  no espere nunca detrás de un `smartctl.exe` de decenas de segundos (ADR-042).
 - Al cerrar hacia la bandeja, todos los trabajos continúan.
 - Al salir, se solicita cancelación, se termina cualquier auxiliar propio y se vacían las escrituras pendientes.
 - Ante cierre inesperado, el siguiente inicio reconcilia pruebas incompletas y archivos temporales
@@ -4804,6 +4810,68 @@ firmware, desgaste, actividad, horas.
   `docs/ui-contract.md` §3.2.
 - Sin comando nuevo, sin permiso de Tauri, sin dependencia.
 
+### ADR-042 — Los colectores no retienen el mutex de la conexión durante la E/S externa
+
+Estado: aceptada. Fecha: 2026-09-07.
+
+#### El problema
+
+`AppState` tiene una única `Mutex<Connection>`. El bucle de recopilación en segundo plano
+(`iniciar_planificador` → `ejecutar_ciclo`) tomaba ese candado y, **con el candado en la mano**,
+lanzaba la E/S externa lenta de cada colector:
+
+- `refresh_smart`: por cada disco, una cascada de hasta 5 modos de `smartctl.exe` × 15 s de límite
+  = **hasta 75 s por disco**.
+- `refresh_metricas_rendimiento`: `perf_counters::leer` **duerme 1 s** entre las dos muestras PDH
+  que exige calcular una tasa → ≥ N s con N discos.
+- `refresh_events`: la lectura del registro de eventos por FFI (`wevtapi.dll`), segundos con
+  backlog grande.
+
+Cualquier comando de consulta de la interfaz (`get_system_events`, `get_alert_groups`,
+`get_devices`, `set_setting`…) hace `conn.lock()` y se quedaba esperando todo ese tiempo. El
+usuario lo vivía como **congelación de varios segundos al cambiar de sección** en el sidebar: la
+navegación de SvelteKit espera al `load` de la ruta, el `load` espera al comando, y el comando
+espera al candado. `docs/architecture.md` §4 ya decía «la UI y los colectores no comparten
+operaciones bloqueantes» y la constitución §V exige «transacciones breves»: el código lo incumplía.
+
+#### La decisión
+
+Reestructurar `refresh_smart`, `refresh_metricas_rendimiento` y `refresh_events` en **tres fases**:
+
+1. **Planificar** — candado breve: leer los dispositivos y la configuración necesarios y construir
+   un plan de trabajo.
+2. **Recopilar** — **sin candado**: toda la E/S externa (subprocesos, PDH, FFI).
+3. **Persistir** — candado único: escribir muestras, registrar fallos y evaluar alertas.
+
+Los orquestadores reciben `&Mutex<…>` (no una guarda) y toman y sueltan el candado ellos mismos;
+`conn` y `source_health` nunca se anidan. Una guarda `AppState.recoleccion_smart: Mutex<()>`
+conserva la semántica de «el refresco manual espera al ciclo en curso» sin retener `conn`.
+`refresh_inventory` ya cumplía (su E/S por PowerShell corre antes del candado) y no se toca.
+
+#### Alternativas descartadas
+
+- **Una segunda `Connection` de solo lectura en `AppState`.** La interfaz leería por su conexión
+  mientras el colector escribe por la suya. Se descarta: introduce `SQLITE_BUSY` real entre las dos
+  conexiones (que hoy no existe con una sola), obliga a manejar reintentos, y **no arregla el lado
+  escritor** —`set_setting`, `acknowledge_alert` y demás comandos que escriben seguirían detrás del
+  candado del colector—. Queda como posible mejora futura independiente para las lecturas pesadas
+  de informes.
+- **Bajar el límite de la cascada de `smartctl`.** Reduce el síntoma, no la causa: con dos discos
+  lentos se vuelve a notar, y perder modos de sondeo deja discos sin leer.
+
+#### Consecuencias
+
+- El bucle de fondo y un `refresh_now` manual pueden **solapar sus subprocesos `smartctl` en la
+  fase 2**. Sin corrupción —filas nuevas, borrado lógico de `devices`, evaluación de alertas
+  serializada en la fase 3— y la guarda `recoleccion_smart` lo evita del todo.
+- Hay un desfase entre el `ahora` de la fase 1 y la escritura de la fase 3; ya ocurría antes y la
+  fase 3 dura milisegundos.
+- La asimetría de contabilidad de `smartctl` (fallo de consulta suma intento y fallo; JSON
+  inválido suma solo intento; fallo de persistencia no toca contadores) se traslada intacta y
+  ahora está cubierta por pruebas de `smart_planificar` y `smart_persistir`.
+- Sin comando nuevo, sin permiso de Tauri, sin dependencia. `.claude/rules/backend-rust.md` recoge
+  la trampa.
+
 
 ---
 
@@ -5231,6 +5299,7 @@ asunción del programador.
 | J.49 | **DECIDIDO** e implementado (spec `003`, research.md D4). La ventana de correlación de ráfaga de `alert-rules.md` §3.5 es tiempo de reloj (60 s), pero el colector de eventos va a lotes cada 30 s: una ráfaga puede quedar partida entre dos ciclos | La correlación **no** se hace solo sobre el lote del ciclo: al evaluar cada evento nuevo se consulta `system_events` los eventos del mismo disco en los 60 s anteriores, ya persistidos. Si el `disk` 157 llegó en un ciclo anterior y ya creó su grupo, el derivado del ciclo actual se registra como ocurrencia suya. Si el `disk` 157 llega **después** que un derivado ya agrupado, esos grupos derivados se resuelven con nota de «absorbido por la extracción imprevista» y sus eventos se re-registran bajo `device.removed_unexpected` (caso poco frecuente, con prueba propia) |
 | J.50 | **DECIDIDO** e implementado (spec `003`, research.md D5). Cómo llega al detalle de una alerta de evento el suceso que la disparó | `alert_occurrences.triggering_event_id` (columna que ya existe en el esquema, hoy nunca escrita) se empieza a rellenar. El DTO de ocurrencia gana `triggeringEventId: number \| null`; el detalle de alerta muestra, para las filas que lo tengan, un enlace `<a href="/events?focus=<id>">` a la pantalla de sucesos, que ya renderiza el XML crudo y la etiqueta de certeza. No se duplica el contenido del evento dentro del detalle de alerta |
 | J.51 | **DECIDIDO** e implementado (spec `003`, research.md D6). Alcance de la primera activación del puente de eventos: ¿evalúa los eventos ya ingeridos con anterioridad? (clarify Q1 → «solo hacia delante») | **Sin marcador de corte nuevo.** El puente evalúa solo los eventos que `repo_varios::insert_event_if_new` devuelve como nuevos (`Ok(true)`) en ese ciclo. Los eventos ya presentes en `system_events` al desplegar nunca se re-leen (el bookmark del canal está por delante) y, si el bookmark se invalidara y el canal se releyera entero, `insert_event_if_new` devuelve `Ok(false)` para los conocidos → no se evalúan. El «punto de corte» lo da el bookmark existente (J.7) más la unicidad `(channel, record_id)` |
+| J.52 | **DECIDIDO** e implementado (spec `004-navegacion-sin-congelacion`, ADR-042). Usando la aplicación real, el usuario reportó que casi siempre que cambiaba de sección en el sidebar la interfaz se congelaba varios segundos y parecía colgada. Causa: el bucle de recopilación retenía el mutex de `AppState.conn` mientras lanzaba `smartctl.exe` (cascada de hasta 75 s/disco), dormía entre muestras PDH y leía el registro de eventos; cualquier `load` de ruta que hiciera `conn.lock()` esperaba todo ese tiempo. J.39 solo cubría el reparto de dominios de fallo, no la retención del candado | `refresh_smart`, `refresh_metricas_rendimiento` y `refresh_events` pasan a **tres fases**: candado breve para planificar → E/S externa **sin candado** → candado único para persistir. Guarda `AppState.recoleccion_smart: Mutex<()>` para que el refresco manual siga esperando al ciclo en curso sin retener `conn`. `refresh_inventory` ya cumplía y no se toca. Como red de seguridad —no como sustituto de que la interfaz responda al instante— `AppShell` pinta una barra de progreso fina arriba mientras `navigating` sea no nulo, con retardo de 150 ms para no parpadear. Descartada una 2ª conexión de solo lectura: abre `SQLITE_BUSY` real y no arregla el lado escritor (`set_setting`, `acknowledge_alert`) |
 
 ---
 
@@ -6477,7 +6546,16 @@ Errores que se cometen aunque las reglas de arriba estén leídas:
   clase `sdm-block-link`: no se subraya al pasar el ratón ni muestra el cursor de mano. Es una zona
   pulsable, no texto; debe comportarse como una lista nativa de Windows, no como una página web. El
   subrayado en `:hover` y el `cursor: pointer` se reservan para los enlaces **de texto en línea**
-  («Ver todos», «Ver el suceso»).
+  («Ver todos», «Ver el suceso»). Sí lleva un **realce de fondo tenue al pasar el ratón**
+  (`hover:bg-glass-2` en `EventRow`, `hover:brightness-105` en `DiskCard` porque su `Card` no acepta
+  utilidades de color): es la única señal de que la zona es pulsable, igual que las listas del
+  Explorador o de Configuración de Windows.
+- **Indicador de navegación.** `AppShell` pinta una barra fina (2 px) pegada al borde superior de la
+  ventana mientras `navigating` (de `$app/state`) sea no nulo: `role="progressbar"`, color
+  `bg-accent`, con un `animation-delay` de ~150 ms para que una navegación instantánea no la haga
+  parpadear (bajo `prefers-reduced-motion` el retardo sigue vigente; solo se anula el avance). Es la
+  red de seguridad para cuando un `load` tarda —no sustituye a que la interfaz responda al instante,
+  que es lo normal tras ADR-042—.
 - **`ConfirmDialog` con `dismissible`** muestra una cruz de cerrar en la esquina. Se usa solo en
   diálogos **informativos** (Acerca de), donde cerrar y «cancelar» son lo mismo; una confirmación
   real de escritura/carga no la lleva — se decide con sus botones.
