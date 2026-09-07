@@ -3,6 +3,9 @@
    *  discos por un riel de 74 px solo con iconos: devuelve 176 px de ancho al contenido, que es
    *  donde estaba el problema a 1024 px.
    *
+   *  Sin logo de marca aparte (a diferencia del boceto `Sidebar.md`): en un riel de solo iconos
+   *  duplicaba a «Panel general», que ya va a `/` con el mismo icono (`open-questions.md` J.54).
+   *
    *  Un riel sin texto solo es aceptable si la accesibilidad es impecable (`Sidebar.md` §Accesibilidad):
    *  cada botón lleva `title` **y** `aria-label`, el activo `aria-current="page"`, el punto de aviso
    *  no viaja solo (el `aria-label` de Alertas incluye el recuento) y el indicador de estado global
@@ -53,15 +56,9 @@
 <aside
   class="sdm-material-chrome flex w-rail flex-none flex-col items-center gap-2 border-r border-hairline py-4"
 >
-  <a
-    href="/"
-    class="mb-2 grid size-9 shrink-0 place-items-center rounded-nav bg-[linear-gradient(180deg,var(--sdm-accent-hi),var(--sdm-accent))] text-fg-onAccent shadow-edge"
-    aria-label={t("app.name")}
-    title={t("app.name")}
-  >
-    <Icon name="diskStack" size={18} />
-  </a>
-
+  <!-- Sin logo de marca aparte: en un riel de solo iconos duplicaba a «Panel general», que ya
+       lleva a `/` con el mismo icono del disco. La identidad de la app vive en la barra de título
+       y en «Acerca de». -->
   <nav class="flex flex-col items-center gap-2" aria-label={t("nav.monitoring")}>
     {#each sections as s (s.id)}
       <a
