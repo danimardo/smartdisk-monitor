@@ -72,24 +72,45 @@ impl From<std::io::Error> for ErrorConsulta {
 
 /// Ejecuta con un límite de tiempo por sondeo, sin depender de un crate de temporización externo:
 /// `Child` no tiene una espera con plazo en la biblioteca estándar.
+///
+/// Los pipes de `stdout`/`stderr` tienen un búfer acotado por el sistema operativo. Si nadie los
+/// vacía mientras el hijo sigue escribiendo, el hijo se bloquea en su propio `write()` en cuanto lo
+/// llena, y nunca llega a salir — un punto muerto de facto entre el hijo y este bucle, que antes
+/// leía los pipes **después** de que `try_wait()` confirmara la salida. Verificado contra hardware
+/// real (`docs/open-questions.md` J.47): la salida de `smartctl -a -j` en un SATA con la tabla de
+/// atributos completa (10-13 KB en los dos discos de esta máquina) supera ese búfer con facilidad,
+/// y el proceso se colgaba los 15 s completos en cada uno de los cinco modos de la cascada —
+/// `NingunModoFunciono` sin decir por qué. La de un NVMe (7 KB en esta máquina) se quedaba por
+/// debajo del umbral y nunca lo mostraba, lo que hizo parecer un problema específico de SATA hasta
+/// medirlo. Los hilos lectores vacían los pipes según llegan, sin esperar a que el proceso termine.
 fn ejecutar_con_limite(
     mut hijo: std::process::Child,
     limite: Duration,
 ) -> std::io::Result<Option<std::process::Output>> {
+    use std::io::Read;
+
+    let mut stdout = hijo.stdout.take();
+    let mut stderr = hijo.stderr.take();
+    let lector_stdout = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(s) = stdout.as_mut() {
+            let _ = s.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let lector_stderr = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(s) = stderr.as_mut() {
+            let _ = s.read_to_end(&mut buf);
+        }
+        buf
+    });
+
     let inicio = Instant::now();
     loop {
         if let Some(estado) = hijo.try_wait()? {
-            let stdout = hijo.stdout.take();
-            let stderr = hijo.stderr.take();
-            use std::io::Read;
-            let mut salida = Vec::new();
-            let mut error = Vec::new();
-            if let Some(mut s) = stdout {
-                s.read_to_end(&mut salida)?;
-            }
-            if let Some(mut s) = stderr {
-                s.read_to_end(&mut error)?;
-            }
+            let salida = lector_stdout.join().unwrap_or_default();
+            let error = lector_stderr.join().unwrap_or_default();
             return Ok(Some(std::process::Output {
                 status: estado,
                 stdout: salida,
@@ -99,6 +120,8 @@ fn ejecutar_con_limite(
         if inicio.elapsed() >= limite {
             let _ = hijo.kill();
             let _ = hijo.wait();
+            let _ = lector_stdout.join();
+            let _ = lector_stderr.join();
             return Ok(None);
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -188,5 +211,33 @@ mod tests {
     fn la_cascada_prueba_sat_antes_que_nvme() {
         assert_eq!(CASCADA_MODOS[0], "sat");
         assert_eq!(CASCADA_MODOS[1], "nvme");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn ejecutar_con_limite_no_se_bloquea_con_una_salida_mas_grande_que_el_pipe() {
+        // Regresión (J.47): antes se leían los pipes solo después de que `try_wait()` confirmara
+        // la salida del proceso. Con una salida mayor que el búfer del pipe, el hijo se bloqueaba
+        // escribiendo y nunca llegaba a salir — se agotaba el límite entero, indistinguible de un
+        // dispositivo que de verdad no responde. No hace falta smartctl real para reproducirlo:
+        // cualquier proceso que escriba lo bastante lo dispara.
+        let hijo = std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "for /L %i in (1,1,4000) do @echo 0123456789012345678901234567890123456789",
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let resultado = ejecutar_con_limite(hijo, Duration::from_secs(10)).unwrap();
+        let salida = resultado.expect("no debería agotar el límite de tiempo");
+        assert!(salida.status.success());
+        assert!(
+            salida.stdout.len() > 64 * 1024,
+            "la salida capturada debería superar el búfer típico de un pipe, midió {} bytes",
+            salida.stdout.len()
+        );
     }
 }

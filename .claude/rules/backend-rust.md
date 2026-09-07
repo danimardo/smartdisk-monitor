@@ -78,5 +78,17 @@ Están documentadas porque volver a descubrirlas cuesta horas:
   para persistir. Los orquestadores reciben `&Mutex<…>`, no una guarda, y no anidan `conn` con
   `source_health`. La guarda `recoleccion_smart` serializa ciclo y refresco manual sin retener
   `conn` (ADR-042).
+- Un `Child` con `stdout`/`stderr` en `Stdio::piped()` **se cuelga si nadie vacía esos pipes
+  mientras el proceso sigue vivo** (J.47): el búfer del pipe que da el sistema operativo es
+  limitado, y en cuanto el hijo lo llena se bloquea en su propio `write()` esperando a que alguien
+  lea — si el padre solo llama a `try_wait()` en bucle y deja `read_to_end()` para después de que
+  la salida se confirme, ese "después" no llega nunca. `collectors::smartctl::ejecutar_con_limite`
+  lo tenía así desde el principio, y solo se disparaba con discos SATA cuya tabla de atributos
+  completa (10-13 KB medidos en esta máquina) superaba el búfer; un NVMe con salida más corta
+  (7 KB) nunca lo mostraba, lo que lo hizo parecer un problema específico de SATA hasta medirlo
+  contra hardware real. Reproducido sin necesidad de `smartctl.exe`: cualquier proceso hijo que
+  escriba lo bastante (`cmd /c "for /L %i in (…) do @echo …"` en la prueba) se cuelga igual con el
+  patrón viejo. La solución es vaciar los pipes en hilos aparte mientras el hilo principal solo
+  vigila si el proceso ha terminado, nunca leerlos "cuando termine".
 
 Al terminar: `cargo clippy --all-targets -- -D warnings` y `cargo fmt --check` en verde.
