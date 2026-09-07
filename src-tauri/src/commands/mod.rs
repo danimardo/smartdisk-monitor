@@ -1925,22 +1925,21 @@ pub fn refresh_now(
     // (`ejecutar_ciclo`) es más tolerante porque sus trabajos son independientes entre sí.
     let resultado: AppResult<ResultadoCicloPost> = (|| match scope.as_str() {
         "all" => {
+            // Cada `refresh_*` toma y suelta el candado de la conexión él mismo, y **nunca** lo
+            // retiene mientras corre un proceso externo (spec `004`). El orden inventario → eventos
+            // → SMART → métricas se conserva por el orden de estas llamadas.
             let (cambios, transiciones_capacidad) = refresh_inventory(&state)?;
-            let conn = state
-                .conn
+            let _recoleccion = state
+                .recoleccion_smart
                 .lock()
-                .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-            let transiciones_eventos = refresh_events(&conn);
-            let mut source_health = state
-                .source_health
-                .lock()
-                .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
-            let r = refresh_smart(&conn, None, &mut source_health)?;
+                .expect("el mutex de recolección no se envenena: sin pánicos dentro");
+            let transiciones_eventos = refresh_events(&state.conn);
+            let r = refresh_smart(&state.conn, None, &state.source_health)?;
             let mut degradadas = r.degradadas;
             degradadas.extend(refresh_metricas_rendimiento(
-                &conn,
+                &state.conn,
                 None,
-                &mut source_health,
+                &state.source_health,
             )?);
             let mut transiciones = r.transiciones;
             transiciones.extend(transiciones_capacidad);
@@ -1956,20 +1955,16 @@ pub fn refresh_now(
             let id = device_id.ok_or_else(|| {
                 Box::new(AppError::new("device.not_found", "error.deviceNotFound"))
             })?;
-            let conn = state
-                .conn
+            let _recoleccion = state
+                .recoleccion_smart
                 .lock()
-                .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-            let mut source_health = state
-                .source_health
-                .lock()
-                .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
-            let r = refresh_smart(&conn, Some(&id), &mut source_health)?;
+                .expect("el mutex de recolección no se envenena: sin pánicos dentro");
+            let r = refresh_smart(&state.conn, Some(&id), &state.source_health)?;
             let mut degradadas = r.degradadas;
             degradadas.extend(refresh_metricas_rendimiento(
-                &conn,
+                &state.conn,
                 Some(&id),
-                &mut source_health,
+                &state.source_health,
             )?);
             Ok(ResultadoCicloPost {
                 transiciones: r.transiciones,
@@ -2020,24 +2015,20 @@ fn ejecutar_ciclo(
         }
     }
 
+    // A partir de aquí, cada `refresh_*` gestiona su propio candado de la conexión y no lo retiene
+    // durante la E/S externa (spec `004`). La guardia `recoleccion_smart` mantiene la exclusión
+    // frente a un `refresh_now` manual sin bloquear las lecturas de la interfaz.
+    let _recoleccion = state
+        .recoleccion_smart
+        .lock()
+        .expect("el mutex de recolección no se envenena: sin pánicos dentro");
+
     if trabajos.contains(&TipoTrabajo::EventosWindows) {
-        let conn = state
-            .conn
-            .lock()
-            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-        resultado.transiciones.extend(refresh_events(&conn));
+        resultado.transiciones.extend(refresh_events(&state.conn));
     }
 
     if trabajos.contains(&TipoTrabajo::SmartCompleto) {
-        let conn = state
-            .conn
-            .lock()
-            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-        let mut source_health = state
-            .source_health
-            .lock()
-            .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
-        match refresh_smart(&conn, None, &mut source_health) {
+        match refresh_smart(&state.conn, None, &state.source_health) {
             Ok(r) => {
                 resultado.transiciones.extend(r.transiciones);
                 resultado.degradadas.extend(r.degradadas);
@@ -2050,15 +2041,7 @@ fn ejecutar_ciclo(
     }
 
     if trabajos.contains(&TipoTrabajo::MetricasRapidas) {
-        let conn = state
-            .conn
-            .lock()
-            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-        let mut source_health = state
-            .source_health
-            .lock()
-            .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
-        match refresh_metricas_rendimiento(&conn, None, &mut source_health) {
+        match refresh_metricas_rendimiento(&state.conn, None, &state.source_health) {
             Ok(degradadas) => {
                 resultado.degradadas.extend(degradadas);
                 resultado.hubo_metrica = true;
@@ -2166,18 +2149,26 @@ const CANAL_EVENTOS: &str = "System";
 /// mucho mejor que perder el resto de la recopilación por su culpa.
 #[cfg(windows)]
 fn refresh_events(
-    conn: &rusqlite::Connection,
+    conn: &std::sync::Mutex<rusqlite::Connection>,
 ) -> Vec<(String, crate::alerts::agrupacion::Transicion)> {
     use crate::domain::tipos::SystemEvent;
 
-    let bookmark_previo = match repo_varios::get_cursor(conn, CANAL_EVENTOS) {
-        Ok(b) => b.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
-        Err(e) => {
-            tracing::warn!(canal = CANAL_EVENTOS, error = ?e, "no se pudo leer el cursor de eventos");
-            None
+    // Fase 1 (bloqueo breve): el cursor del canal.
+    let bookmark_previo = {
+        let guard = conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        match repo_varios::get_cursor(&guard, CANAL_EVENTOS) {
+            Ok(b) => b.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+            Err(e) => {
+                tracing::warn!(canal = CANAL_EVENTOS, error = ?e, "no se pudo leer el cursor de eventos");
+                None
+            }
         }
     };
 
+    // Fase 2 (**sin bloqueo**): la lectura del registro de eventos (FFI `wevtapi.dll`), que con
+    // backlog grande tarda segundos.
     let (eventos, bookmark_nuevo) = match crate::collectors::event_log::leer_eventos_nuevos(
         CANAL_EVENTOS,
         bookmark_previo.as_deref(),
@@ -2192,6 +2183,12 @@ fn refresh_events(
     if eventos.is_empty() {
         return vec![];
     }
+
+    // Fase 3 (bloqueo único): correlacionar, persistir, avanzar cursor y evaluar reglas.
+    let conn = conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    let conn = &*conn;
 
     let dispositivos = repo_inventario::list_present_devices(conn).unwrap_or_else(|e| {
         tracing::warn!(error = ?e, "no se pudo leer el inventario para correlacionar eventos");
@@ -2306,7 +2303,7 @@ fn refresh_events(
 
 #[cfg(not(windows))]
 fn refresh_events(
-    _conn: &rusqlite::Connection,
+    _conn: &std::sync::Mutex<rusqlite::Connection>,
 ) -> Vec<(String, crate::alerts::agrupacion::Transicion)> {
     vec![]
 }
@@ -2713,11 +2710,40 @@ fn comprobar_dispositivo_existe(
 /// Separada de `refresh_metricas_rendimiento`: cada una tiene su propia cadencia en el bucle en
 /// segundo plano (`SMART_COMPLETO` frente a `METRICAS_RAPIDAS`, `open-questions.md` D.1) y mezclar
 /// ambas en una sola función ataría sus frecuencias entre sí sin motivo.
-fn refresh_smart(
+/// Lo que hay que consultar este ciclo, decidido con un bloqueo breve de la conexión antes de
+/// lanzar ningún `smartctl` (spec `004-navegacion-sin-congelacion`).
+#[derive(Debug)]
+struct PlanSmart {
+    ahora: String,
+    /// `(device_id, ruta_smartctl)` de los discos monitorizados con ruta conocida, ya filtrados.
+    objetivos: Vec<(String, String)>,
+    cfg_umbrales: crate::alerts::ConfigUmbrales,
+}
+
+/// El resultado de consultar `smartctl` para **un** disco, aún sin persistir. Las tres variantes
+/// reproducen la asimetría de contabilidad de la fuente: una consulta fallida cuenta como intento
+/// **y** fallo y fija el `ultimo_error`; un JSON irreconocible cuenta solo como intento.
+#[cfg_attr(not(windows), allow(dead_code))]
+enum RecoladoSmart {
+    Leida(Box<crate::collectors::smartctl_parser::SmartctlResult>),
+    ConsultaFallida(String),
+    JsonInvalido,
+}
+
+/// Lo que produce la pasada de persistencia: transiciones de alerta y la contabilidad de la fuente.
+struct SaldoSmart {
+    transiciones: Vec<(String, crate::alerts::agrupacion::Transicion)>,
+    intentos: u32,
+    fallos: u32,
+    ultimo_error: Option<AppError>,
+}
+
+/// Fase 1 (bloqueo breve de la conexión): decide qué discos consultar y con qué umbrales, sin
+/// lanzar todavía ningún proceso externo.
+fn smart_planificar(
     conn: &rusqlite::Connection,
     solo_device_id: Option<&str>,
-    source_health: &mut std::collections::HashMap<MetricSource, SourceHealth>,
-) -> AppResult<ResultadoSmart> {
+) -> AppResult<PlanSmart> {
     comprobar_dispositivo_existe(conn, solo_device_id)?;
 
     let dispositivos =
@@ -2727,150 +2753,264 @@ fn refresh_smart(
         .format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_default();
 
-    let mut transiciones = Vec::new();
-    let mut intentos: u32 = 0;
-    let mut fallos: u32 = 0;
-    let mut ultimo_error: Option<AppError> = None;
-
     // Umbrales configurables de las reglas SMART (v3, ADR-036): se leen una vez por ciclo, no por
     // disco. El motor los recibe como parámetro; nunca lee `settings` por su cuenta.
     let cfg_umbrales = config_umbrales_alerta(conn);
 
-    for d in dispositivos
+    let objetivos = dispositivos
         .iter()
         .filter(|d| d.monitoring_enabled)
         .filter(|d| match solo_device_id {
             Some(id) => id == d.id,
             None => true,
         })
-    {
-        let Some(ruta) = &d.smartctl_path else {
-            continue;
-        };
+        .filter_map(|d| d.smartctl_path.clone().map(|ruta| (d.id.clone(), ruta)))
+        .collect();
 
+    Ok(PlanSmart {
+        ahora,
+        objetivos,
+        cfg_umbrales,
+    })
+}
+
+/// Fase 2 (**sin bloqueo**): lanza `smartctl` para cada objetivo. Aquí viven los hasta 5 × 15 s por
+/// disco de la cascada de modos; que no se ejecuten con la conexión bloqueada es todo el objetivo
+/// de este refactor (`docs/architecture.md` §4, constitución §V).
+#[cfg(windows)]
+fn smart_recopilar(plan: &PlanSmart) -> Vec<(String, RecoladoSmart)> {
+    plan.objetivos
+        .iter()
+        .map(|(id, ruta)| {
+            let recolado = match crate::collectors::smartctl::query_device_json(ruta) {
+                Err(e) => {
+                    tracing::warn!(disco = %id, error = ?e, "no se pudo consultar smartctl");
+                    RecoladoSmart::ConsultaFallida(format!("{e:?}"))
+                }
+                Ok(json) => match crate::collectors::smartctl_parser::parse_smartctl_json(&json) {
+                    Ok(resultado) => RecoladoSmart::Leida(Box::new(resultado)),
+                    Err(e) => {
+                        tracing::warn!(disco = %id, error = ?e, "smartctl devolvió un JSON irreconocible");
+                        RecoladoSmart::JsonInvalido
+                    }
+                },
+            };
+            (id.clone(), recolado)
+        })
+        .collect()
+}
+
+/// Fase 3 (bloqueo único de la conexión): persiste lo ya consultado y evalúa el motor de alertas.
+fn smart_persistir(
+    conn: &rusqlite::Connection,
+    plan: &PlanSmart,
+    recolectado: Vec<(String, RecoladoSmart)>,
+) -> SaldoSmart {
+    let mut transiciones = Vec::new();
+    let mut intentos: u32 = 0;
+    let mut fallos: u32 = 0;
+    let mut ultimo_error: Option<AppError> = None;
+
+    for (id, recolado) in recolectado {
         #[cfg(windows)]
         {
             intentos += 1;
         }
-        #[cfg(windows)]
-        let json = match crate::collectors::smartctl::query_device_json(ruta) {
-            Ok(j) => j,
-            Err(e) => {
+        match recolado {
+            RecoladoSmart::ConsultaFallida(detalle) => {
                 fallos += 1;
                 ultimo_error = Some(
                     AppError::new("smartctl.query_failed", "error.smartctlQueryFailed")
-                        .with_detail(format!("{e:?}"))
+                        .with_detail(detalle)
                         .retryable(),
                 );
-                tracing::warn!(disco = %d.id, error = ?e, "no se pudo consultar smartctl");
-                registrar_ciclo_smart_fallido(conn, &d.id, &ahora, &mut transiciones);
-                continue;
+                registrar_ciclo_smart_fallido(conn, &id, &plan.ahora, &mut transiciones);
             }
-        };
-        #[cfg(not(windows))]
-        let json = continue;
-
-        match crate::collectors::smartctl_parser::parse_smartctl_json(&json) {
-            Ok(resultado) => {
-                if let Err(e) = persist_smart_reading(conn, &d.id, &resultado, &ahora) {
-                    tracing::warn!(disco = %d.id, error = ?e, "no se pudo guardar la lectura SMART");
+            RecoladoSmart::JsonInvalido => {
+                registrar_ciclo_smart_fallido(conn, &id, &plan.ahora, &mut transiciones);
+            }
+            RecoladoSmart::Leida(resultado) => {
+                if let Err(e) = persist_smart_reading(conn, &id, &resultado, &plan.ahora) {
+                    tracing::warn!(disco = %id, error = ?e, "no se pudo guardar la lectura SMART");
                 } else {
-                    match crate::alerts::evaluar_smart(conn, &d.id, &ahora, &cfg_umbrales) {
+                    match crate::alerts::evaluar_smart(conn, &id, &plan.ahora, &plan.cfg_umbrales) {
                         Ok(mut t) => transiciones.append(&mut t),
                         // La lectura ya quedó guardada: un fallo al evaluar alertas no debe hacer
                         // parecer que la lectura en sí falló.
                         Err(e) => {
-                            tracing::warn!(disco = %d.id, error = ?e, "no se pudo evaluar el motor de alertas")
+                            tracing::warn!(disco = %id, error = ?e, "no se pudo evaluar el motor de alertas")
                         }
                     }
                 }
             }
-            Err(e) => {
-                tracing::warn!(disco = %d.id, error = ?e, "smartctl devolvió un JSON irreconocible");
-                registrar_ciclo_smart_fallido(conn, &d.id, &ahora, &mut transiciones);
-            }
         }
     }
 
-    let degradadas = actualizar_source_health(
-        source_health,
-        MetricSource::Smartctl,
+    SaldoSmart {
+        transiciones,
         intentos,
         fallos,
         ultimo_error,
-        &ahora,
-    )
-    .into_iter()
-    .collect();
+    }
+}
+
+/// Orquesta las tres fases tomando y soltando los cerrojos él mismo: **nunca** retiene el de la
+/// conexión mientras corre `smartctl`. `conn` y `source_health` no se anidan (se suelta el primero
+/// antes de tomar el segundo).
+fn refresh_smart(
+    conn: &std::sync::Mutex<rusqlite::Connection>,
+    solo_device_id: Option<&str>,
+    source_health: &std::sync::Mutex<std::collections::HashMap<MetricSource, SourceHealth>>,
+) -> AppResult<ResultadoSmart> {
+    let plan = {
+        let guard = conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        smart_planificar(&guard, solo_device_id)?
+    };
+
+    #[cfg(windows)]
+    let recolectado = smart_recopilar(&plan);
+    #[cfg(not(windows))]
+    let recolectado: Vec<(String, RecoladoSmart)> = Vec::new();
+
+    let saldo = {
+        let guard = conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        smart_persistir(&guard, &plan, recolectado)
+    };
+
+    let degradadas = {
+        let mut sh = source_health
+            .lock()
+            .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
+        actualizar_source_health(
+            &mut sh,
+            MetricSource::Smartctl,
+            saldo.intentos,
+            saldo.fallos,
+            saldo.ultimo_error,
+            &plan.ahora,
+        )
+        .into_iter()
+        .collect()
+    };
 
     Ok(ResultadoSmart {
-        transiciones,
+        transiciones: saldo.transiciones,
         degradadas,
     })
+}
+
+/// Una lectura PDH de un disco, aún sin persistir.
+#[cfg_attr(not(windows), allow(dead_code))]
+enum RecoladoPerf {
+    Leida(crate::collectors::perf_counters::LecturaRendimiento),
+    Fallida(String),
 }
 
 /// Lee los contadores de rendimiento (T058) para los dispositivos presentes con `smartctl_path`
 /// conocido —de ahí se deriva el número de disco físico que pide PDH—, todos si `solo_device_id` es
 /// `None`, uno solo si se indica. No produce transiciones de alerta: solo persiste (US-020) y talla
 /// su fuente (T020/T021).
+///
+/// Tres fases como `refresh_smart` (spec `004`): `perf_counters::leer` **duerme 1 s** entre las dos
+/// muestras que exige una tasa PDH, así que la fase 2 (sin bloqueo) evita retener la conexión
+/// varios segundos.
 fn refresh_metricas_rendimiento(
-    conn: &rusqlite::Connection,
+    conn: &std::sync::Mutex<rusqlite::Connection>,
     solo_device_id: Option<&str>,
-    source_health: &mut std::collections::HashMap<MetricSource, SourceHealth>,
+    source_health: &std::sync::Mutex<std::collections::HashMap<MetricSource, SourceHealth>>,
 ) -> AppResult<Vec<SourceHealth>> {
-    comprobar_dispositivo_existe(conn, solo_device_id)?;
+    // Fase 1 (bloqueo breve): objetivos y `ahora`.
+    let (ahora, objetivos): (String, Vec<(String, i64)>) = {
+        let guard = conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        comprobar_dispositivo_existe(&guard, solo_device_id)?;
+        let dispositivos =
+            repo_inventario::list_present_devices(&guard).map_err(rusqlite_err_to_app_error)?;
+        let ahora = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        let objetivos = dispositivos
+            .iter()
+            .filter(|d| d.monitoring_enabled)
+            .filter(|d| match solo_device_id {
+                Some(id) => id == d.id,
+                None => true,
+            })
+            .filter_map(|d| {
+                d.smartctl_path
+                    .as_deref()
+                    .and_then(disk_number_from_smartctl_path)
+                    .map(|n| (d.id.clone(), n))
+            })
+            .collect();
+        (ahora, objetivos)
+    };
 
-    let dispositivos =
-        repo_inventario::list_present_devices(conn).map_err(rusqlite_err_to_app_error)?;
+    // Fase 2 (**sin bloqueo**): la lectura PDH con su `sleep(1 s)` por disco.
+    #[cfg(windows)]
+    let recolectado: Vec<(String, RecoladoPerf)> = objetivos
+        .iter()
+        .map(|(id, n)| {
+            let recolado = match crate::collectors::perf_counters::leer(*n) {
+                Ok(lectura) => RecoladoPerf::Leida(lectura),
+                Err(e) => {
+                    tracing::warn!(disco = %id, error = ?e, "no se pudo leer los contadores de rendimiento");
+                    RecoladoPerf::Fallida(format!("{e:?}"))
+                }
+            };
+            (id.clone(), recolado)
+        })
+        .collect();
+    #[cfg(not(windows))]
+    let recolectado: Vec<(String, RecoladoPerf)> = {
+        let _ = &objetivos;
+        Vec::new()
+    };
 
-    let ahora = time::OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_default();
-
+    // Fase 3 (bloqueo único): persistir + contabilidad.
     #[allow(unused_mut)]
     let mut intentos: u32 = 0;
     #[allow(unused_mut)]
     let mut fallos: u32 = 0;
     #[allow(unused_mut)]
     let mut ultimo_error: Option<AppError> = None;
-
-    #[cfg_attr(not(windows), allow(unused_variables))]
-    for d in dispositivos
-        .iter()
-        .filter(|d| d.monitoring_enabled)
-        .filter(|d| match solo_device_id {
-            Some(id) => id == d.id,
-            None => true,
-        })
     {
-        let Some(_ruta) = &d.smartctl_path else {
-            continue;
-        };
-
-        #[cfg(windows)]
-        if let Some(n) = disk_number_from_smartctl_path(_ruta) {
-            intentos += 1;
-            match crate::collectors::perf_counters::leer(n) {
-                Ok(lectura) => {
-                    if let Err(e) = persist_perf_reading(conn, &d.id, &lectura, &ahora) {
-                        tracing::warn!(disco = %d.id, error = ?e, "no se pudo guardar la lectura de rendimiento");
+        let guard = conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        for (id, recolado) in recolectado {
+            #[cfg(windows)]
+            {
+                intentos += 1;
+            }
+            match recolado {
+                RecoladoPerf::Leida(lectura) => {
+                    if let Err(e) = persist_perf_reading(&guard, &id, &lectura, &ahora) {
+                        tracing::warn!(disco = %id, error = ?e, "no se pudo guardar la lectura de rendimiento");
                     }
                 }
-                Err(e) => {
+                RecoladoPerf::Fallida(detalle) => {
                     fallos += 1;
                     ultimo_error = Some(
                         AppError::new("perf_counters.read_failed", "error.perfCountersFailed")
-                            .with_detail(format!("{e:?}"))
+                            .with_detail(detalle)
                             .retryable(),
                     );
-                    tracing::warn!(disco = %d.id, error = ?e, "no se pudo leer los contadores de rendimiento");
                 }
             }
         }
     }
 
+    let mut sh = source_health
+        .lock()
+        .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
     Ok(actualizar_source_health(
-        source_health,
+        &mut sh,
         MetricSource::PerformanceCounter,
         intentos,
         fallos,
@@ -5822,72 +5962,195 @@ mod tests_refresh_now {
         assert!(clasificar("device").is_ok());
     }
 
-    fn fuentes_de_prueba() -> std::collections::HashMap<MetricSource, SourceHealth> {
-        std::collections::HashMap::new()
+    fn fuentes_de_prueba() -> std::sync::Mutex<std::collections::HashMap<MetricSource, SourceHealth>>
+    {
+        std::sync::Mutex::new(std::collections::HashMap::new())
+    }
+
+    /// Prepara los dispositivos y devuelve la conexión ya envuelta en `Mutex`, como la recibe hoy
+    /// `refresh_smart` (spec `004`).
+    fn conn_con(dispositivos: &[Device]) -> std::sync::Mutex<rusqlite::Connection> {
+        let conn = conn_de_prueba();
+        for d in dispositivos {
+            repo_inventario::upsert_device(&conn, d).unwrap();
+        }
+        std::sync::Mutex::new(conn)
+    }
+
+    fn dispositivo_con_ruta(id: &str, ruta: &str) -> Device {
+        Device {
+            smartctl_path: Some(ruta.to_string()),
+            ..dispositivo(id)
+        }
     }
 
     #[test]
     fn refresh_smart_para_un_dispositivo_inexistente_falla_con_device_not_found() {
-        let conn = conn_de_prueba();
-        let err = refresh_smart(&conn, Some("no-existe"), &mut fuentes_de_prueba()).unwrap_err();
+        let conn = conn_con(&[]);
+        let err = refresh_smart(&conn, Some("no-existe"), &fuentes_de_prueba()).unwrap_err();
         assert_eq!(err.code, "device.not_found");
     }
 
     #[test]
     fn refresh_smart_sin_filtro_recorre_todos_los_dispositivos_monitorizados() {
-        let conn = conn_de_prueba();
-        repo_inventario::upsert_device(&conn, &dispositivo("d1")).unwrap();
-        repo_inventario::upsert_device(&conn, &dispositivo("d2")).unwrap();
-
-        // Ninguno tiene smartctl_path: el bucle los recorre y los salta sin invocar nada externo.
-        assert!(refresh_smart(&conn, None, &mut fuentes_de_prueba()).is_ok());
+        // Ninguno tiene smartctl_path: `smart_planificar` no deja objetivos y no se invoca nada
+        // externo.
+        let conn = conn_con(&[dispositivo("d1"), dispositivo("d2")]);
+        assert!(refresh_smart(&conn, None, &fuentes_de_prueba()).is_ok());
     }
 
     #[test]
     fn refresh_smart_con_filtro_no_falla_si_el_dispositivo_existe() {
-        let conn = conn_de_prueba();
-        repo_inventario::upsert_device(&conn, &dispositivo("d1")).unwrap();
-        repo_inventario::upsert_device(&conn, &dispositivo("d2")).unwrap();
-
-        assert!(refresh_smart(&conn, Some("d1"), &mut fuentes_de_prueba()).is_ok());
+        let conn = conn_con(&[dispositivo("d1"), dispositivo("d2")]);
+        assert!(refresh_smart(&conn, Some("d1"), &fuentes_de_prueba()).is_ok());
     }
 
     #[test]
     fn un_dispositivo_excluido_de_la_monitorizacion_no_detiene_el_ambito_all() {
-        let conn = conn_de_prueba();
         let mut excluido = dispositivo("d1");
         excluido.monitoring_enabled = false;
-        repo_inventario::upsert_device(&conn, &excluido).unwrap();
-
-        assert!(refresh_smart(&conn, None, &mut fuentes_de_prueba()).is_ok());
+        let conn = conn_con(&[excluido]);
+        assert!(refresh_smart(&conn, None, &fuentes_de_prueba()).is_ok());
     }
 
     #[test]
     fn ningun_dispositivo_con_ruta_smartctl_no_registra_intentos_de_la_fuente() {
         // Sin ningún dispositivo con `smartctl_path`, el colector no se invoca ni una vez: la
         // fuente se queda sin entrada, no se inventa un "ok" ni un "error" (J.37).
-        let conn = conn_de_prueba();
-        repo_inventario::upsert_device(&conn, &dispositivo("d1")).unwrap();
-        let mut fuentes = fuentes_de_prueba();
-        refresh_smart(&conn, None, &mut fuentes).unwrap();
-        assert!(!fuentes.contains_key(&MetricSource::Smartctl));
+        let conn = conn_con(&[dispositivo("d1")]);
+        let fuentes = fuentes_de_prueba();
+        refresh_smart(&conn, None, &fuentes).unwrap();
+        assert!(!fuentes
+            .lock()
+            .unwrap()
+            .contains_key(&MetricSource::Smartctl));
     }
 
     #[test]
     fn refresh_metricas_rendimiento_para_un_dispositivo_inexistente_falla_con_device_not_found() {
-        let conn = conn_de_prueba();
-        let err = refresh_metricas_rendimiento(&conn, Some("no-existe"), &mut fuentes_de_prueba())
+        let conn = conn_con(&[]);
+        let err = refresh_metricas_rendimiento(&conn, Some("no-existe"), &fuentes_de_prueba())
             .unwrap_err();
         assert_eq!(err.code, "device.not_found");
     }
 
     #[test]
     fn refresh_metricas_rendimiento_sin_ruta_smartctl_no_falla_y_no_registra_intentos() {
+        let conn = conn_con(&[dispositivo("d1")]);
+        let fuentes = fuentes_de_prueba();
+        assert!(refresh_metricas_rendimiento(&conn, None, &fuentes).is_ok());
+        assert!(!fuentes
+            .lock()
+            .unwrap()
+            .contains_key(&MetricSource::PerformanceCounter));
+    }
+
+    // ---- fases de refresh_smart (spec 004) ----
+
+    #[test]
+    fn smart_planificar_solo_deja_los_discos_monitorizados_con_ruta() {
         let conn = conn_de_prueba();
-        repo_inventario::upsert_device(&conn, &dispositivo("d1")).unwrap();
-        let mut fuentes = fuentes_de_prueba();
-        assert!(refresh_metricas_rendimiento(&conn, None, &mut fuentes).is_ok());
-        assert!(!fuentes.contains_key(&MetricSource::PerformanceCounter));
+        repo_inventario::upsert_device(&conn, &dispositivo_con_ruta("con_ruta", "/dev/pd0"))
+            .unwrap();
+        repo_inventario::upsert_device(&conn, &dispositivo("sin_ruta")).unwrap();
+        let mut excluido = dispositivo_con_ruta("excluido", "/dev/pd1");
+        excluido.monitoring_enabled = false;
+        repo_inventario::upsert_device(&conn, &excluido).unwrap();
+
+        let plan = smart_planificar(&conn, None).unwrap();
+        assert_eq!(
+            plan.objetivos,
+            vec![("con_ruta".to_string(), "/dev/pd0".to_string())]
+        );
+    }
+
+    #[test]
+    fn smart_planificar_con_id_inexistente_falla_con_device_not_found() {
+        let conn = conn_de_prueba();
+        assert_eq!(
+            smart_planificar(&conn, Some("no-existe")).unwrap_err().code,
+            "device.not_found"
+        );
+    }
+
+    fn plan_de_prueba() -> PlanSmart {
+        PlanSmart {
+            ahora: "2026-09-07T10:00:00Z".to_string(),
+            objetivos: vec![],
+            cfg_umbrales: crate::alerts::ConfigUmbrales::default(),
+        }
+    }
+
+    #[test]
+    fn smart_persistir_una_consulta_fallida_cuenta_intento_y_fallo_y_marca_ilegible() {
+        let conn = conn_de_prueba();
+        repo_inventario::upsert_device(&conn, &dispositivo_con_ruta("d1", "/dev/pd0")).unwrap();
+
+        let saldo = smart_persistir(
+            &conn,
+            &plan_de_prueba(),
+            vec![(
+                "d1".to_string(),
+                RecoladoSmart::ConsultaFallida("boom".to_string()),
+            )],
+        );
+
+        assert_eq!(saldo.intentos, if cfg!(windows) { 1 } else { 0 });
+        assert_eq!(saldo.fallos, if cfg!(windows) { 1 } else { 0 });
+        if cfg!(windows) {
+            assert_eq!(saldo.ultimo_error.unwrap().code, "smartctl.query_failed");
+        }
+        // El ciclo fallido queda registrado como `smart_query_ok = 0`.
+        let ok =
+            crate::persistence::repo_metricas::latest_device_sample(&conn, "d1", "smart_query_ok")
+                .unwrap();
+        assert_eq!(ok.and_then(|m| m.value_real), Some(0.0));
+    }
+
+    #[test]
+    fn smart_persistir_un_json_invalido_cuenta_intento_pero_no_fallo() {
+        let conn = conn_de_prueba();
+        repo_inventario::upsert_device(&conn, &dispositivo_con_ruta("d1", "/dev/pd0")).unwrap();
+
+        let saldo = smart_persistir(
+            &conn,
+            &plan_de_prueba(),
+            vec![("d1".to_string(), RecoladoSmart::JsonInvalido)],
+        );
+
+        assert_eq!(saldo.intentos, if cfg!(windows) { 1 } else { 0 });
+        assert_eq!(saldo.fallos, 0);
+        assert!(saldo.ultimo_error.is_none());
+        let ok =
+            crate::persistence::repo_metricas::latest_device_sample(&conn, "d1", "smart_query_ok")
+                .unwrap();
+        assert_eq!(ok.and_then(|m| m.value_real), Some(0.0));
+    }
+
+    #[test]
+    fn smart_persistir_una_lectura_correcta_guarda_las_muestras() {
+        let conn = conn_de_prueba();
+        repo_inventario::upsert_device(&conn, &dispositivo_con_ruta("d1", "/dev/pd0")).unwrap();
+        let resultado = crate::collectors::smartctl_parser::parse_smartctl_json(
+            r#"{"smartctl":{"version":[7,5],"exit_status":0},"device":{"type":"nvme"},
+                "temperature":{"current":41},"smart_status":{"passed":true}}"#,
+        )
+        .unwrap();
+
+        let saldo = smart_persistir(
+            &conn,
+            &plan_de_prueba(),
+            vec![("d1".to_string(), RecoladoSmart::Leida(Box::new(resultado)))],
+        );
+
+        assert_eq!(saldo.fallos, 0);
+        let temp = crate::persistence::repo_metricas::latest_device_sample(
+            &conn,
+            "d1",
+            "temperature_celsius",
+        )
+        .unwrap();
+        assert_eq!(temp.and_then(|m| m.value_real), Some(41.0));
     }
 }
 

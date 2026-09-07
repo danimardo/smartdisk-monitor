@@ -83,6 +83,13 @@ pub struct AppState {
     /// parece que la aplicación se cerró sola. Solo una vez por arranque, no en cada minimizado:
     /// repetirlo sería ruido, no ayuda (`open-questions.md` J.44).
     pub aviso_bandeja_mostrado: std::sync::atomic::AtomicBool,
+    /// Exclusión mutua de la recopilación SMART/rendimiento entre el bucle en segundo plano y un
+    /// `refresh_now` manual (spec `004-navegacion-sin-congelacion`). Antes esa exclusión la daba
+    /// el candado de `conn`, retenido durante toda la consulta a `smartctl` (hasta 75 s/disco), lo
+    /// que congelaba las lecturas de la interfaz. Ahora los colectores no retienen `conn` durante
+    /// la E/S externa; esta guardia mantiene «el refresco manual espera al ciclo en curso» sin
+    /// bloquear las consultas de la UI.
+    pub recoleccion_smart: std::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -97,6 +104,7 @@ impl AppState {
             source_health: std::sync::Mutex::new(std::collections::HashMap::new()),
             detener_planificador: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             aviso_bandeja_mostrado: std::sync::atomic::AtomicBool::new(false),
+            recoleccion_smart: std::sync::Mutex::new(()),
         })
     }
 }
