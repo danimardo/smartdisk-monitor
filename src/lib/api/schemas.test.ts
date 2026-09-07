@@ -122,6 +122,20 @@ describe("appearanceSettings", () => {
   });
 });
 
+describe("defenderExceptionResult", () => {
+  it("acepta un fallo con su detalle", () => {
+    expect(S.defenderExceptionResult.safeParse({ added: false, detail: "bloqueado" }).success).toBe(true);
+  });
+
+  it("acepta un éxito sin detalle (null)", () => {
+    expect(S.defenderExceptionResult.safeParse({ added: true, detail: null }).success).toBe(true);
+  });
+
+  it("RECHAZA que falte el detalle: `null` es explícito, no opcional", () => {
+    expect(S.defenderExceptionResult.safeParse({ added: true }).success).toBe(false);
+  });
+});
+
 describe("alertGroup", () => {
   const grupo = {
     id: "g1",

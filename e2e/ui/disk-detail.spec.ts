@@ -64,4 +64,42 @@ test.describe("detalle de disco", () => {
     await expect(page.getByLabel(es["dateRange.from"])).toBeVisible();
     await expect(page.getByLabel(es["dateRange.to"])).toBeVisible();
   });
+
+  test("un disco SATA ilegible bloqueado por Defender ofrece reintentar la excepción (J.56)", async ({
+    page
+  }) => {
+    const discoBloqueado = { ...detalleDisco0, deviceType: "sata_ssd", unknownReason: "unreadable" };
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_device_detail: discoBloqueado,
+      check_smartctl_defender_exception: false,
+      add_smartctl_defender_exception: { added: true, detail: null }
+    });
+    await page.goto(`/disks/${detalleDisco0.id}`);
+    await expect(page.getByRole("heading", { name: detalleDisco0.model })).toBeVisible();
+
+    const boton = page.getByRole("button", { name: es["disk.retryFolderProtection"] });
+    await expect(boton).toBeVisible();
+    await boton.click();
+    await expect(page.getByText(es["disk.retryFolderProtectionSuccess"])).toBeVisible();
+
+    const comandos = (await llamadas(page)).map((l) => l.comando);
+    expect(comandos).toContain("check_smartctl_defender_exception");
+    expect(comandos).toContain("add_smartctl_defender_exception");
+  });
+
+  test("un disco NVMe ilegible nunca ofrece la excepción de Defender: no la necesita", async ({ page }) => {
+    const discoNvme = { ...detalleDisco0, deviceType: "nvme", unknownReason: "unreadable" };
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_device_detail: discoNvme,
+      check_smartctl_defender_exception: false
+    });
+    await page.goto(`/disks/${detalleDisco0.id}`);
+    await expect(page.getByRole("heading", { name: detalleDisco0.model })).toBeVisible();
+
+    await expect(page.getByRole("button", { name: es["disk.retryFolderProtection"] })).toHaveCount(0);
+    const comandos = (await llamadas(page)).map((l) => l.comando);
+    expect(comandos).not.toContain("check_smartctl_defender_exception");
+  });
 });

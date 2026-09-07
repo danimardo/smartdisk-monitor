@@ -324,6 +324,15 @@ export const appInfo = z.object({
   author: z.string()
 });
 
+/** J.56/ADR-043: si `smartctl.exe` ya está permitido en Control de acceso a carpetas. */
+export const smartctlDefenderAllowed = z.boolean();
+
+/** Resultado de pedirle a Defender que permita `smartctl.exe` (J.56/ADR-043). */
+export const defenderExceptionResult = z.object({
+  added: z.boolean(),
+  detail: z.string().nullable()
+});
+
 /* ------------------------------------------------------ eventos que empujan */
 
 const emitted = { emittedAt: isoUtc };

@@ -7,6 +7,7 @@ pub mod bandeja;
 pub mod energia;
 pub mod locale;
 pub mod paths;
+pub mod proteccion_carpetas;
 pub mod rotulos;
 pub mod sistema;
 pub mod ventana;

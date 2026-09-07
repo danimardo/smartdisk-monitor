@@ -134,6 +134,14 @@ reconocido" la primera vez que se ejecute. Es un aviso esperado, no un fallo: pa
 información" → "Ejecutar de todas formas". Conseguir un certificado de firma de código es trabajo
 pendiente, ya recogido en [`docs/roadmap.md`](docs/roadmap.md).
 
+El instalador también añade `smartctl.exe` a las aplicaciones permitidas de **Control de acceso a
+carpetas** de Windows Defender: sin esa excepción, un disco SATA se ve siempre como "sin datos
+SMART" aunque funcione perfectamente para todo lo demás (Windows bloquea el comando de bajo nivel
+que SMART necesita). Si tu equipo tiene activada la **Protección contra alteraciones** de Defender,
+esa excepción puede fallar en silencio incluso viniendo del instalador; en ese caso, la propia
+pantalla de detalle del disco afectado ofrece un botón para reintentarlo, con instrucciones
+manuales como último recurso (`docs/open-questions.md` J.56, `docs/decisions.md` ADR-043).
+
 ### Desarrollo
 
 ```sh
@@ -4872,6 +4880,85 @@ conserva la semántica de «el refresco manual espera al ciclo en curso» sin re
 - Sin comando nuevo, sin permiso de Tauri, sin dependencia. `.claude/rules/backend-rust.md` recoge
   la trampa.
 
+### ADR-043 — El instalador añade la excepción de Control de acceso a carpetas para `smartctl.exe`
+
+Estado: aceptada. Fecha: 2026-09-07.
+
+#### El problema
+
+Investigando por qué un disco SATA real de la máquina de pruebas aparecía siempre como "sin datos
+SMART" pese a ser perfectamente legible desde el Explorador (J.55, un punto muerto real en
+`ejecutar_con_limite` que resultó no ser la causa), el registro de eventos de **Windows Defender**
+mostró la causa real: **Control de acceso a carpetas** (la protección anti-ransomware que bloquea
+escrituras de bajo nivel en disco de aplicaciones no permitidas) bloquea el comando ATA PASS
+THROUGH que `smartctl` necesita para leer SMART de un disco SATA — Windows lo clasifica como una
+posible escritura, aunque `smartctl` solo lea. El Explorador de Windows nunca dispara esta
+protección (usa E/S de archivos, camino distinto), y los discos NVMe de la misma máquina tampoco la
+disparan (usan otro camino de E/S), lo que hizo parecer un problema exclusivo de SATA hasta medirlo
+contra el registro de eventos real. Sin la excepción, **cualquier usuario final con esta protección
+activa** (cada vez más frecuente por defecto en Windows 11) vería exactamente el mismo fallo, sin
+ninguna pista de qué está pasando.
+
+#### La decisión
+
+El instalador NSIS (`src-tauri/windows/hooks.nsh`, vía `bundle.windows.nsis.installerHooks` de
+Tauri) llama, en `NSIS_HOOK_POSTINSTALL`, a un script bundleado
+(`src-tauri/windows/defender-exception.ps1`, empaquetado en `tauri.conf.json` como
+`scripts/defender-exception.ps1`) que ejecuta `Add-MpPreference
+-ControlledFolderAccessAllowedApplications <ruta de smartctl.exe>`. `NSIS_HOOK_PREUNINSTALL` hace
+el `Remove-MpPreference` simétrico al desinstalar, coherente con la filosofía de "no dejar rastro"
+que ya sigue el resto del proyecto (README, limpieza de `%ProgramData%`). **Ninguno de los dos
+hooks aborta la instalación o desinstalación si falla**: solo se registra en el log del instalador.
+
+La **Protección contra alteraciones** de Windows Defender puede hacer fallar `Add-MpPreference` en
+silencio incluso viniendo de un proceso con privilegios de administrador — está diseñada
+exactamente para eso. Por esta razón, el instalador no es la única vía: la aplicación expone dos
+comandos (`check_smartctl_defender_exception`, `add_smartctl_defender_exception`,
+`src-tauri/src/commands/mod.rs`) que la pantalla de detalle de disco usa para detectar el bloqueo
+(solo cuando un disco no-NVMe aparece `unreadable`, nunca en cada carga de pantalla) y ofrecer
+reintentar la excepción desde la propia interfaz, con instrucciones manuales como último recurso si
+sigue bloqueado. Cubre también a quien activa Control de acceso a carpetas **después** de instalar.
+
+Nueva lógica encapsulada en `src-tauri/src/platform/proteccion_carpetas.rs` (mismo patrón que
+`platform::energia`: la parte pura —comparar una ruta contra una lista— se prueba en unidad, la
+llamada real a PowerShell no, por la misma razón que el resto de `platform/` no la tiene).
+
+#### Alternativas descartadas
+
+- **Tocar el registro de Windows directamente** en vez de los cmdlets `Get-MpPreference`/
+  `Add-MpPreference`/`Remove-MpPreference`. Descartado: no es una vía documentada ni soportada por
+  Microsoft para gestionar Control de acceso a carpetas, y el propio hallazgo de esta ADR (la
+  Protección contra alteraciones bloquea cambios incluso con privilegios de administrador) sugiere
+  que una escritura directa al registro tendría el mismo problema, sin la garantía de que Defender
+  la reconozca como válida.
+- **Separar los envoltorios `#[tauri::command]` a un fichero excluido de la cobertura para
+  compensar el coste de las nuevas pruebas.** No aplica aquí: los dos comandos nuevos son
+  deliberadamente fusibles de una sola línea que delegan en `platform::proteccion_carpetas`, ya
+  cubierto donde puede estarlo.
+- **Enseñar a `DiskSummary`/`UnknownReason` un motivo específico ("bloqueado por Defender").**
+  Descartado tras diseñarlo: la información de bloqueo es del binario `smartctl.exe` en conjunto,
+  no de un disco en particular, así que encajaba peor en un campo por-disco que en una comprobación
+  independiente que la pantalla de detalle dispara bajo demanda.
+- **Preguntar al usuario en el propio instalador antes de añadir la excepción.** Descartado: fricción
+  adicional para una acción que el usuario ya pidió explícitamente resolver "para que no haya
+  problema" — se documenta aquí y en el README en vez de interrumpir la instalación.
+
+#### Consecuencias
+
+- Sin permiso nuevo de Tauri (los dos comandos son propios, no de un plugin). Sin dependencia
+  nueva: PowerShell ya era el mecanismo elegido para invocar procesos externos en este proyecto
+  (`smartctl.exe`, `chkdsk`).
+- La pantalla de detalle de disco no comprueba el bloqueo salvo cuando ya hay indicio de fallo
+  (`unknownReason === "unreadable"` y el disco no es NVMe): evita lanzar PowerShell en cada carga de
+  pantalla de un disco sano.
+- `HeroPanel.svelte` (panel general) **no** se tocó para distinguir este motivo del genérico
+  "unreadable": haría falta subir la comprobación asíncrona al padre en vez de mantenerla como un
+  `$derived` síncrono, y el detalle de disco ya da la explicación y la acción concreta. Queda
+  abierto si se quiere ese mismo detalle también en el panel general.
+- Verificación real (instalar en una máquina con Control de acceso a carpetas activo y confirmar
+  que la excepción aparece sin tocar nada a mano) queda pendiente, igual que T115 — no se puede
+  automatizar sin una máquina así.
+
 
 ---
 
@@ -5326,6 +5413,7 @@ asunción del programador.
 | J.53 | **DECIDIDO** e implementado. Usando la aplicación real, el usuario notó que el icono de la bandeja era un cuadrado de color liso (indistinguible a 16 px de otras aplicaciones) y que el texto emergente decía solo «Todo en orden», sin nombrar a qué aplicación pertenece. `decisions.md` (línea 106) ya marcaba el systray como pantalla sin revisión visual; esto es un primer paso, no el rediseño fino | El icono pasa a un **tile redondeado del color de estado B.5 + un glifo que también cambia con el estado**: cilindro de datos lleno (todo en orden), con «!» (advertencia), con «×» (crítico), hueco (sin datos / sin discos / fallo de recopilador), dos barras (en pausa). Así el color no es el único portador de significado (constitución §VII) y se distingue a 16 px. Se sigue generando en memoria (búfer RGBA supermuestreado 4×, dibujo procedural, sin biblioteca ni fichero `.ico`). El texto emergente pasa a `«SmartDisk Monitor — <resumen>»` (clave `tray.tooltip`), aplicado en `instalar()` y `actualizar()`. Ayuda de QA: `cargo test volcar_iconos_bmp -- --ignored` vuelca los cinco iconos a `src-tauri/target/bandeja/`. El rediseño visual completo del systray (y del resto de pantallas del Apéndice C de `ui-design.md`) sigue abierto |
 | J.54 | **DECIDIDO** e implementado. Usando la aplicación real, el usuario notó que el icono de arriba del riel (logo de marca) y el primero de la navegación («Panel general») usan el mismo icono (`diskStack`) y **llevan los dos a `/`** — redundante—, y que el logo tiene un fallo de hover (la regla global `a:hover { color: --sdm-accent-fg }` teñía de violeta el icono blanco sobre el degradado de acento, que quedaba como un cuadrado). El boceto `design/.../Sidebar.md` sí dibujaba un logo aparte | **Se quita el logo.** En un riel de solo iconos no aporta: «Panel general» ya va a `/` con el icono del disco, y la identidad de la app está en la barra de título y en «Acerca de». Con ello desaparece también el fallo de hover. `docs/ui-design.md` no menciona el logo (solo «solo iconos con `title`+`aria-label`»), así que no hay que tocarlo; el boceto de `design/` no es normativo (AGENTS.md §«Fuentes de verdad»). La clave i18n `app.name` se conserva (la usan la bandeja y «Acerca de») |
 | J.55 | El usuario preguntó por qué su disco Toshiba en `E:` (y, se descubrió al investigar, también el WDC de esta misma máquina) aparecía siempre como "sin datos SMART" pese a ser perfectamente legible desde el Explorador de Windows — el registro de desarrollo mostraba `NingunModoFunciono` en los cinco modos de la cascada, en cada ciclo, durante horas, mientras los dos discos NVMe de la misma máquina nunca fallaban | **Bug real en `ejecutar_con_limite` (`collectors/smartctl.rs`), no una limitación del disco ni de `smartctl`**: leía los pipes de `stdout`/`stderr` del proceso hijo solo después de que `try_wait()` confirmara su salida, en vez de mientras el proceso seguía vivo. `smartctl -a -j` contra un disco SATA con la tabla de atributos completa produce una salida (10-13 KB medidos en el WDC y el Toshiba de esta máquina) que supera el búfer del pipe que da Windows; el proceso se bloqueaba en su propio `write()` esperando a que alguien leyera, `try_wait()` nunca lo veía terminar, y los 15 s del límite se agotaban siempre — en los cinco modos, indistinguible de un dispositivo que de verdad no responde. Los dos NVMe de la misma máquina producen una salida más corta (7 KB) que nunca superaba el búfer, así que nunca lo mostraban: parecía un problema de SATA hasta medirlo. Reproducido de forma aislada (sin `smartctl.exe`, con cualquier proceso que escriba lo bastante) mediante `System.Diagnostics.Process` replicando el mismo patrón de sondeo, y confirmado que `smartctl -a -j` contra ambos discos devuelve datos SMART completos y reales (temperatura, horas de encendido, tabla de atributos) en cuanto se drenan los pipes correctamente. Corregido vaciando los pipes en dos hilos aparte mientras el hilo principal solo vigila la salida del proceso; prueba de regresión en `collectors::smartctl::tests` que reproduce el bloqueo con un proceso genérico, sin depender de hardware real ni de `smartctl.exe` |
+| J.56 | El arreglo de J.55 no resolvió el síntoma: el mismo disco Toshiba seguía "sin datos SMART" tras recompilar y relanzar varias veces. Registro enriquecido temporalmente en `query_device_json` reveló que el fallo era instantáneo (no un agotamiento de los 15 s), con `exit_status: 2` ("apertura fallida") en los cinco modos y sin ningún mensaje de error — el disco se identificaba (`"device": {"type": "ata"}`) pero no llegaba a leerse nada más | **Windows Defender, Control de acceso a carpetas**, confirmado sin ambigüedad en el registro de eventos de Windows (`Microsoft-Windows-Windows Defender/Operational`, id 1127, exactamente a la hora del fallo): "El acceso controlado a carpetas impidió que smartctl.exe realizara cambios en la memoria" contra `\Device\Harddisk0\DR0` (WDC) y `\Device\Harddisk1\DR19` (Toshiba). Esta protección anti-ransomware bloquea el comando ATA PASS THROUGH que `smartctl` necesita para SATA, aunque solo lea — el Explorador de Windows nunca lo dispara (E/S de archivos, camino distinto) y NVMe tampoco (otro camino de E/S), lo que explica por qué solo fallaban los dos discos SATA de la máquina. Resuelto con ADR-043: el instalador añade la excepción con `Add-MpPreference` (`src-tauri/windows/hooks.nsh` + `defender-exception.ps1`), con `Remove-MpPreference` simétrico al desinstalar; la aplicación ofrece reintentarlo desde la pantalla de detalle de disco (`check_smartctl_defender_exception`/`add_smartctl_defender_exception`) para cuando la Protección contra alteraciones de Defender bloquea el cambio del instalador en silencio, o para quien activa la protección después de instalar. `HeroPanel.svelte` (panel general) queda deliberadamente sin este detalle específico — ver ADR-043, "Consecuencias" |
 
 ---
 
@@ -8427,6 +8515,10 @@ Fichero de origen: `src/lib/i18n/es.json`
   "disk.noSmartExplain": "El bus de este disco no reenvía los comandos SMART. No es una avería: se vigila su capacidad y los sucesos de Windows, pero no la temperatura ni el desgaste.",
   "disk.noSmartUnreadable": "Este disco ha dejado de responder a las consultas SMART. Se sigue vigilando su capacidad y los sucesos de Windows; la última lectura conocida puede estar anticuada.",
   "disk.noSmartPending": "Todavía no ha llegado la primera lectura SMART de este disco.",
+  "disk.noSmartBlockedByDefender": "Windows ha bloqueado la lectura de este disco por su protección contra ransomware (Control de acceso a carpetas). No es una avería del disco: puedes intentar solucionarlo aquí mismo.",
+  "disk.retryFolderProtection": "Permitir en Windows Defender",
+  "disk.retryFolderProtectionSuccess": "Hecho. Se aplicará en la próxima lectura.",
+  "disk.retryFolderProtectionFailed": "Sigue bloqueado ({detail}). Puedes añadirlo a mano en Seguridad de Windows → Protección contra virus y amenazas → Permitir una aplicación a través del Acceso controlado a carpetas.",
   "disk.capacity": "Ocupación",
   "disk.notFound": "Disco no encontrado",
   "onboarding.title": "Configuración inicial",
@@ -8889,6 +8981,10 @@ Fichero de origen: `src/lib/i18n/en.json`
   "disk.noSmartExplain": "This disk's bus does not forward SMART commands. That is not a fault: its capacity and Windows events are still watched, but not temperature or wear.",
   "disk.noSmartUnreadable": "This disk has stopped responding to SMART queries. Its capacity and Windows events are still watched; the last known reading may be stale.",
   "disk.noSmartPending": "The first SMART reading for this disk has not arrived yet.",
+  "disk.noSmartBlockedByDefender": "Windows has blocked reading this disk as part of its ransomware protection (Controlled folder access). This isn't a drive fault — you can try to fix it right here.",
+  "disk.retryFolderProtection": "Allow in Windows Defender",
+  "disk.retryFolderProtectionSuccess": "Done. It will take effect on the next reading.",
+  "disk.retryFolderProtectionFailed": "Still blocked ({detail}). You can add it manually in Windows Security → Virus & threat protection → Allow an app through Controlled folder access.",
   "disk.capacity": "Usage",
   "disk.notFound": "Disk not found",
   "onboarding.title": "Initial setup",

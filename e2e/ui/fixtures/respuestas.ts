@@ -287,6 +287,8 @@ export const RESPUESTAS: Record<string, unknown> = {
   get_alert_detail: detalleAlertaActiva,
   get_system_events: paginaEventos,
   get_event_raw_xml: xmlEjemplo,
+  check_smartctl_defender_exception: true,
+  add_smartctl_defender_exception: { added: true, detail: null },
   get_log_level: "info",
   get_test_runs: testRunsVacio,
   start_benchmark: testRunActivo.id,

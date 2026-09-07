@@ -45,7 +45,8 @@
       "../third-party/smartmontools/licenses/COPYING.txt": "licenses/smartmontools/COPYING.txt",
       "../third-party/smartmontools/licenses/AUTHORS.txt": "licenses/smartmontools/AUTHORS.txt",
       "../third-party/smartmontools/source/smartmontools-7.5.tar.gz": "licenses/smartmontools/smartmontools-7.5.tar.gz",
-      "../src/design-system/fonts/OFL.txt": "licenses/instrument-sans/OFL.txt"
+      "../src/design-system/fonts/OFL.txt": "licenses/instrument-sans/OFL.txt",
+      "windows/defender-exception.ps1": "scripts/defender-exception.ps1"
     },
     "windows": {
       "webviewInstallMode": {
@@ -54,7 +55,8 @@
       "nsis": {
         "installMode": "perMachine",
         "languages": ["Spanish", "English"],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   }

@@ -86,6 +86,8 @@ pub fn run() {
             commands::resume_monitoring,
             commands::get_app_info,
             commands::delete_all_data,
+            commands::check_smartctl_defender_exception,
+            commands::add_smartctl_defender_exception,
             // registro
             commands::log_from_ui,
             commands::get_log_level,

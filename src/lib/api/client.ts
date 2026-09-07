@@ -211,6 +211,15 @@ export const getAppInfo = () => call("get_app_info", S.appInfo);
 export const deleteAllData = (confirmationPhrase: string) =>
   callVoid("delete_all_data", { confirmationPhrase });
 
+/** J.56/ADR-043: si `smartctl.exe` ya está permitido en Control de acceso a carpetas de Defender. */
+export const checkSmartctlDefenderException = () =>
+  call("check_smartctl_defender_exception", S.smartctlDefenderAllowed);
+
+/** Reintenta añadir la excepción (el instalador ya lo intenta al instalar); puede fallar si la
+ *  Protección contra alteraciones de Defender lo bloquea incluso con privilegios de administrador. */
+export const addSmartctlDefenderException = () =>
+  call("add_smartctl_defender_exception", S.defenderExceptionResult);
+
 /* ------------------------------------------------------------------ registro */
 
 /** Mismos seis niveles que `$lib/logger`'s `LEVELS`, escritos aquí a mano porque ese módulo no

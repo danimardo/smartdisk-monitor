@@ -191,6 +191,8 @@ describe("la superficie completa del contrato", () => {
     resumeMonitoring: "resume_monitoring",
     getAppInfo: "get_app_info",
     deleteAllData: "delete_all_data",
+    checkSmartctlDefenderException: "check_smartctl_defender_exception",
+    addSmartctlDefenderException: "add_smartctl_defender_exception",
     getLogLevel: "get_log_level",
     setLogLevel: "set_log_level",
     openLogFolder: "open_log_folder"

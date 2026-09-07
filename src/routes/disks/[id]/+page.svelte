@@ -15,7 +15,12 @@
     StatusPill,
     TimeSeriesChart
   } from "$lib/components";
-  import { getMetricSeries, toAppError } from "$lib/api";
+  import {
+    addSmartctlDefenderException,
+    checkSmartctlDefenderException,
+    getMetricSeries,
+    toAppError
+  } from "$lib/api";
   import { healthToken } from "$lib/design/health";
   import { busIcon } from "$lib/design/icons";
   import {
@@ -52,6 +57,49 @@
   const tempState = $derived(
     classifyAgainstThresholds(disk.temperatureC, tempThresholds.warn, tempThresholds.crit)
   );
+
+  /** Un disco "unreadable" que no sea NVMe puede deberse a que Windows Defender bloquea el comando
+   *  de bajo nivel que `smartctl` necesita (J.56/ADR-043) — se comprueba solo en ese caso, nunca en
+   *  cada carga de pantalla, porque implica lanzar PowerShell. */
+  let defenderBloqueado = $state(false);
+  let defenderReintentando = $state(false);
+  let defenderResultado = $state<{ added: boolean; detail: string | null } | null>(null);
+
+  $effect(() => {
+    const podriaSerDefender = disk.unknownReason === "unreadable" && disk.deviceType !== "nvme";
+    if (!podriaSerDefender) {
+      defenderBloqueado = false;
+      return;
+    }
+    let cancelado = false;
+    void (async () => {
+      try {
+        const permitido = await checkSmartctlDefenderException();
+        if (!cancelado) defenderBloqueado = !permitido;
+      } catch {
+        // Sin dato no se acusa a Defender: se deja el aviso genérico de "unreadable".
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  });
+
+  async function reintentarDefender() {
+    defenderReintentando = true;
+    defenderResultado = null;
+    try {
+      const resultado = await addSmartctlDefenderException();
+      defenderResultado = resultado;
+      // El aviso sigue visible con el resultado aunque `added` sea `true`: `defenderBloqueado`
+      // solo lo apaga la siguiente lectura SMART real que llegue fresca, no este resultado en sí
+      // — si se apagara aquí, el mensaje de éxito desaparecería antes de que nadie lo leyera.
+    } catch (cause) {
+      defenderResultado = { added: false, detail: toAppError(cause).detail ?? null };
+    } finally {
+      defenderReintentando = false;
+    }
+  }
 
   type Rango = "24h" | "7d" | "30d" | "custom";
   let rango = $state<Rango>("24h");
@@ -190,6 +238,28 @@
       <Button variant="primary" onclick={() => goto("/tests")}>{t("disk.testThisDisk")}</Button>
     </div>
   </Card>
+
+  {#if defenderBloqueado}
+    <div class="flex flex-wrap items-center gap-3 rounded-inner bg-warn-soft p-4">
+      <span
+        class="grid size-[18px] shrink-0 place-items-center rounded-pill bg-warn text-2xs font-semibold text-white"
+        >!</span
+      >
+      <span class="flex-1 text-xs leading-normal" style="text-wrap: pretty"
+        >{t("disk.noSmartBlockedByDefender")}</span
+      >
+      <Button size="sm" loading={defenderReintentando} onclick={reintentarDefender}
+        >{t("disk.retryFolderProtection")}</Button
+      >
+      {#if defenderResultado}
+        <span class="basis-full text-2xs {defenderResultado.added ? 'text-ok' : 'text-warn'}">
+          {defenderResultado.added
+            ? t("disk.retryFolderProtectionSuccess")
+            : t("disk.retryFolderProtectionFailed", { detail: defenderResultado.detail ?? "" })}
+        </span>
+      {/if}
+    </div>
+  {/if}
 
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
     <MetricCard

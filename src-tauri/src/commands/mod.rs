@@ -5140,6 +5140,44 @@ pub fn get_app_info(app: tauri::AppHandle) -> AppResult<AppInfo> {
     })
 }
 
+/// Resultado de intentar añadir `smartctl.exe` a las aplicaciones permitidas de Control de acceso
+/// a carpetas de Windows Defender (J.56, ADR-043). `detail` solo se rellena cuando `added` es
+/// `false`: un éxito no necesita explicarse.
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/api/generated/")]
+pub struct DefenderExceptionResult {
+    pub added: bool,
+    pub detail: Option<String>,
+}
+
+/// `true` si `smartctl.exe` ya está entre las aplicaciones permitidas, o si no se pudo determinar
+/// (sin PowerShell, cmdlet ausente): el beneficio de la duda es no acusar a Defender sin pruebas,
+/// mismo criterio que el resto de la aplicación aplica a cualquier dato ausente.
+#[tauri::command]
+pub fn check_smartctl_defender_exception() -> AppResult<bool> {
+    let ruta = crate::collectors::smartctl::resolve_smartctl_path();
+    Ok(crate::platform::proteccion_carpetas::esta_permitido(&ruta).unwrap_or(true))
+}
+
+/// El instalador ya intenta esto mismo al instalar (ADR-043); este comando es la red de
+/// seguridad para cuando la Protección contra alteraciones de Defender lo bloqueó en silencio, o
+/// para quien activa Control de acceso a carpetas después de instalar.
+#[tauri::command]
+pub fn add_smartctl_defender_exception() -> AppResult<DefenderExceptionResult> {
+    let ruta = crate::collectors::smartctl::resolve_smartctl_path();
+    match crate::platform::proteccion_carpetas::intentar_permitir(&ruta) {
+        Ok(()) => Ok(DefenderExceptionResult {
+            added: true,
+            detail: None,
+        }),
+        Err(detalle) => Ok(DefenderExceptionResult {
+            added: false,
+            detail: Some(detalle),
+        }),
+    }
+}
+
 /// Frase que hay que escribir literalmente para borrar todo (US-073): el propio nombre de la
 /// aplicación, no una palabra ceremonial — así no cambia con el idioma de la interfaz ni exige
 /// mantener la misma cadena traducida en los dos diccionarios.

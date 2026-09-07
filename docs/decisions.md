@@ -1312,3 +1312,82 @@ conserva la semántica de «el refresco manual espera al ciclo en curso» sin re
   ahora está cubierta por pruebas de `smart_planificar` y `smart_persistir`.
 - Sin comando nuevo, sin permiso de Tauri, sin dependencia. `.claude/rules/backend-rust.md` recoge
   la trampa.
+
+## ADR-043 — El instalador añade la excepción de Control de acceso a carpetas para `smartctl.exe`
+
+Estado: aceptada. Fecha: 2026-09-07.
+
+### El problema
+
+Investigando por qué un disco SATA real de la máquina de pruebas aparecía siempre como "sin datos
+SMART" pese a ser perfectamente legible desde el Explorador (J.55, un punto muerto real en
+`ejecutar_con_limite` que resultó no ser la causa), el registro de eventos de **Windows Defender**
+mostró la causa real: **Control de acceso a carpetas** (la protección anti-ransomware que bloquea
+escrituras de bajo nivel en disco de aplicaciones no permitidas) bloquea el comando ATA PASS
+THROUGH que `smartctl` necesita para leer SMART de un disco SATA — Windows lo clasifica como una
+posible escritura, aunque `smartctl` solo lea. El Explorador de Windows nunca dispara esta
+protección (usa E/S de archivos, camino distinto), y los discos NVMe de la misma máquina tampoco la
+disparan (usan otro camino de E/S), lo que hizo parecer un problema exclusivo de SATA hasta medirlo
+contra el registro de eventos real. Sin la excepción, **cualquier usuario final con esta protección
+activa** (cada vez más frecuente por defecto en Windows 11) vería exactamente el mismo fallo, sin
+ninguna pista de qué está pasando.
+
+### La decisión
+
+El instalador NSIS (`src-tauri/windows/hooks.nsh`, vía `bundle.windows.nsis.installerHooks` de
+Tauri) llama, en `NSIS_HOOK_POSTINSTALL`, a un script bundleado
+(`src-tauri/windows/defender-exception.ps1`, empaquetado en `tauri.conf.json` como
+`scripts/defender-exception.ps1`) que ejecuta `Add-MpPreference
+-ControlledFolderAccessAllowedApplications <ruta de smartctl.exe>`. `NSIS_HOOK_PREUNINSTALL` hace
+el `Remove-MpPreference` simétrico al desinstalar, coherente con la filosofía de "no dejar rastro"
+que ya sigue el resto del proyecto (README, limpieza de `%ProgramData%`). **Ninguno de los dos
+hooks aborta la instalación o desinstalación si falla**: solo se registra en el log del instalador.
+
+La **Protección contra alteraciones** de Windows Defender puede hacer fallar `Add-MpPreference` en
+silencio incluso viniendo de un proceso con privilegios de administrador — está diseñada
+exactamente para eso. Por esta razón, el instalador no es la única vía: la aplicación expone dos
+comandos (`check_smartctl_defender_exception`, `add_smartctl_defender_exception`,
+`src-tauri/src/commands/mod.rs`) que la pantalla de detalle de disco usa para detectar el bloqueo
+(solo cuando un disco no-NVMe aparece `unreadable`, nunca en cada carga de pantalla) y ofrecer
+reintentar la excepción desde la propia interfaz, con instrucciones manuales como último recurso si
+sigue bloqueado. Cubre también a quien activa Control de acceso a carpetas **después** de instalar.
+
+Nueva lógica encapsulada en `src-tauri/src/platform/proteccion_carpetas.rs` (mismo patrón que
+`platform::energia`: la parte pura —comparar una ruta contra una lista— se prueba en unidad, la
+llamada real a PowerShell no, por la misma razón que el resto de `platform/` no la tiene).
+
+### Alternativas descartadas
+
+- **Tocar el registro de Windows directamente** en vez de los cmdlets `Get-MpPreference`/
+  `Add-MpPreference`/`Remove-MpPreference`. Descartado: no es una vía documentada ni soportada por
+  Microsoft para gestionar Control de acceso a carpetas, y el propio hallazgo de esta ADR (la
+  Protección contra alteraciones bloquea cambios incluso con privilegios de administrador) sugiere
+  que una escritura directa al registro tendría el mismo problema, sin la garantía de que Defender
+  la reconozca como válida.
+- **Separar los envoltorios `#[tauri::command]` a un fichero excluido de la cobertura para
+  compensar el coste de las nuevas pruebas.** No aplica aquí: los dos comandos nuevos son
+  deliberadamente fusibles de una sola línea que delegan en `platform::proteccion_carpetas`, ya
+  cubierto donde puede estarlo.
+- **Enseñar a `DiskSummary`/`UnknownReason` un motivo específico ("bloqueado por Defender").**
+  Descartado tras diseñarlo: la información de bloqueo es del binario `smartctl.exe` en conjunto,
+  no de un disco en particular, así que encajaba peor en un campo por-disco que en una comprobación
+  independiente que la pantalla de detalle dispara bajo demanda.
+- **Preguntar al usuario en el propio instalador antes de añadir la excepción.** Descartado: fricción
+  adicional para una acción que el usuario ya pidió explícitamente resolver "para que no haya
+  problema" — se documenta aquí y en el README en vez de interrumpir la instalación.
+
+### Consecuencias
+
+- Sin permiso nuevo de Tauri (los dos comandos son propios, no de un plugin). Sin dependencia
+  nueva: PowerShell ya era el mecanismo elegido para invocar procesos externos en este proyecto
+  (`smartctl.exe`, `chkdsk`).
+- La pantalla de detalle de disco no comprueba el bloqueo salvo cuando ya hay indicio de fallo
+  (`unknownReason === "unreadable"` y el disco no es NVMe): evita lanzar PowerShell en cada carga de
+  pantalla de un disco sano.
+- `HeroPanel.svelte` (panel general) **no** se tocó para distinguir este motivo del genérico
+  "unreadable": haría falta subir la comprobación asíncrona al padre en vez de mantenerla como un
+  `$derived` síncrono, y el detalle de disco ya da la explicación y la acción concreta. Queda
+  abierto si se quiere ese mismo detalle también en el panel general.
+- Verificación real (instalar en una máquina con Control de acceso a carpetas activo y confirmar
+  que la excepción aparece sin tocar nada a mano) queda pendiente, igual que T115 — no se puede
+  automatizar sin una máquina así.

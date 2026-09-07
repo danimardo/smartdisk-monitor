@@ -53,6 +53,14 @@ reconocido" la primera vez que se ejecute. Es un aviso esperado, no un fallo: pa
 información" → "Ejecutar de todas formas". Conseguir un certificado de firma de código es trabajo
 pendiente, ya recogido en [`docs/roadmap.md`](docs/roadmap.md).
 
+El instalador también añade `smartctl.exe` a las aplicaciones permitidas de **Control de acceso a
+carpetas** de Windows Defender: sin esa excepción, un disco SATA se ve siempre como "sin datos
+SMART" aunque funcione perfectamente para todo lo demás (Windows bloquea el comando de bajo nivel
+que SMART necesita). Si tu equipo tiene activada la **Protección contra alteraciones** de Defender,
+esa excepción puede fallar en silencio incluso viniendo del instalador; en ese caso, la propia
+pantalla de detalle del disco afectado ofrece un botón para reintentarlo, con instrucciones
+manuales como último recurso (`docs/open-questions.md` J.56, `docs/decisions.md` ADR-043).
+
 ## Desarrollo
 
 ```sh
