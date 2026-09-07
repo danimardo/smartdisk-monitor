@@ -76,6 +76,7 @@
   "settings.theme.system": "Según el sistema",
   "settings.useSystemAccent": "Usar el color de acento de Windows",
   "chart.gapRange": "sin datos {from} – {to}",
+  "chart.readout": "{value} {unit} · {when}",
   "chart.noSamples": "Sin muestras en el intervalo",
   "chart.emptyLabel": "Gráfica sin datos en el intervalo elegido.",
   "chart.summaryLabel": "Serie de {from} a {to} en {unit}. Mínimo {min}, máximo {max}, último valor {last}. Use las flechas para recorrer los puntos.",

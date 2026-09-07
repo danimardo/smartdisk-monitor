@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
 import TimeSeriesChart from "./TimeSeriesChart.svelte";
@@ -135,5 +135,34 @@ describe("TimeSeriesChart", () => {
       }
     });
     await expect.element(page.getByText(/sin datos/)).toBeInTheDocument();
+  });
+
+  it("al recorrer la serie con el teclado, el valor sale en un globo junto al punto, no en el pie", async () => {
+    const { container } = await render(TimeSeriesChart, {
+      props: {
+        points: [
+          { t: Date.parse("2026-09-06T08:00:00Z"), v: 41 },
+          { t: Date.parse("2026-09-06T09:00:00Z"), v: 45 },
+          { t: Date.parse("2026-09-06T10:00:00Z"), v: 43 }
+        ],
+        from: Date.parse("2026-09-06T08:00:00Z"),
+        to: Date.parse("2026-09-06T10:00:00Z"),
+        expectedIntervalMs: 3_600_000,
+        unit: "°C"
+      }
+    });
+    const svg = container.querySelector("svg")!;
+    (svg as unknown as HTMLElement).focus();
+    await userEvent.keyboard("{Home}");
+
+    // El globo (aria-hidden) y la región viva llevan el valor.
+    const globo = container.querySelector('[aria-hidden="true"]');
+    expect(globo?.textContent).toContain("41");
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain("41");
+
+    // El pie ya no repite el valor: sigue mostrando su contexto (aquí no hay huecos ⇒ vacío salvo
+    // los extremos de fecha), nunca «41 °C».
+    const pie = container.querySelector("figcaption")!;
+    expect(pie.textContent).not.toContain("41 °C");
   });
 });

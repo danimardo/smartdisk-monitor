@@ -21,6 +21,8 @@
     icon = "pulse" as IconName,
     state = null as HealthState | null,
     series = [] as Punto[],
+    /** Unidad de la serie (p. ej. "°C", "%"): el globo de lectura de la sparkline la muestra. */
+    unidad = "",
     provenance = "",
     /** Marca de dato obsoleto, p. ej. "hace 12 min". Se muestra junto a la procedencia. */
     age = null as string | null
@@ -54,7 +56,13 @@
       {value}
     </span>
     {#if hayCurva}
-      <Sparkline points={series} color={state ? healthToken[state].fg : "var(--sdm-accent)"} height={22} />
+      <Sparkline
+        points={series}
+        color={state ? healthToken[state].fg : "var(--sdm-accent)"}
+        height={22}
+        interactivo
+        {unidad}
+      />
     {/if}
   {/if}
 

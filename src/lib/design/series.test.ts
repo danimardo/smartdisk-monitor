@@ -3,6 +3,7 @@ import {
   areaSuave,
   cadencia,
   huecos,
+  masCercano,
   rangoConAire,
   rutaSuave,
   submuestrear,
@@ -270,5 +271,23 @@ describe("rutaSuave / areaSuave — curva del trazo (dominio de píxeles)", () =
     expect(d.startsWith("M 0,100")).toBe(true);
     expect(d.trimEnd().endsWith("Z")).toBe(true);
     expect(d).toContain("20,100");
+  });
+});
+
+describe("masCercano — el punto de tiempo más próximo (cursor de lectura de las gráficas)", () => {
+  const p = [
+    { t: 0, v: 1 },
+    { t: 100, v: 2 },
+    { t: 250, v: 3 }
+  ];
+
+  it("devuelve el más cercano a cada lado del punto medio", () => {
+    expect(masCercano(p, 40)?.t).toBe(0);
+    expect(masCercano(p, 60)?.t).toBe(100);
+    expect(masCercano(p, 900)?.t).toBe(250);
+  });
+
+  it("lista vacía: undefined", () => {
+    expect(masCercano([], 10)).toBeUndefined();
   });
 });

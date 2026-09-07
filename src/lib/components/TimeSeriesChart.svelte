@@ -14,9 +14,18 @@
    *    hueco es un hueco» se implementa una sola vez;
    *  - el eje X y las leyendas van en hora local y todo texto pasa por i18n.
    */
-  import { areaSuave, cadencia, huecos, rangoConAire, rutaSuave, tramos } from "$lib/design/series";
+  import {
+    areaSuave,
+    cadencia,
+    huecos,
+    masCercano,
+    rangoConAire,
+    rutaSuave,
+    tramos
+  } from "$lib/design/series";
   import { formatDateTime, formatTime } from "$lib/design/format";
   import { i18n, t } from "$lib/i18n";
+  import ChartTip from "./ChartTip.svelte";
 
   const formatNumber = (v: number) => v.toLocaleString(i18n.formatLocale, { maximumFractionDigits: 2 });
 
@@ -94,9 +103,7 @@
     if (!readable.length) return null;
     const rect = el.getBoundingClientRect();
     const time = t0 + ((clientX - rect.left - GUTTER) / (rect.width - GUTTER)) * span;
-    let best = readable[0];
-    for (const p of readable) if (Math.abs(p.t - time) < Math.abs(best.t - time)) best = p;
-    return best.i;
+    return masCercano(readable, time)?.i ?? null;
   }
 
   function moveCursor(delta: number) {
@@ -138,9 +145,20 @@
 
   const hayMuestras = $derived(readable.length > 0);
   const gid = `tsc-${crypto.randomUUID()}`;
+
+  /** Texto del globo (`ChartTip`) y de la región viva: valor + instante del punto señalado. */
+  const lectura = $derived(
+    hovered && hovered.v !== null
+      ? t("chart.readout", {
+          value: formatNumber(hovered.v),
+          unit,
+          when: formatDateTime(new Date(hovered.t).toISOString())
+        })
+      : ""
+  );
 </script>
 
-<figure class="m-0 flex flex-col gap-3">
+<figure class="relative m-0 flex flex-col gap-3">
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- La gráfica es interactiva a propósito: cursor de lectura con ratón y teclado, como exige la
@@ -267,26 +285,26 @@
     {/if}
   </svg>
 
+  {#if hovered && hovered.v !== null}
+    <ChartTip x={scaleX(hovered.t)} y={scaleY(hovered.v)} anchoContenedor={width} texto={lectura} />
+  {/if}
+  <!-- El valor lo lleva el globo (visual); esto lo anuncia al recorrer la serie con el teclado. -->
+  <span class="sr-only" aria-live="polite">{lectura}</span>
+
   <figcaption class="flex flex-wrap items-center justify-between gap-2 text-2xs text-fg-faint">
     <span>{formatDateTime(new Date(t0).toISOString())}</span>
 
-    {#if hovered && hovered.v !== null}
-      <span class="sdm-num text-fg"
-        >{formatTime(new Date(hovered.t).toISOString())} · {formatNumber(hovered.v)} {unit}</span
-      >
-    {:else}
-      <span class="flex flex-wrap gap-3">
-        {#each gaps.slice(0, 2) as gap}
-          <span>
-            {t("chart.gapRange", {
-              from: formatTime(new Date(gap.from).toISOString()),
-              to: formatTime(new Date(gap.to).toISOString())
-            })}
-          </span>
-        {/each}
-        {#if resolutionLabel}<span>{resolutionLabel}</span>{/if}
-      </span>
-    {/if}
+    <span class="flex flex-wrap gap-3">
+      {#each gaps.slice(0, 2) as gap}
+        <span>
+          {t("chart.gapRange", {
+            from: formatTime(new Date(gap.from).toISOString()),
+            to: formatTime(new Date(gap.to).toISOString())
+          })}
+        </span>
+      {/each}
+      {#if resolutionLabel}<span>{resolutionLabel}</span>{/if}
+    </span>
 
     {#if warnLabel || critLabel}
       <span class="flex gap-3">

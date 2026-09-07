@@ -261,8 +261,17 @@ Reglas asociadas:
 ### E.2 · Interacción de la gráfica · `DECIDIDO`
 
 Cursor de lectura con ratón (el punto más cercano en tiempo) y con teclado (flechas, `Inicio`,
-`Fin`, `Esc`), que muestra hora y valor en el pie. Sin zoom ni selección por arrastre en la v1.0:
-el `SegmentedControl` de intervalo cubre la necesidad y evita un patrón nuevo. Implementado.
+`Fin`, `Esc`). **Actualizado**: el valor y el instante del punto salen en un **globo flotante junto
+al punto** (`ChartTip`), no en el pie — usando la aplicación real el usuario no miraba el pie
+porque tiene la vista en el gráfico. El pie vuelve a mostrar siempre su contexto fijo (rangos «sin
+datos» y resolución). Una región `aria-live` anuncia el valor al recorrer la serie con el teclado.
+Sin zoom ni selección por arrastre en la v1.0: el `SegmentedControl` de intervalo cubre la
+necesidad y evita un patrón nuevo.
+
+**Alcance**: la lectura está en `TimeSeriesChart` y, opt-in (`interactivo`), en `Sparkline` — que
+la usa `MetricCard` para las cuatro miniaturas del detalle de disco. La sparkline de fondo
+decorativa de `HeroPanel`/`DiskCard` (`pointer-events-none`) no la lleva. `ChartTip` entra en el
+catálogo (`ui-design.md` §3) para que toda gráfica futura la muestre igual. Implementado.
 
 ### E.3 · Retención mínima frente a US-022 · `DECIDIDO`
 

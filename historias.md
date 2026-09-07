@@ -5140,8 +5140,17 @@ Reglas asociadas:
 #### E.2 · Interacción de la gráfica · `DECIDIDO`
 
 Cursor de lectura con ratón (el punto más cercano en tiempo) y con teclado (flechas, `Inicio`,
-`Fin`, `Esc`), que muestra hora y valor en el pie. Sin zoom ni selección por arrastre en la v1.0:
-el `SegmentedControl` de intervalo cubre la necesidad y evita un patrón nuevo. Implementado.
+`Fin`, `Esc`). **Actualizado**: el valor y el instante del punto salen en un **globo flotante junto
+al punto** (`ChartTip`), no en el pie — usando la aplicación real el usuario no miraba el pie
+porque tiene la vista en el gráfico. El pie vuelve a mostrar siempre su contexto fijo (rangos «sin
+datos» y resolución). Una región `aria-live` anuncia el valor al recorrer la serie con el teclado.
+Sin zoom ni selección por arrastre en la v1.0: el `SegmentedControl` de intervalo cubre la
+necesidad y evita un patrón nuevo.
+
+**Alcance**: la lectura está en `TimeSeriesChart` y, opt-in (`interactivo`), en `Sparkline` — que
+la usa `MetricCard` para las cuatro miniaturas del detalle de disco. La sparkline de fondo
+decorativa de `HeroPanel`/`DiskCard` (`pointer-events-none`) no la lleva. `ChartTip` entra en el
+catálogo (`ui-design.md` §3) para que toda gráfica futura la muestre igual. Implementado.
 
 #### E.3 · Retención mínima frente a US-022 · `DECIDIDO`
 
@@ -6281,7 +6290,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
 | `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
-| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
+| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
 | `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
@@ -6296,7 +6305,8 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
-| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo |
+| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
+| `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |
@@ -6318,7 +6328,7 @@ del catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, ex
 | `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo |
 | `FilterBar` | US-021 (filtrar eventos por disco, volumen, nivel y proveedor) | requiere selección múltiple, que `Select` no ofrece |
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
-| `Tooltip` | `Button.disabledReason`, procedencia de métricas | hoy la norma exige el dato pero no hay dónde mostrarlo |
+| `Tooltip` | `Button.disabledReason`, procedencia de métricas | hoy la norma exige el dato pero no hay dónde mostrarlo. Sigue pendiente: `ChartTip` (ya en el catálogo) es solo el globo de lectura de una gráfica, otro patrón — este es «pasar el ratón por un elemento → texto de ayuda» |
 
 #### Cuándo crear un componente nuevo
 

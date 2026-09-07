@@ -20,6 +20,25 @@ export interface Punto {
  *  `MULTIPLO_HUECO` de `src-tauri/src/domain/series.rs`, que ya inserta los `null` en el backend. */
 const FACTOR_HUECO = 2.5;
 
+/** El elemento cuyo `t` está más cerca de `objetivo`. Búsqueda lineal: las series de esta
+ *  aplicación caben en 1.500 puntos y el cursor de lectura de las gráficas (`ChartTip`) la llama en
+ *  cada movimiento del ratón, donde un bucle simple es de sobra. `undefined` si la lista va vacía. */
+export function masCercano<T extends { t: number }>(
+  items: readonly T[],
+  objetivo: number
+): T | undefined {
+  let mejor: T | undefined;
+  let mejorDist = Infinity;
+  for (const it of items) {
+    const dist = Math.abs(it.t - objetivo);
+    if (dist < mejorDist) {
+      mejorDist = dist;
+      mejor = it;
+    }
+  }
+  return mejor;
+}
+
 /** Cadencia de referencia entre muestras (ms): la que indique el llamante, o la mediana de las
  *  separaciones reales. Una separación mayor que `FACTOR_HUECO`× esto se trata como hueco. */
 export function cadencia(points: readonly Punto[], expectedIntervalMs: number | null): number {

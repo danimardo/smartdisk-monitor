@@ -1,10 +1,12 @@
+import { userEvent } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
 import Sparkline from "./Sparkline.svelte";
 import type { Punto } from "$lib/design/series";
 
-/** `Sparkline` es contexto, no lectura: sin ejes ni etiqueta. Lo que jsdom no ve bien —el trazo por
- *  tramos, curvo, y que no se degenera al estirarse— se comprueba aquí. */
+/** `Sparkline` por defecto es contexto, no lectura: sin ejes ni etiqueta. Con `interactivo` gana el
+ *  cursor de lectura (ratón + teclado) y el globo. Lo que jsdom no ve bien —el trazo por tramos,
+ *  curvo, el foco y el cursor— se comprueba aquí. */
 
 describe("Sparkline", () => {
   it("serie de dos tramos: dos <path> de trazo, nunca una línea que cruza el hueco", async () => {
@@ -108,5 +110,46 @@ describe("Sparkline", () => {
     const svg = conLabel.container.querySelector("svg")!;
     expect(svg.getAttribute("role")).toBe("img");
     expect(svg.getAttribute("aria-label")).toBe("Temperatura 24 h");
+  });
+
+  it("sin `interactivo`: no es foco de teclado ni reacciona (fondo decorativo intacto)", async () => {
+    const { container } = await render(Sparkline, {
+      props: {
+        points: [
+          { t: 0, v: 1 },
+          { t: 1, v: 2 }
+        ] as Punto[]
+      }
+    });
+    const svg = container.querySelector("svg")!;
+    expect(svg.hasAttribute("tabindex")).toBe(false);
+    expect(container.querySelector('[aria-live="polite"]')).toBeNull();
+  });
+
+  it("con `interactivo`: es foco de teclado con nombre accesible, y las flechas mueven el cursor", async () => {
+    const points: Punto[] = Array.from({ length: 12 }, (_, i) => ({
+      t: Date.parse("2026-09-06T08:00:00Z") + i * 3_600_000,
+      v: 40 + i
+    }));
+    const { container } = await render(Sparkline, {
+      props: { points, interactivo: true, unidad: "°C" }
+    });
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("role")).toBe("img");
+    expect(svg.getAttribute("tabindex")).toBe("0");
+    expect(svg.getAttribute("aria-label")).toBeTruthy();
+
+    const viva = container.querySelector('[aria-live="polite"]')!;
+    expect(viva.textContent).toBe(""); // nada señalado todavía
+
+    (svg as unknown as HTMLElement).focus();
+    await userEvent.keyboard("{Home}");
+    // El primer punto: 40 °C. El globo y la región viva lo anuncian.
+    expect(viva.textContent).toContain("40");
+    expect(viva.textContent).toContain("°C");
+    expect(container.querySelector('[aria-hidden="true"]')?.textContent).toContain("40");
+
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}");
+    expect(viva.textContent).toContain("42");
   });
 });

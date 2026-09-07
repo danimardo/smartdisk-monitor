@@ -198,6 +198,7 @@
       value={disk.temperatureC !== null ? formatTemperature(disk.temperatureC) : null}
       state={tempState}
       series={mini["temperature_celsius"] ?? []}
+      unidad="°C"
       provenance={disk.provenance?.source ?? ""}
     />
     <MetricCard
@@ -205,18 +206,21 @@
       icon="pulse"
       value={disk.activityPercent !== null ? formatPercent(disk.activityPercent) : null}
       series={mini["activity_percent"] ?? []}
+      unidad="%"
     />
     <MetricCard
       label={t("disk.wear")}
       icon="wear"
       value={disk.percentageUsed !== null ? formatPercent(disk.percentageUsed) : null}
       series={mini["percentage_used"] ?? []}
+      unidad="%"
     />
     <MetricCard
       label={t("disk.powerOnHours")}
       icon="clock"
       value={disk.powerOnHours !== null ? formatHours(disk.powerOnHours) : null}
       series={mini["power_on_hours"] ?? []}
+      unidad="h"
     />
   </div>
 
