@@ -154,7 +154,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
 | `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
-| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un `polyline` por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
+| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
 | `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
@@ -169,7 +169,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
-| `TimeSeriesChart` | gráficas históricas | huecos como huecos; umbral del fabricante discontinuo |
+| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |

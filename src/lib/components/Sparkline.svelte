@@ -4,13 +4,22 @@
    *
    *  Las cuatro reglas de trazado (`Sparkline.md` §2), todas heredadas de `$lib/design/series.ts`
    *  para implementarlas una sola vez:
-   *   1. un `<polyline>` por tramo continuo; los `null` parten la serie y **nunca** se interpola;
+   *   1. un `<path>` curvo (spline monótona, `rutaSuave`) por tramo continuo; los `null` y los
+   *      saltos grandes parten la serie y **nunca** se interpola sobre un hueco;
    *   2. `vector-effect="non-scaling-stroke"` en todo trazo — con `preserveAspectRatio="none"`
    *      (necesario para estirar el SVG al ancho del contenedor) el grosor se deforma y a alturas
    *      pequeñas el trazo desaparece;
    *   3. eje X por tiempo real, no por índice;
    *   4. rango con 8 % de aire, salvo que se pase `min`/`max`. */
-  import { cadencia, rangoConAire, submuestrear, tramos, type Punto } from "$lib/design/series";
+  import {
+    areaSuave,
+    cadencia,
+    rangoConAire,
+    rutaSuave,
+    submuestrear,
+    tramos,
+    type Punto
+  } from "$lib/design/series";
 
   let {
     points = [] as Punto[],
@@ -43,11 +52,6 @@
   const sy = (v: number) => height - ((v - rango.min) / (rango.max - rango.min || 1)) * height;
 
   const runs = $derived(tramos(muestras, step).map((run) => run.map((p) => ({ x: sx(p.t), y: sy(p.v) }))));
-
-  const linea = (run: { x: number; y: number }[]) =>
-    run.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
-  const relleno = (run: { x: number; y: number }[]) =>
-    `${run[0].x.toFixed(2)},${height} ${linea(run)} ${run.at(-1)!.x.toFixed(2)},${height}`;
 
   const hayAlgo = $derived(runs.some((r) => r.length > 0));
 </script>
@@ -86,10 +90,10 @@
     {#each runs as run}
       {#if run.length > 1}
         {#if fill}
-          <polygon points={relleno(run)} fill="url(#{gradId})" />
+          <path d={areaSuave(run, height)} fill="url(#{gradId})" />
         {/if}
-        <polyline
-          points={linea(run)}
+        <path
+          d={rutaSuave(run)}
           fill="none"
           stroke="currentColor"
           stroke-width={strokeWidth}

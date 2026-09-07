@@ -18,9 +18,13 @@ pub struct Punto {
 }
 
 /// Un salto mayor que este múltiplo de la cadencia esperada es un hueco real, nunca una
-/// continuidad que la gráfica deba interpolar (mismo criterio 1,5× que ya usa
-/// `domain::retencion` para sus cubos y `domain::salud` para frescura, con su propio multiplicador).
-const MULTIPLO_HUECO: f64 = 1.5;
+/// continuidad que la gráfica deba interpolar. **2,5× ≈ dos ciclos**: un ciclo de recopilación
+/// puntualmente perdido (equipo que se suspende o va cargado) ya no parte la línea en puntos
+/// sueltos —lo que el usuario veía como confeti—, pero una parada de minutos u horas sí queda como
+/// hueco (`docs/open-questions.md` E.1). Debe coincidir con `FACTOR_HUECO` de
+/// `src/lib/design/series.ts`. `domain::retencion` y `domain::salud` usan 1,5× para lo suyo (cubos,
+/// frescura), que es otra decisión.
+const MULTIPLO_HUECO: f64 = 2.5;
 
 fn parse_utc(s: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).ok()
@@ -31,7 +35,7 @@ fn epoch_ms(t: OffsetDateTime) -> i64 {
 }
 
 /// Completa una serie con huecos explícitos en los extremos y entre muestras consecutivas
-/// (`docs/open-questions.md` E.1: "todo salto mayor que 1,5× la cadencia es hueco, incluidos los
+/// (`docs/open-questions.md` E.1: "todo salto mayor que 2,5× la cadencia es hueco, incluidos los
 /// extremos"). `muestras` debe venir ordenada por tiempo ascendente y con timestamps parseables;
 /// una que no lo sea se descarta en vez de hacer fallar la serie entera.
 pub fn completar_serie(
@@ -244,15 +248,15 @@ mod tests {
 
     #[test]
     fn un_salto_justo_por_debajo_del_umbral_no_es_hueco() {
-        // Cadencia de 60s, umbral 1,5× = 90s. Un salto de 89s no es hueco.
+        // Cadencia de 60s, umbral 2,5× = 150s. Un salto de 149s no es hueco.
         let muestras = vec![
             ("2026-09-04T00:00:00Z".to_string(), 40.0),
-            ("2026-09-04T00:01:29Z".to_string(), 41.0),
+            ("2026-09-04T00:02:29Z".to_string(), 41.0),
         ];
         let puntos = completar_serie(
             &muestras,
             t("2026-09-04T00:00:00Z"),
-            t("2026-09-04T00:01:29Z"),
+            t("2026-09-04T00:02:29Z"),
             60_000,
         );
         assert_eq!(puntos.len(), 2, "sin hueco intermedio");
@@ -260,14 +264,15 @@ mod tests {
 
     #[test]
     fn un_salto_justo_por_encima_del_umbral_si_es_hueco() {
+        // Cadencia de 60s, umbral 2,5× = 150s. Un salto de 151s sí es hueco.
         let muestras = vec![
             ("2026-09-04T00:00:00Z".to_string(), 40.0),
-            ("2026-09-04T00:01:31Z".to_string(), 41.0),
+            ("2026-09-04T00:02:31Z".to_string(), 41.0),
         ];
         let puntos = completar_serie(
             &muestras,
             t("2026-09-04T00:00:00Z"),
-            t("2026-09-04T00:01:31Z"),
+            t("2026-09-04T00:02:31Z"),
             60_000,
         );
         assert_eq!(puntos.len(), 3, "hueco intermedio marcado");

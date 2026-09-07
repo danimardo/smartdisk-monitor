@@ -14,7 +14,7 @@
    *    hueco es un hueco» se implementa una sola vez;
    *  - el eje X y las leyendas van en hora local y todo texto pasa por i18n.
    */
-  import { cadencia, huecos, rangoConAire, tramos } from "$lib/design/series";
+  import { areaSuave, cadencia, huecos, rangoConAire, rutaSuave, tramos } from "$lib/design/series";
   import { formatDateTime, formatTime } from "$lib/design/format";
   import { i18n, t } from "$lib/i18n";
 
@@ -28,7 +28,7 @@
     /** Dominio temporal pedido. Si se omite, se usa el que cubran los datos. */
     from = null as number | null,
     to = null as number | null,
-    /** Cadencia esperada entre muestras (ms). Una separación mayor que 1,5× se dibuja como hueco. */
+    /** Cadencia esperada entre muestras (ms). Una separación mayor que 2,5× se dibuja como hueco. */
     expectedIntervalMs = null as number | null,
     warnThreshold = null as number | null,
     warnLabel = "",
@@ -84,11 +84,6 @@
       to: g.to
     }))
   );
-
-  const linea = (run: { x: number; y: number }[]) =>
-    run.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  const relleno = (run: { x: number; y: number }[]) =>
-    `${run[0].x.toFixed(1)},${height} ${linea(run)} ${run.at(-1)!.x.toFixed(1)},${height}`;
 
   /* ---- Cursor de lectura: ratón y teclado (constitución §VII exige teclado en toda interacción) -- */
   let cursor = $state<number | null>(null);
@@ -225,9 +220,9 @@
 
     {#each runs as run}
       {#if run.length > 1}
-        <polygon points={relleno(run)} fill="url(#{gid})" />
-        <polyline
-          points={linea(run)}
+        <path d={areaSuave(run, height)} fill="url(#{gid})" />
+        <path
+          d={rutaSuave(run)}
           fill="none"
           stroke="currentColor"
           stroke-width="2.6"

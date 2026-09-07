@@ -5124,6 +5124,18 @@ Reglas asociadas:
   hueco, nunca se recorta el eje ni se interpola.
 - Tope de **1.500 puntos** por serie; por encima, el backend submuestrea conservando mínimo y máximo
   de cada cubo, y lo indica en la respuesta.
+- **Un salto es un hueco a partir de 2,5× la cadencia** (`MULTIPLO_HUECO` en `domain::series.rs`,
+  `FACTOR_HUECO` en `src/lib/design/series.ts`). Empezó en **1,5×** (`completar_serie`, T060), pero
+  usando la aplicación de verdad el usuario vio que la gráfica del detalle de disco salía como
+  **puntos sueltos**: 1,5× marca como hueco cada ciclo de recopilación puntualmente perdido —normal
+  en un equipo que se suspende o va cargado—, y cada racha de una muestra se dibujaba como un punto
+  solitario. 2,5× ≈ dos ciclos: un salto suelto no parte la línea, una parada de minutos u horas
+  sigue quedando como banda gris. `domain::retencion`/`domain::salud` mantienen su 1,5× (cubos,
+  frescura: otra decisión).
+- **El trazo es una curva suave, no una polilínea recta**: spline cúbica de Hermite **monótona**
+  (`rutaSuave` en `series.ts`), por tramo continuo, que no rebasa el mínimo/máximo de cada segmento
+  —así no aparenta cruzar un umbral ni inventa un pico—. Es «la onda del boceto» sin falsear el
+  dato. `Sparkline` y `TimeSeriesChart` la comparten.
 
 #### E.2 · Interacción de la gráfica · `DECIDIDO`
 
@@ -5145,6 +5157,8 @@ con la app parada a ratos —se cierra, se reinicia el equipo, se acaba de insta
 tiene huecos de horas que `Sparkline` pinta como rayas sueltas (regla «un hueco es un hueco», que
 no cambia). Enseñar el tramo en curso devuelve la onda del boceto y su ancho se adapta a lo que
 hay: un minuto de datos → ventana de un minuto (**sin mínimo de zoom**, decisión del usuario).
+El trazo curvo (spline monótona, E.1) refuerza ese «devuelve la onda»; el corte por tramo del
+`ultimoTramoVisible` (4× P25) es independiente del umbral de hueco de E.1 (2,5×) y no cambia.
 
 - El corte se hace donde una separación supera **4×** el **percentil 25** de las separaciones
   reales (no la mediana: con pocas muestras y un parón, media serie *es* el parón). Un ciclo
@@ -6265,7 +6279,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
 | `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
-| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un `polyline` por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
+| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`; es contexto, no lectura |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
 | `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
@@ -6280,7 +6294,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
-| `TimeSeriesChart` | gráficas históricas | huecos como huecos; umbral del fabricante discontinuo |
+| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |

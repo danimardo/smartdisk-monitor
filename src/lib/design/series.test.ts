@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  areaSuave,
   cadencia,
   huecos,
   rangoConAire,
+  rutaSuave,
   submuestrear,
   tramos,
   ultimoTramoVisible,
@@ -28,15 +30,25 @@ describe("tramos — corta en null y en salto temporal", () => {
     expect(r[1].map((x) => x.v)).toEqual([20, 21]);
   });
 
-  it("un salto mayor que 1,5× la cadencia también parte la serie, aunque no haya null", () => {
+  it("un salto grande (varios ciclos) también parte la serie, aunque no haya null", () => {
     const p: Punto[] = [
       { t: 0, v: 1 },
       { t: 10, v: 2 },
-      { t: 100, v: 3 },
+      { t: 100, v: 3 }, // 90 ms de salto con cadencia 10: 9× → hueco
       { t: 110, v: 4 }
     ];
     const r = tramos(p, 10);
     expect(r).toHaveLength(2);
+  });
+
+  it("un ciclo suelto perdido (≤ 2,5× la cadencia) NO parte la serie", () => {
+    const p: Punto[] = [
+      { t: 0, v: 1 },
+      { t: 10, v: 2 },
+      { t: 32, v: 3 }, // 22 ms con cadencia 10: 2,2× → aún continuo
+      { t: 42, v: 4 }
+    ];
+    expect(tramos(p, 10)).toHaveLength(1);
   });
 
   it("nunca inserta un punto en el hueco: los valores de salida son exactamente los de entrada", () => {
@@ -177,5 +189,86 @@ describe("submuestrear", () => {
     const out = submuestrear(p, 80);
     expect(out.length).toBeLessThan(1000);
     expect(Math.max(...out.map((x) => x.v ?? 0))).toBe(9999);
+  });
+});
+
+describe("rutaSuave / areaSuave — curva del trazo (dominio de píxeles)", () => {
+  const ys = (d: string) =>
+    [...d.matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)].map((m) => Number(m[2]));
+
+  it("empieza en el primer punto del tramo", () => {
+    const d = rutaSuave([
+      { x: 0, y: 5 },
+      { x: 10, y: 8 },
+      { x: 20, y: 3 }
+    ]);
+    expect(d.startsWith("M 0,5")).toBe(true);
+  });
+
+  it("dos puntos: una recta (L), sin curva (C)", () => {
+    const d = rutaSuave([
+      { x: 0, y: 0 },
+      { x: 10, y: 10 }
+    ]);
+    expect(d).toContain(" L ");
+    expect(d).not.toContain(" C ");
+  });
+
+  it("tres o más puntos: curva cúbica (C)", () => {
+    const d = rutaSuave([
+      { x: 0, y: 0 },
+      { x: 10, y: 5 },
+      { x: 20, y: 2 }
+    ]);
+    expect(d).toContain(" C ");
+  });
+
+  it("un pico: la curva no se pasa del valor del pico (spline monótona, sin overshoot)", () => {
+    const d = rutaSuave([
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+      { x: 20, y: 0 }
+    ]);
+    const todas = ys(d);
+    expect(Math.max(...todas)).toBeLessThanOrEqual(10 + 1e-6);
+    expect(Math.min(...todas)).toBeGreaterThanOrEqual(0 - 1e-6);
+  });
+
+  it("un tramo plano queda plano: ninguna coordenada y se desvía", () => {
+    const d = rutaSuave([
+      { x: 0, y: 7 },
+      { x: 10, y: 7 },
+      { x: 20, y: 7 },
+      { x: 30, y: 7 }
+    ]);
+    for (const y of ys(d)) expect(y).toBeCloseTo(7);
+  });
+
+  it("descarta puntos cuyo x no avanza (dos tiempos en el mismo píxel)", () => {
+    const d = rutaSuave([
+      { x: 0, y: 0 },
+      { x: 0, y: 100 },
+      { x: 10, y: 10 }
+    ]);
+    // Se queda con (0,0) y (10,10): una recta, no una vertical imposible.
+    expect(d).toBe("M 0,0 L 10,10");
+  });
+
+  it("menos de dos puntos: cadena vacía para el área", () => {
+    expect(areaSuave([{ x: 0, y: 0 }], 50)).toBe("");
+  });
+
+  it("el área cierra contra la base y termina en Z", () => {
+    const d = areaSuave(
+      [
+        { x: 0, y: 10 },
+        { x: 10, y: 20 },
+        { x: 20, y: 15 }
+      ],
+      100
+    );
+    expect(d.startsWith("M 0,100")).toBe(true);
+    expect(d.trimEnd().endsWith("Z")).toBe(true);
+    expect(d).toContain("20,100");
   });
 });

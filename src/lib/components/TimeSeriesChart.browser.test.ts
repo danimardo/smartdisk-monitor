@@ -115,8 +115,11 @@ describe("TimeSeriesChart", () => {
         expectedIntervalMs: 100
       }
     });
-    // dos tramos continuos ⇒ dos trazos, no un rectángulo hueco
-    expect(container.querySelectorAll("polyline").length).toBe(2);
+    // dos tramos continuos ⇒ dos trazos (cada uno un <path> de línea), no un rectángulo hueco
+    const lineas = container.querySelectorAll('path[fill="none"]');
+    expect(lineas.length).toBe(2);
+    // y son curvas, no polilíneas rectas
+    expect(lineas[0].getAttribute("d")).toContain(" C ");
   });
 
   it("v3: el hueco lleva su leyenda con el rango de horas", async () => {
