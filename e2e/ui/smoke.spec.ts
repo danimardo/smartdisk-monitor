@@ -88,11 +88,14 @@ test.describe("smoke @smoke", () => {
     await instalarIpcFalso(page, RESPUESTAS, { retardoMs: { get_system_events: 600 } });
     await page.goto("/");
 
+    // Por nombre accesible: la `CapacityBar` de cada disco también es un `progressbar`; la barra de
+    // navegación es la que se anuncia como "Cargando…".
+    const barra = page.getByRole("progressbar", { name: es["common.loading"] });
     await page.locator('a[href="/events"]').first().click();
-    await expect(page.getByRole("progressbar")).toBeVisible();
+    await expect(barra).toBeVisible();
     // Y desaparece al terminar.
     await expect(page).toHaveURL(/\/events/);
-    await expect(page.getByRole("progressbar")).toHaveCount(0);
+    await expect(barra).toHaveCount(0);
   });
 
   test("aplica el tema y resuelve el material", async ({ page }) => {
