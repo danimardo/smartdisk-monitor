@@ -173,6 +173,24 @@ pub fn record_occurrence(
     tx.commit()
 }
 
+/// Estampa el `system_events.id` que disparó la última ocurrencia registrada de un grupo
+/// (`alert_occurrences.triggering_event_id`). Lo llama `alerts::agrupacion::procesar` tras insertar
+/// una ocurrencia a partir de una regla `events.*` (spec 003): así el detalle de la alerta enlaza
+/// al suceso del sistema que la originó. «La última» es la de mayor `id` (autoincremento).
+pub fn set_triggering_event_ultima_ocurrencia(
+    conn: &Connection,
+    alert_group_id: &str,
+    system_event_id: i64,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE alert_occurrences SET triggering_event_id = ?2
+         WHERE id = (SELECT id FROM alert_occurrences
+                     WHERE alert_group_id = ?1 ORDER BY id DESC LIMIT 1)",
+        params![alert_group_id, system_event_id],
+    )?;
+    Ok(())
+}
+
 pub fn set_status(
     conn: &Connection,
     id: &str,

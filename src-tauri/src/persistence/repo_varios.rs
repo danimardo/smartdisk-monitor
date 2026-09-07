@@ -67,6 +67,17 @@ fn row_to_event(row: &rusqlite::Row) -> rusqlite::Result<SystemEvent> {
 /// `INSERT OR IGNORE` es correcto aquí porque cerrar y reabrir la aplicación relee desde el cursor
 /// sin volver a insertar lo ya visto, y esto es la última red de seguridad (FR-017).
 pub fn insert_event_if_new(conn: &Connection, e: &SystemEvent) -> rusqlite::Result<bool> {
+    Ok(insert_event_returning_new_id(conn, e)?.is_some())
+}
+
+/// Como `insert_event_if_new` pero devuelve el `id` de la fila recién insertada, o `None` si el
+/// evento ya existía (`(channel, record_id)` es su identidad). `commands::refresh_events` lo usa
+/// para evaluar contra el motor de alertas **solo** los eventos nuevos del ciclo, con su
+/// `system_events.id` real (spec 003, «solo hacia delante», `docs/open-questions.md` J.51).
+pub fn insert_event_returning_new_id(
+    conn: &Connection,
+    e: &SystemEvent,
+) -> rusqlite::Result<Option<i64>> {
     let filas = conn.execute(
         "INSERT OR IGNORE INTO system_events (
             channel, record_id, occurred_at_utc, provider, event_id, level, message, raw_xml,
@@ -87,7 +98,25 @@ pub fn insert_event_if_new(conn: &Connection, e: &SystemEvent) -> rusqlite::Resu
             e.dedup_hash,
         ],
     )?;
-    Ok(filas > 0)
+    Ok((filas > 0).then(|| conn.last_insert_rowid()))
+}
+
+/// Eventos de un mismo disco desde `desde_utc` (inclusive), más antiguos primero. La usa la ventana
+/// de correlación de ráfaga de `alerts::eventos` (60 s hacia atrás, `docs/alert-rules.md` §3.5).
+/// Devuelve `(id, provider, event_id, occurred_at_utc)` — lo mínimo para decidir la correlación.
+pub fn eventos_de_dispositivo_desde(
+    conn: &Connection,
+    device_id: &str,
+    desde_utc: &str,
+) -> rusqlite::Result<Vec<(i64, String, i64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, provider, event_id, occurred_at_utc FROM system_events
+         WHERE device_id = ?1 AND occurred_at_utc >= ?2 ORDER BY occurred_at_utc",
+    )?;
+    let filas = stmt.query_map(params![device_id, desde_utc], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, String>(3)?))
+    })?;
+    filas.collect()
 }
 
 pub fn list_events_for_device(

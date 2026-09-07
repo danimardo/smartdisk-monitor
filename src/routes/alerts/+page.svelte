@@ -265,6 +265,14 @@
               })}
               value={ocurrencia.value !== null ? String(ocurrencia.value) : t("common.notAvailable")}
             />
+            {#if ocurrencia.eventId}
+              <a
+                class="self-start text-xs font-medium text-accent hover:underline"
+                href="/events?focus={ocurrencia.eventId}"
+              >
+                {t("alerts.timeline.viewEvent")}
+              </a>
+            {/if}
           {/each}
         </div>
       </div>

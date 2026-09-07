@@ -145,7 +145,7 @@ Los marcados **(obs.)** se han observado realmente, con su frecuencia en 180 dí
 | `Ntfs` | 130 | Advertencia | La estructura se reparó sola | `events.filesystem_repaired` | advertencia |
 | `Ntfs` | 131 | Error | **La estructura no se puede corregir; hay que ejecutar chkdsk** | `events.filesystem_error` | crítico |
 | `Ntfs` | 132 | Advertencia | Demasiadas reparaciones seguidas; Windows deja de informar | `events.filesystem_repair_storm` | crítico |
-| `Microsoft-Windows-Ntfs` | 140 | Advertencia | No se pudo vaciar el registro de transacción **(obs., 173)** | `events.delayed_write` | advertencia |
+| `Microsoft-Windows-Ntfs` | 140 | Advertencia | No se pudo vaciar el registro de transacción **(obs., 173)** | `events.delayed_write` | advertencia; **crítico si el volumen no es extraíble** (como `Ntfs` 50 — manda §2, spec 003) |
 | `Microsoft-Windows-NvmeDisk` | 500 | Error | Comando NVM completado con error | `events.disk_error` | crítico |
 | `Microsoft-Windows-NvmeDisk` | 501 | Advertencia | Caché de escritura habilitada en el dispositivo | — | **informativo, no genera alerta** |
 | `stornvme` / `storahci` | 129 | Advertencia | Restablecimiento del dispositivo **(obs., 4)** | `events.controller_reset` | advertencia; crítico con ≥3 en 1 h |
@@ -203,6 +203,15 @@ distintos. Por eso el motor aplica, además de la deduplicación de §1, una **v
 - Si entre ellos hay un `disk` 157 (extracción imprevista), **ese es la causa** y los demás pasan a
   ser ocurrencias suyas en lugar de grupos propios: son su consecuencia, no cuatro problemas.
 - La cronología del grupo conserva todos los eventos con su hora, para poder reconstruir qué pasó.
+- **Sin un `disk` 157 en la ventana, no se colapsa nada**: dos errores graves distintos a la vez
+  (p. ej. `Ntfs` 55 + `disk` 7) crean dos grupos, porque son dos problemas reales (spec 003, Q3).
+
+**Implementación** (spec `003-puente-eventos-alertas`, `docs/open-questions.md` J.49): la ventana es
+tiempo de reloj, no ciclos del recopilador. Al evaluar un evento nuevo, `alerts::eventos` consulta
+`system_events` los eventos del mismo disco en los 60 s anteriores (ya persistidos), así una ráfaga
+partida entre dos ciclos de 30 s se correlaciona igual. Si el `disk` 157 llega en un ciclo posterior
+a un síntoma ya agrupado, ese grupo derivado se **resuelve** (era consecuencia) y el 157 crea su
+`device.removed_unexpected`.
 
 ### 3.6 Asociación evento → disco
 

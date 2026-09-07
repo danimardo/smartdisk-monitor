@@ -1652,9 +1652,9 @@ fn reconciliar_inventario(
 
     reconciliar_volumenes(conn, volumenes_leidos, &mapa_disco_a_device_id, ahora)?;
 
-    // Bajas: lo que estaba presente y no vino en esta lectura. La clasificación de "expulsión
-    // segura" frente a "retirada sin aviso" (T026) exige el colector de eventos de la Historia 4;
-    // hasta entonces se marca como retirado sin generar la distinción de severidad de alerta.
+    // Bajas: lo que estaba presente y no vino en esta lectura. La alerta `device.removed_unexpected`
+    // y su distinción USB / disco fijo la aplica `refresh_inventory` a partir de estos ids (spec
+    // 003, `docs/open-questions.md` J.47).
     let presentes_antes: Vec<String> = repo_inventario::list_present_devices(conn)
         .map_err(rusqlite_err_to_app_error)?
         .into_iter()
@@ -1826,6 +1826,27 @@ fn evaluar_estancamiento_colectores(
     }
 }
 
+/// Barrido de resolución por tiempo de las alertas de eventos de Windows (spec 003). Se llama desde
+/// `post_procesar_ciclo`; las transiciones se notifican y emiten como las demás.
+fn resolver_alertas_de_eventos_vencidas(
+    state: &State<AppState>,
+) -> Vec<(String, crate::alerts::agrupacion::Transicion)> {
+    let ahora = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    match crate::alerts::eventos::resolver_grupos_de_eventos_vencidos(&conn, &ahora) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = ?e, "no se pudo evaluar la resolución de alertas de eventos");
+            vec![]
+        }
+    }
+}
+
 fn post_procesar_ciclo(
     app: &tauri::AppHandle,
     state: &State<AppState>,
@@ -1835,6 +1856,9 @@ fn post_procesar_ciclo(
     // produce ciclo): se evalúa aquí, en el post-proceso común, sobre el `source_health` acumulado.
     let mut transiciones = resultado.transiciones.clone();
     transiciones.extend(evaluar_estancamiento_colectores(state));
+    // Resolución por tiempo de las alertas de eventos de Windows («24 h / 7 días sin repetición»,
+    // spec 003): también independiente de un ciclo concreto, como `collector.stalled`.
+    transiciones.extend(resolver_alertas_de_eventos_vencidas(state));
 
     crate::alerts::notificaciones::procesar_transiciones(app, &transiciones);
     let ids: Vec<String> = transiciones
@@ -1906,7 +1930,7 @@ pub fn refresh_now(
                 .conn
                 .lock()
                 .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-            refresh_events(&conn);
+            let transiciones_eventos = refresh_events(&conn);
             let mut source_health = state
                 .source_health
                 .lock()
@@ -1920,6 +1944,7 @@ pub fn refresh_now(
             )?);
             let mut transiciones = r.transiciones;
             transiciones.extend(transiciones_capacidad);
+            transiciones.extend(transiciones_eventos);
             Ok(ResultadoCicloPost {
                 transiciones,
                 degradadas,
@@ -2000,7 +2025,7 @@ fn ejecutar_ciclo(
             .conn
             .lock()
             .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-        refresh_events(&conn);
+        resultado.transiciones.extend(refresh_events(&conn));
     }
 
     if trabajos.contains(&TipoTrabajo::SmartCompleto) {
@@ -2132,12 +2157,17 @@ pub fn iniciar_planificador(app: tauri::AppHandle) {
 /// en `System`. Ampliar a más canales es una lista, no un cambio de diseño.
 const CANAL_EVENTOS: &str = "System";
 
-/// Lee los eventos nuevos del canal, los correlaciona con el inventario ya reconciliado y los
-/// persiste. Un fallo aquí **nunca** aborta `refresh_now` ni el bucle en segundo plano: es la
-/// misma tolerancia (SC-008) que ya aplica `refresh_smart` disco a disco — perder un ciclo de
-/// eventos es mucho mejor que perder el resto de la recopilación por su culpa.
+/// Lee los eventos nuevos del canal, los correlaciona con el inventario ya reconciliado, los
+/// persiste y los evalúa contra el motor de alertas (`alerts::eventos::evaluar_eventos`, spec 003).
+/// Devuelve las transiciones para que `post_procesar_ciclo` las notifique como las demás.
+///
+/// Un fallo aquí **nunca** aborta `refresh_now` ni el bucle en segundo plano: es la misma
+/// tolerancia (SC-008) que ya aplica `refresh_smart` disco a disco — perder un ciclo de eventos es
+/// mucho mejor que perder el resto de la recopilación por su culpa.
 #[cfg(windows)]
-fn refresh_events(conn: &rusqlite::Connection) {
+fn refresh_events(
+    conn: &rusqlite::Connection,
+) -> Vec<(String, crate::alerts::agrupacion::Transicion)> {
     use crate::domain::tipos::SystemEvent;
 
     let bookmark_previo = match repo_varios::get_cursor(conn, CANAL_EVENTOS) {
@@ -2155,12 +2185,12 @@ fn refresh_events(conn: &rusqlite::Connection) {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(canal = CANAL_EVENTOS, error = ?e, "no se pudieron leer los eventos del sistema");
-            return;
+            return vec![];
         }
     };
 
     if eventos.is_empty() {
-        return;
+        return vec![];
     }
 
     let dispositivos = repo_inventario::list_present_devices(conn).unwrap_or_else(|e| {
@@ -2179,6 +2209,11 @@ fn refresh_events(conn: &rusqlite::Connection) {
                 })
         })
         .collect();
+    let rfc3339 = &time::format_description::well_known::Rfc3339;
+
+    // Solo los eventos **recién insertados** este ciclo se evalúan: los históricos ya ingeridos no
+    // (spec 003, «solo hacia delante», `docs/open-questions.md` J.51).
+    let mut nuevos_para_regla: Vec<crate::alerts::eventos::EventoParaRegla> = Vec::new();
 
     for evento in &eventos {
         let (device_id, confianza) = crate::domain::correlacion::correlacionar(
@@ -2208,31 +2243,73 @@ fn refresh_events(conn: &rusqlite::Connection) {
             level: evento.level,
             message: evento.message.clone(),
             raw_xml: Some(evento.raw_xml.clone()),
-            device_id,
+            device_id: device_id.clone(),
             volume_id: None,
             mapping_confidence: confianza,
             dedup_hash,
         };
-        if let Err(e) = repo_varios::insert_event_if_new(conn, &evento_dominio) {
-            tracing::warn!(
-                canal = %evento.channel, record_id = evento.record_id, error = ?e,
-                "no se pudo persistir un evento del sistema"
-            );
+        match repo_varios::insert_event_returning_new_id(conn, &evento_dominio) {
+            Ok(Some(id)) => {
+                let Ok(occurred_at) = time::OffsetDateTime::parse(&evento.occurred_at_utc, rfc3339)
+                else {
+                    tracing::warn!(
+                        canal = %evento.channel, record_id = evento.record_id,
+                        "fecha de evento ilegible; no se evalúa contra el motor de alertas"
+                    );
+                    continue;
+                };
+                let es_extraible = device_id
+                    .as_deref()
+                    .and_then(|id| dispositivos.iter().find(|d| d.id == id))
+                    .map(|d| crate::alerts::eventos::es_disco_extraible(d.bus_type.as_deref()))
+                    .unwrap_or(false);
+                nuevos_para_regla.push(crate::alerts::eventos::EventoParaRegla {
+                    id,
+                    provider: evento.provider.clone(),
+                    event_id: evento.event_id,
+                    occurred_at,
+                    level: evento.level,
+                    device_id,
+                    volume_id: None,
+                    mapping_confidence: confianza,
+                    es_extraible,
+                    message: evento.message.clone(),
+                });
+            }
+            Ok(None) => {} // ya existía: no se re-evalúa
+            Err(e) => {
+                tracing::warn!(
+                    canal = %evento.channel, record_id = evento.record_id, error = ?e,
+                    "no se pudo persistir un evento del sistema"
+                );
+            }
         }
     }
 
     if let Some(bookmark) = bookmark_nuevo {
         let ahora = time::OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
+            .format(rfc3339)
             .unwrap_or_default();
         if let Err(e) = repo_varios::set_cursor(conn, CANAL_EVENTOS, bookmark.as_bytes(), &ahora) {
             tracing::warn!(canal = CANAL_EVENTOS, error = ?e, "no se pudo guardar el cursor de eventos");
         }
     }
+
+    match crate::alerts::eventos::evaluar_eventos(conn, &nuevos_para_regla) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = ?e, "no se pudieron evaluar las reglas de eventos");
+            vec![]
+        }
+    }
 }
 
 #[cfg(not(windows))]
-fn refresh_events(_conn: &rusqlite::Connection) {}
+fn refresh_events(
+    _conn: &rusqlite::Connection,
+) -> Vec<(String, crate::alerts::agrupacion::Transicion)> {
+    vec![]
+}
 
 /// Persiste `volume_free_bytes` como muestra periódica de cada volumen enlazado a un disco
 /// monitorizado y evalúa `capacity.low` / `capacity.critical` sobre esa serie (v3, ADR-036). Antes,
@@ -2347,10 +2424,38 @@ fn refresh_inventory(
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
     let cambios = reconciliar_inventario(&conn, &leidos, &volumenes, &ahora)?;
     // Un fallo al evaluar la capacidad no debe tumbar la reconciliación de inventario (SC-008).
-    let transiciones = evaluar_capacidad_volumenes(&conn, &ahora).unwrap_or_else(|e| {
+    let mut transiciones = evaluar_capacidad_volumenes(&conn, &ahora).unwrap_or_else(|e| {
         tracing::warn!(error = ?e, "no se pudo evaluar la capacidad de los volúmenes");
         Vec::new()
     });
+
+    // `device.removed_unexpected` (spec 003, J.47): un disco **no USB** que desaparece del
+    // inventario, y su resolución al reaparecer. Tolerante a fallos como el resto.
+    for id in &cambios.ids_dados_de_baja {
+        let es_usb = repo_inventario::get_device(&conn, id)
+            .ok()
+            .flatten()
+            .and_then(|d| d.bus_type)
+            .is_some_and(|b| b.eq_ignore_ascii_case("usb"));
+        match crate::alerts::eventos::device_removed_unexpected_por_baja(&conn, id, es_usb, &ahora)
+        {
+            Ok(Some(t)) => transiciones.push(t),
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(disco = %id, error = ?e, "no se pudo evaluar device.removed_unexpected")
+            }
+        }
+    }
+    for id in &cambios.ids_dados_de_alta {
+        match crate::alerts::eventos::resolver_device_removed_por_reaparicion(&conn, id, &ahora) {
+            Ok(Some(t)) => transiciones.push(t),
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(disco = %id, error = ?e, "no se pudo resolver device.removed_unexpected")
+            }
+        }
+    }
+
     Ok((cambios, transiciones))
 }
 
@@ -5814,6 +5919,7 @@ mod tests_comandos_alertas {
             resuelto: false,
             value: Some(75.0),
             occurred_at_utc: "2026-09-04T10:00:00Z".to_string(),
+            triggering_event_id: None,
         };
         procesar(conn, &ev).unwrap();
         repo_alertas::list_groups(conn).unwrap()[0].id.clone()

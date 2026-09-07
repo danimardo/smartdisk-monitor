@@ -14,8 +14,11 @@ use agrupacion::{EvaluacionAlerta, Transicion};
 
 pub mod agrupacion;
 pub mod ciclo;
+pub mod correlacion_rafaga;
+pub mod eventos;
 pub mod motor;
 pub mod notificaciones;
+pub mod reglas_eventos;
 
 /// Muestras que se piden por métrica: la histéresis más larga en alcance pide 3 ciclos; una de
 /// margen basta para decidir a la vez activación y resolución sin dos consultas.
@@ -272,6 +275,7 @@ fn aplicar_contexto(
             resuelto: !activa,
             value: None,
             occurred_at_utc: ahora_utc.to_string(),
+            triggering_event_id: None,
         },
     )?;
     let clave = agrupacion::deduplication_key(rule_key, None, None, Some(context));
@@ -342,6 +346,7 @@ fn aplicar_simple(
             resuelto,
             value: serie.first().copied(),
             occurred_at_utc: ahora_utc.to_string(),
+            triggering_event_id: None,
         },
     )?;
     let clave = agrupacion::deduplication_key(rule_key, Some(device_id), None, None);
@@ -371,6 +376,7 @@ fn aplicar_par_volumen(
             resuelto,
             value: pares.first().map(|&(libre, _)| libre),
             occurred_at_utc: ahora_utc.to_string(),
+            triggering_event_id: None,
         },
     )?;
     let clave = agrupacion::deduplication_key(rule_key, None, Some(volume_id), None);
@@ -402,6 +408,7 @@ fn aplicar_par(
             resuelto,
             value: pares.first().map(|&(spare, _)| spare),
             occurred_at_utc: ahora_utc.to_string(),
+            triggering_event_id: None,
         },
     )?;
     let clave = agrupacion::deduplication_key(rule_key, Some(device_id), None, None);

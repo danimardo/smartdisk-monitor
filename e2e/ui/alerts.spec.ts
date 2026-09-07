@@ -30,7 +30,19 @@ test.describe("alertas", () => {
       "capacity.low",
       "smart.unreadable",
       "temp.above_vendor_limit",
-      "collector.stalled"
+      "collector.stalled",
+      "events.disk_error",
+      "events.filesystem_error",
+      "events.controller_reset",
+      "events.paging_error",
+      "events.delayed_write",
+      "events.disk_predictive",
+      "events.storage_space_degraded",
+      "events.filesystem_repaired",
+      "events.filesystem_repair_storm",
+      "events.io_retry",
+      "device.removed_unexpected",
+      "inventory.duplicate_id"
     ] as const;
     await instalarIpcFalso(page, {
       ...RESPUESTAS,
@@ -42,6 +54,39 @@ test.describe("alertas", () => {
       await expect(page.getByText(es[`alert.rule.${r}.title`]).first()).toBeVisible();
     }
     await expect(page.getByText(/^alert\.rule\./)).toHaveCount(0);
+  });
+
+  test("una alerta de evento enlaza a su suceso en la pantalla de eventos", async ({ page }) => {
+    const alerta = {
+      ...alertaActiva,
+      id: "a-ev",
+      ruleKey: "events.disk_error",
+      deduplicationKey: "events.disk_error|device:disk-0|disk:7"
+    };
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_alert_groups: [alerta],
+      get_alert_detail: {
+        ...alerta,
+        facts: [{ labelKey: "alert.fact.ruleKey", value: "events.disk_error" }],
+        occurrences: [
+          { occurredAt: new Date().toISOString(), cycle: 1, value: null, eventId: "2", context: null }
+        ],
+        relatedEvents: []
+      }
+    });
+    await page.goto("/alerts");
+    await page.getByRole("button", { name: new RegExp(es["alert.rule.events.disk_error.title"]) }).click();
+
+    const enlace = page.getByRole("link", { name: es["alerts.timeline.viewEvent"] });
+    await expect(enlace).toHaveAttribute("href", "/events?focus=2");
+    await enlace.click();
+
+    await expect(page).toHaveURL(/\/events\?focus=2/);
+    // El evento 2 del fixture (disk 157) queda resaltado / abierto.
+    await expect(
+      page.getByText("El disco 1 se ha extraído de forma imprevista del sistema.").first()
+    ).toBeVisible();
   });
 
   test("cambiar al filtro de resueltas vacía la lista (la única alerta está activa)", async ({ page }) => {

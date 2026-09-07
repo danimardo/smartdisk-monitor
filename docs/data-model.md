@@ -68,6 +68,13 @@
 - Disco o volumen asociado y confianza de asociación.
 - Hash de deduplicación.
 
+### `alert_occurrences`
+
+- `alert_group_id`, `cycle`, `occurred_at_utc`, `value_real`, `context_json`.
+- `triggering_event_id`: el `system_events.id` del evento de Windows que provocó esta ocurrencia.
+  Lo rellenan las reglas `events.*` (spec `003-puente-eventos-alertas`); `null` para SMART y
+  capacidad. El detalle de una alerta lo usa para enlazar al suceso en la pantalla de eventos.
+
 ### `alert_groups`
 
 - `id`, `deduplication_key`, `rule_key`.

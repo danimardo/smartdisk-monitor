@@ -27,6 +27,10 @@ pub struct EvaluacionAlerta {
     pub resuelto: bool,
     pub value: Option<f64>,
     pub occurred_at_utc: String,
+    /// `system_events.id` del evento de Windows que provocó esta evaluación, para
+    /// `alert_occurrences.triggering_event_id` (spec 003). `None` para las reglas de SMART y
+    /// capacidad, que no salen de un evento.
+    pub triggering_event_id: Option<i64>,
 }
 
 /// `deduplication_key = rule_key | target_type:target_id | context` (`alert-rules.md` §1). Se
@@ -87,14 +91,14 @@ pub fn procesar(conn: &Connection, ev: &EvaluacionAlerta) -> rusqlite::Result<Tr
     );
     let existente = repo_alertas::get_group_by_dedup_key(conn, &clave)?;
 
-    match (existente, ev.severity_si_activa) {
-        (None, None) => Ok(Transicion::SinCambio),
+    let transicion = match (existente, ev.severity_si_activa) {
+        (None, None) => Ok::<_, rusqlite::Error>(Transicion::SinCambio),
 
         // Primer episodio: no había grupo y la regla se activa.
         (None, Some(severidad)) => {
             let grupo = AlertGroup {
                 id: clave.clone(),
-                deduplication_key: clave,
+                deduplication_key: clave.clone(),
                 rule_key: ev.rule_key.clone(),
                 target_device_id: ev.target_device_id.clone(),
                 target_volume_id: ev.target_volume_id.clone(),
@@ -163,7 +167,24 @@ pub fn procesar(conn: &Connection, ev: &EvaluacionAlerta) -> rusqlite::Result<Tr
 
         // Nada que hacer: sigue sin activarse, o activo pero aún no resuelve.
         _ => Ok(Transicion::SinCambio),
+    }?;
+
+    // Si la transición registró una ocurrencia y el evaluador nos dio el evento de Windows que la
+    // provocó (reglas `events.*`), lo estampamos en esa ocurrencia (`alert_occurrences`
+    // .triggering_event_id) — así el detalle de la alerta puede enlazar al suceso (spec 003, D5).
+    if let Some(evento_id) = ev.triggering_event_id {
+        if matches!(
+            transicion,
+            Transicion::CreadaActiva
+                | Transicion::OcurrenciaRepetida
+                | Transicion::Escalada
+                | Transicion::Reactivada
+        ) {
+            repo_alertas::set_triggering_event_ultima_ocurrencia(conn, &clave, evento_id)?;
+        }
     }
+
+    Ok(transicion)
 }
 
 #[cfg(test)]
@@ -193,6 +214,7 @@ mod tests {
             resuelto,
             value: Some(75.0),
             occurred_at_utc: cuando.to_string(),
+            triggering_event_id: None,
         }
     }
 
@@ -210,6 +232,41 @@ mod tests {
         assert_eq!(grupos.len(), 1);
         assert_eq!(grupos[0].status, AlertStatus::Active);
         assert_eq!(grupos[0].occurrence_count, 1);
+    }
+
+    #[test]
+    fn el_evento_disparador_se_estampa_en_la_ocurrencia_de_la_regla_de_evento() {
+        let conn = conn_de_prueba();
+        // Un `system_events` real al que apuntar (FK).
+        conn.execute(
+            "INSERT INTO system_events (id, channel, record_id, occurred_at_utc, provider, event_id, level, mapping_confidence, dedup_hash)
+             VALUES (77, 'System', 1, '2026-09-04T10:00:00Z', 'disk', 7, 'error', 'exact', 'h')",
+            [],
+        )
+        .unwrap();
+
+        let mut ev = evaluacion(Some(AlertSeverity::Critical), false, "2026-09-04T10:00:00Z");
+        ev.rule_key = "events.disk_error".to_string();
+        ev.triggering_event_id = Some(77);
+
+        procesar(&conn, &ev).unwrap();
+        let id = repo_alertas::list_groups(&conn).unwrap()[0].id.clone();
+        let ocurrencias = repo_alertas::list_occurrences(&conn, &id).unwrap();
+        assert_eq!(ocurrencias[0].triggering_event_id, Some(77));
+
+        // Una regla sin evento (SMART) deja el campo en `None`.
+        let ev_smart = evaluacion(Some(AlertSeverity::Warning), false, "2026-09-04T11:00:00Z");
+        procesar(&conn, &ev_smart).unwrap();
+        let id_smart = repo_alertas::list_groups(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|g| g.rule_key == "temp.above_configured_warn")
+            .unwrap()
+            .id;
+        assert_eq!(
+            repo_alertas::list_occurrences(&conn, &id_smart).unwrap()[0].triggering_event_id,
+            None
+        );
     }
 
     #[test]

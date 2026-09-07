@@ -49,6 +49,24 @@ fn politica_notificacion(rule_key: &str) -> Notificacion {
         "temp.above_configured_crit" => TrasCooldown(Duration::minutes(15)),
         "collector.stalled" => TrasCooldown(Duration::hours(1)),
         "capacity.low" | "capacity.critical" => SoloAlCambiarDeNivel,
+
+        // Reglas de eventos de Windows (`docs/alert-rules.md` §2, columna «Cooldown de
+        // notificación» — spec 003).
+        "events.disk_error"
+        | "events.filesystem_error"
+        | "events.controller_reset"
+        | "events.delayed_write"
+        | "events.storage_space_degraded" => TrasCooldown(Duration::hours(1)),
+        "events.paging_error" | "events.io_retry" => TrasCooldown(Duration::hours(6)),
+        "events.filesystem_repaired" | "events.disk_predictive" => {
+            TrasCooldown(Duration::hours(24))
+        }
+        "events.filesystem_repair_storm" => TrasCooldown(Duration::hours(6)),
+        // «ninguno: siempre notifica».
+        "device.removed_unexpected" => Siempre,
+        // «una sola vez por par»: notifica al crearse, nunca en ocurrencia repetida.
+        "inventory.duplicate_id" => SoloAlCambiarDeNivel,
+
         _ => TrasCooldown(Duration::hours(1)),
     }
 }
@@ -339,6 +357,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn las_reglas_de_eventos_tienen_la_politica_de_alert_rules_md_2() {
+        use Notificacion::*;
+        assert_eq!(
+            politica_notificacion("events.disk_error"),
+            TrasCooldown(Duration::hours(1))
+        );
+        assert_eq!(
+            politica_notificacion("events.paging_error"),
+            TrasCooldown(Duration::hours(6))
+        );
+        assert_eq!(
+            politica_notificacion("events.io_retry"),
+            TrasCooldown(Duration::hours(6))
+        );
+        assert_eq!(
+            politica_notificacion("events.filesystem_repaired"),
+            TrasCooldown(Duration::hours(24))
+        );
+        assert_eq!(
+            politica_notificacion("events.disk_predictive"),
+            TrasCooldown(Duration::hours(24))
+        );
+        assert_eq!(
+            politica_notificacion("events.filesystem_repair_storm"),
+            TrasCooldown(Duration::hours(6))
+        );
+        // «ninguno: siempre notifica».
+        assert_eq!(politica_notificacion("device.removed_unexpected"), Siempre);
+        // «una sola vez por par»: nunca en ocurrencia repetida.
+        assert_eq!(
+            politica_notificacion("inventory.duplicate_id"),
+            SoloAlCambiarDeNivel
+        );
+    }
+
     /// Todas las reglas en alcance (`docs/open-questions.md` J.16) tienen sus claves de i18n
     /// propias: sin ellas, `enviar_y_registrar` mostraría la clave cruda como título de la
     /// notificación.
@@ -358,6 +412,18 @@ mod tests {
             "capacity.low",
             "capacity.critical",
             "collector.stalled",
+            "events.disk_error",
+            "events.filesystem_error",
+            "events.filesystem_repaired",
+            "events.filesystem_repair_storm",
+            "events.controller_reset",
+            "events.paging_error",
+            "events.io_retry",
+            "events.delayed_write",
+            "events.disk_predictive",
+            "events.storage_space_degraded",
+            "device.removed_unexpected",
+            "inventory.duplicate_id",
         ] {
             for sufijo in ["title", "summary"] {
                 let clave = format!("alert.rule.{regla}.{sufijo}");

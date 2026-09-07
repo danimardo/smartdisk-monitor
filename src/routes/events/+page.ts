@@ -10,6 +10,9 @@ import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ url }) => {
   const deviceId = url.searchParams.get("deviceId") ?? undefined;
+  // `?focus=<id>` llega desde el detalle de una alerta de evento: se resalta ese suceso al abrir
+  // la pantalla (`docs/ui-contract.md`, spec 003). Un id que no esté en la página no es un error.
+  const focusId = url.searchParams.get("focus") ?? undefined;
   const page = await getSystemEvents({ deviceId, limit: 200 });
-  return { page, deviceId };
+  return { page, deviceId, focusId };
 };

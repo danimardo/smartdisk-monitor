@@ -322,6 +322,10 @@ invoke<string>("get_event_raw_xml", { eventId: string })
 El `message` llega en el idioma de Windows y se muestra tal cual, marcado como texto original del
 sistema (`open-questions.md` J.4). **Se renderiza como texto, jamás como HTML.**
 
+La ruta acepta `?focus=<system_events.id>` (spec `003-puente-eventos-alertas`): al llegar desde el
+enlace «Ver el suceso» del detalle de una alerta de evento, la pantalla resalta y abre ese suceso.
+Un id que no esté en la página cargada no es un error: la pantalla se comporta como sin parámetro.
+
 ### 3.6 Pruebas
 
 ```ts

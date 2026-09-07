@@ -19,6 +19,7 @@
     eventId = 0,
     occurredAt = "",
     mappingConfidence = "exact" as "exact" | "inferred" | "unknown",
+    highlighted = false,
     onselect = undefined as (() => void) | undefined
   } = $props();
 
@@ -32,7 +33,9 @@
 </script>
 
 <button
-  class="flex w-full items-center gap-3 border-t border-hairline py-2 text-left"
+  class="flex w-full items-center gap-3 border-t border-hairline py-2 text-left {highlighted
+    ? 'bg-accent-soft'
+    : ''}"
   onclick={() => onselect?.()}
 >
   <span

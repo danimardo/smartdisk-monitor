@@ -46,6 +46,18 @@
     nextCursor = data.page.nextCursor;
   });
 
+  /** `?focus=<id>` (spec 003): al llegar desde el detalle de una alerta de evento, se resalta y se
+   *  abre el suceso que la disparó. Si no está en la página cargada, no se hace nada (sin error). */
+  let yaEnfocado = $state(false);
+  $effect(() => {
+    if (yaEnfocado || !data.focusId) return;
+    const objetivo = eventos.find((e) => e.id === data.focusId);
+    if (objetivo) {
+      yaEnfocado = true;
+      void seleccionar(objetivo);
+    }
+  });
+
   let filtroSeleccionado = $state<Record<string, string[]>>({ level: [], provider: [] });
 
   const gruposFiltro = [
@@ -150,6 +162,7 @@
             eventId={evento.eventId}
             occurredAt={evento.occurredAt}
             mappingConfidence={evento.mappingConfidence}
+            highlighted={evento.id === data.focusId}
             onselect={() => seleccionar(evento)}
           />
         {/snippet}
