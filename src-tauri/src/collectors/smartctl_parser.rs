@@ -36,6 +36,11 @@ pub struct SmartctlResult {
     /// Autoevaluación SMART global (`smart_status.passed`). `None` cuando el dispositivo no la
     /// expone, que no es lo mismo que haberla fallado.
     pub health_passed: Option<bool>,
+    /// Límite operativo de temperatura que declara el fabricante vía SCT (`temperature.op_limit_max`
+    /// de `smartctl`). Presente sobre todo en discos SATA que exponen la tabla SCT; ausente en la
+    /// mayoría de NVMe, que se quedan con el umbral configurado. Alimenta `temp.above_vendor_limit`
+    /// y la línea de umbral de la gráfica del Hero.
+    pub vendor_temp_limit_c: Option<f64>,
     pub metrics: Vec<MetricaLeida>,
 }
 
@@ -85,6 +90,9 @@ struct CapacityJson {
 #[derive(Debug, Deserialize)]
 struct TemperatureJson {
     current: Option<f64>,
+    /// Límite operativo del fabricante (tabla SCT). `smartctl` no expone un "crítico del
+    /// fabricante" fiable en el JSON, así que solo se aprovecha este (`open-questions.md` J.16).
+    op_limit_max: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +200,7 @@ pub fn parse_smartctl_json(json: &str) -> Result<SmartctlResult, ErrorParseo> {
         firmware_version: raiz.firmware_version,
         user_capacity_bytes: raiz.user_capacity.and_then(|c| c.bytes),
         health_passed: raiz.smart_status.and_then(|s| s.passed),
+        vendor_temp_limit_c: raiz.temperature.as_ref().and_then(|t| t.op_limit_max),
         metrics,
     })
 }
@@ -239,7 +248,7 @@ mod tests {
         "serial_number": "WD-WX12A34B5678",
         "firmware_version": "83.00A83",
         "user_capacity": { "bytes": 4000787030016 },
-        "temperature": { "current": 31 },
+        "temperature": { "current": 31, "op_limit_max": 65 },
         "power_on_time": { "hours": 8760 },
         "power_cycle_count": 120,
         "smart_status": { "passed": true }
@@ -339,6 +348,19 @@ mod tests {
             .find(|m| m.metric_key == "temperature_celsius")
             .unwrap();
         assert_eq!(temp.value, 42.0);
+    }
+
+    #[test]
+    fn lee_el_limite_de_temperatura_del_fabricante_cuando_el_disco_lo_declara() {
+        let r = parse_smartctl_json(SALIDA_ATA).unwrap();
+        assert_eq!(r.vendor_temp_limit_c, Some(65.0));
+    }
+
+    #[test]
+    fn sin_op_limit_max_el_limite_del_fabricante_queda_ausente_no_a_cero() {
+        // El NVMe de ejemplo trae `temperature.current` pero no `op_limit_max`.
+        let r = parse_smartctl_json(SALIDA_NVME).unwrap();
+        assert_eq!(r.vendor_temp_limit_c, None);
     }
 
     #[test]

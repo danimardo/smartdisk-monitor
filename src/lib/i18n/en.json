@@ -201,6 +201,8 @@
   "alert.rule.capacity.critical.summary": "This volume is about to run out of space.",
   "alert.rule.smart.unreadable.title": "The disk is not answering SMART queries",
   "alert.rule.smart.unreadable.summary": "Several cycles in a row without being able to read SMART data from a disk that used to provide it. Its capacity and Windows events are still watched.",
+  "alert.rule.collector.stalled.title": "A collector hasn't completed a cycle in a while",
+  "alert.rule.collector.stalled.summary": "One of the data sources hasn't completed a read for several intervals. The data it shows may be out of date.",
   "alert.fact.ruleKey": "Rule",
   "alert.fact.lastValue": "Last value",
   "tray.open": "Open SmartDisk Monitor",

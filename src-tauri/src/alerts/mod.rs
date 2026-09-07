@@ -119,15 +119,32 @@ pub fn evaluar_smart(
         None::<fn(&[f64]) -> bool>,
         ahora_utc,
     )?);
-    transiciones.push(aplicar_simple(
-        conn,
-        device_id,
-        "temp.above_configured_warn",
-        &serie("temperature_celsius")?,
-        |s| motor::evaluar_temperatura_configurada_warn(s, cfg.temp_warn_c),
-        Some(|s: &[f64]| motor::resuelve_temperatura_configurada_warn(s, cfg.temp_warn_c)),
-        ahora_utc,
-    )?);
+    // Umbral de aviso de temperatura: si el disco declara el límite operativo del fabricante
+    // (`temperature.op_limit_max`, serie `vendor_temp_limit_celsius`), esa es la referencia y se
+    // evalúa `temp.above_vendor_limit`; si no, el umbral configurado con `temp.above_configured_warn`
+    // (`alert-rules.md` §2, `open-questions.md` J.16). El crítico siempre es el configurado: no hay
+    // un crítico del fabricante fiable en el JSON de `smartctl`.
+    let limite_fabricante = serie("vendor_temp_limit_celsius")?.first().copied();
+    match limite_fabricante {
+        Some(umbral) => transiciones.push(aplicar_simple(
+            conn,
+            device_id,
+            "temp.above_vendor_limit",
+            &serie("temperature_celsius")?,
+            move |s| motor::evaluar_temperatura_configurada_warn(s, umbral),
+            Some(move |s: &[f64]| motor::resuelve_temperatura_configurada_warn(s, umbral)),
+            ahora_utc,
+        )?),
+        None => transiciones.push(aplicar_simple(
+            conn,
+            device_id,
+            "temp.above_configured_warn",
+            &serie("temperature_celsius")?,
+            |s| motor::evaluar_temperatura_configurada_warn(s, cfg.temp_warn_c),
+            Some(|s: &[f64]| motor::resuelve_temperatura_configurada_warn(s, cfg.temp_warn_c)),
+            ahora_utc,
+        )?),
+    }
     transiciones.push(aplicar_simple(
         conn,
         device_id,
@@ -188,6 +205,77 @@ pub fn evaluar_unreadable(
         Some(motor::resuelve_unreadable),
         ahora_utc,
     )?))
+}
+
+/// Una fuente de métricas vigilada por `collector.stalled`: su nombre estable (va en el `context` y
+/// en la clave de deduplicación), cuándo completó un ciclo por última vez (`None` = nunca) y cada
+/// cuánto se espera que lo complete.
+pub struct FuenteVigilada<'a> {
+    pub nombre: &'a str,
+    pub last_success_at: Option<&'a str>,
+    pub intervalo: time::Duration,
+}
+
+/// `collector.stalled` (`alert-rules.md` §2): por cada fuente cuyo último ciclo correcto quede más
+/// de 3 intervalos atrás, una advertencia con `context = <nombre de la fuente>` y sin objetivo; si
+/// vuelve a completar un ciclo, resuelve. Una fuente que **nunca** tuvo éxito (`last_success_at`
+/// nulo) no dispara aquí: de eso ya avisa `source:degraded` / el inventario vacío
+/// (`open-questions.md` J.16). La llama `commands::post_procesar_ciclo` con el `source_health` del
+/// estado y los intervalos de `planificador.rs`.
+pub fn evaluar_collector_stalled(
+    conn: &Connection,
+    ahora_utc: &str,
+    fuentes: &[FuenteVigilada<'_>],
+) -> rusqlite::Result<Vec<(String, Transicion)>> {
+    let rfc = &time::format_description::well_known::Rfc3339;
+    let Ok(ahora) = time::OffsetDateTime::parse(ahora_utc, rfc) else {
+        return Ok(vec![]);
+    };
+    let mut transiciones = Vec::with_capacity(fuentes.len());
+    for f in fuentes {
+        let Some(ultimo_txt) = f.last_success_at else {
+            continue;
+        };
+        let Ok(ultimo) = time::OffsetDateTime::parse(ultimo_txt, rfc) else {
+            continue;
+        };
+        let estancado = motor::colector_estancado(ahora - ultimo, f.intervalo);
+        transiciones.push(aplicar_contexto(
+            conn,
+            "collector.stalled",
+            f.nombre,
+            estancado,
+            ahora_utc,
+        )?);
+    }
+    Ok(transiciones)
+}
+
+/// Como `aplicar_simple` pero para una regla que no apunta a un disco ni a un volumen: solo se
+/// distingue por su `context` (`collector.stalled` → nombre de la fuente). Recibe ya decidido si la
+/// condición se cumple ahora; la resolución es simplemente su negación.
+fn aplicar_contexto(
+    conn: &Connection,
+    rule_key: &str,
+    context: &str,
+    activa: bool,
+    ahora_utc: &str,
+) -> rusqlite::Result<(String, Transicion)> {
+    let transicion = agrupacion::procesar(
+        conn,
+        &EvaluacionAlerta {
+            rule_key: rule_key.to_string(),
+            target_device_id: None,
+            target_volume_id: None,
+            context: Some(context.to_string()),
+            severity_si_activa: activa.then_some(AlertSeverity::Warning),
+            resuelto: !activa,
+            value: None,
+            occurred_at_utc: ahora_utc.to_string(),
+        },
+    )?;
+    let clave = agrupacion::deduplication_key(rule_key, None, None, Some(context));
+    Ok((clave, transicion))
 }
 
 /// Evalúa `capacity.low` y `capacity.critical` para un volumen, sobre la serie de `volume_free_bytes`
@@ -738,5 +826,290 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(g2.status, AlertStatus::Resolved);
+    }
+
+    // ---- temp.above_vendor_limit (v3) ----
+
+    /// Inserta el límite del fabricante y N lecturas de temperatura, evaluando `evaluar_smart` en
+    /// cada una (como haría `refresh_smart`).
+    fn ciclos_de_temperatura(conn: &Connection, limite: Option<f64>, temps: &[(&str, f64)]) {
+        for (cuando, t) in temps {
+            if let Some(l) = limite {
+                insertar(conn, "vendor_temp_limit_celsius", l, cuando);
+            }
+            insertar(conn, "temperature_celsius", *t, cuando);
+            evaluar_smart(conn, "d1", cuando, &ConfigUmbrales::default()).unwrap();
+        }
+    }
+
+    #[test]
+    fn temp_above_vendor_limit_se_activa_tras_tres_ciclos_por_encima_del_limite_del_fabricante() {
+        let conn = conn_de_prueba();
+        ciclos_de_temperatura(
+            &conn,
+            Some(65.0),
+            &[
+                ("2026-09-04T10:00:00Z", 68.0),
+                ("2026-09-04T10:05:00Z", 68.0),
+                ("2026-09-04T10:10:00Z", 68.0),
+            ],
+        );
+        let g = repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+            .unwrap()
+            .expect("no se activó temp.above_vendor_limit");
+        assert_eq!(g.status, AlertStatus::Active);
+        assert_eq!(g.severity, AlertSeverity::Warning);
+    }
+
+    #[test]
+    fn temp_above_vendor_limit_no_se_activa_sin_ninguna_lectura_de_temperatura() {
+        let conn = conn_de_prueba();
+        // Solo el límite, ninguna temperatura.
+        insertar(
+            &conn,
+            "vendor_temp_limit_celsius",
+            65.0,
+            "2026-09-04T10:00:00Z",
+        );
+        evaluar_smart(
+            &conn,
+            "d1",
+            "2026-09-04T10:00:00Z",
+            &ConfigUmbrales::default(),
+        )
+        .unwrap();
+        assert!(
+            repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn temp_above_vendor_limit_respeta_la_histeresis_de_tres_ciclos() {
+        let conn = conn_de_prueba();
+        ciclos_de_temperatura(
+            &conn,
+            Some(65.0),
+            &[
+                ("2026-09-04T10:00:00Z", 68.0),
+                ("2026-09-04T10:05:00Z", 68.0),
+            ],
+        );
+        assert!(
+            repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+                .unwrap()
+                .is_none_or(|g| g.status != AlertStatus::Active),
+            "con dos ciclos todavía no"
+        );
+        ciclos_de_temperatura(&conn, Some(65.0), &[("2026-09-04T10:10:00Z", 68.0)]);
+        let g = repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+            .unwrap()
+            .expect("al tercer ciclo sí");
+        assert_eq!(g.status, AlertStatus::Active);
+    }
+
+    #[test]
+    fn temp_above_vendor_limit_deduplica_en_un_solo_grupo() {
+        let conn = conn_de_prueba();
+        let temps: Vec<(String, f64)> = (0..5)
+            .map(|m| (format!("2026-09-04T10:{m:02}:00Z"), 68.0))
+            .collect();
+        let refs: Vec<(&str, f64)> = temps.iter().map(|(s, t)| (s.as_str(), *t)).collect();
+        ciclos_de_temperatura(&conn, Some(65.0), &refs);
+        let g = repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Active);
+        assert!(
+            g.occurrence_count >= 3,
+            "no deduplicó: {}",
+            g.occurrence_count
+        );
+    }
+
+    #[test]
+    fn temp_above_vendor_limit_resuelve_con_margen_y_puede_recaer() {
+        let conn = conn_de_prueba();
+        // episodio 1
+        ciclos_de_temperatura(
+            &conn,
+            Some(65.0),
+            &[
+                ("2026-09-04T10:00:00Z", 68.0),
+                ("2026-09-04T10:05:00Z", 68.0),
+                ("2026-09-04T10:10:00Z", 68.0),
+            ],
+        );
+        // 3 ciclos a ≤ (65 − 3) = 62 → resuelve
+        ciclos_de_temperatura(
+            &conn,
+            Some(65.0),
+            &[
+                ("2026-09-04T10:15:00Z", 60.0),
+                ("2026-09-04T10:20:00Z", 60.0),
+                ("2026-09-04T10:25:00Z", 60.0),
+            ],
+        );
+        let g = repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Resolved);
+
+        // recae
+        ciclos_de_temperatura(
+            &conn,
+            Some(65.0),
+            &[
+                ("2026-09-04T10:30:00Z", 70.0),
+                ("2026-09-04T10:35:00Z", 70.0),
+                ("2026-09-04T10:40:00Z", 70.0),
+            ],
+        );
+        let g = repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Active);
+        assert_eq!(g.cycle, 2);
+    }
+
+    #[test]
+    fn un_disco_con_limite_del_fabricante_no_dispara_temp_above_configured_warn() {
+        let conn = conn_de_prueba();
+        // Límite del fabricante 75; umbral configurado de fábrica 60. Temperatura 68: por encima
+        // del configurado, por debajo del fabricante → no debe saltar ninguna de las dos.
+        ciclos_de_temperatura(
+            &conn,
+            Some(75.0),
+            &[
+                ("2026-09-04T10:00:00Z", 68.0),
+                ("2026-09-04T10:05:00Z", 68.0),
+                ("2026-09-04T10:10:00Z", 68.0),
+            ],
+        );
+        assert!(
+            repo_alertas::get_group(&conn, "temp.above_configured_warn|device:d1")
+                .unwrap()
+                .is_none(),
+            "con límite del fabricante conocido, `temp.above_configured_warn` no se evalúa"
+        );
+        assert!(
+            repo_alertas::get_group(&conn, "temp.above_vendor_limit|device:d1")
+                .unwrap()
+                .is_none_or(|g| g.status != AlertStatus::Active),
+            "68 °C está por debajo del límite del fabricante (75): tampoco salta la del fabricante"
+        );
+    }
+
+    // ---- collector.stalled (v3) ----
+
+    #[test]
+    fn collector_stalled_se_activa_pasados_mas_de_tres_intervalos_desde_el_ultimo_exito() {
+        let conn = conn_de_prueba();
+        let fuentes = [FuenteVigilada {
+            nombre: "smartctl",
+            last_success_at: Some("2026-09-04T09:00:00Z"),
+            intervalo: time::Duration::minutes(5),
+        }];
+        // 40 min después: 8× el intervalo → estancado.
+        let t = evaluar_collector_stalled(&conn, "2026-09-04T09:40:00Z", &fuentes).unwrap();
+        assert_eq!(t.len(), 1);
+        let g = repo_alertas::get_group(&conn, "collector.stalled|sin_objetivo|smartctl")
+            .unwrap()
+            .expect("no se activó collector.stalled");
+        assert_eq!(g.status, AlertStatus::Active);
+        assert_eq!(g.severity, AlertSeverity::Warning);
+    }
+
+    #[test]
+    fn collector_stalled_no_dispara_si_la_fuente_nunca_tuvo_exito() {
+        let conn = conn_de_prueba();
+        let fuentes = [FuenteVigilada {
+            nombre: "smartctl",
+            last_success_at: None,
+            intervalo: time::Duration::minutes(5),
+        }];
+        evaluar_collector_stalled(&conn, "2026-09-04T09:40:00Z", &fuentes).unwrap();
+        assert!(
+            repo_alertas::get_group(&conn, "collector.stalled|sin_objetivo|smartctl")
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn collector_stalled_resuelve_cuando_la_fuente_vuelve_a_completar_un_ciclo() {
+        let conn = conn_de_prueba();
+        let estancada = [FuenteVigilada {
+            nombre: "smartctl",
+            last_success_at: Some("2026-09-04T09:00:00Z"),
+            intervalo: time::Duration::minutes(5),
+        }];
+        evaluar_collector_stalled(&conn, "2026-09-04T09:40:00Z", &estancada).unwrap();
+
+        let recuperada = [FuenteVigilada {
+            nombre: "smartctl",
+            last_success_at: Some("2026-09-04T09:44:00Z"),
+            intervalo: time::Duration::minutes(5),
+        }];
+        evaluar_collector_stalled(&conn, "2026-09-04T09:45:00Z", &recuperada).unwrap();
+        let g = repo_alertas::get_group(&conn, "collector.stalled|sin_objetivo|smartctl")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Resolved);
+    }
+
+    #[test]
+    fn collector_stalled_deduplica_por_fuente() {
+        let conn = conn_de_prueba();
+        let fuentes = [FuenteVigilada {
+            nombre: "perf-counter",
+            last_success_at: Some("2026-09-04T09:00:00Z"),
+            intervalo: time::Duration::seconds(30),
+        }];
+        for cuando in [
+            "2026-09-04T09:40:00Z",
+            "2026-09-04T09:41:00Z",
+            "2026-09-04T09:42:00Z",
+        ] {
+            evaluar_collector_stalled(&conn, cuando, &fuentes).unwrap();
+        }
+        let g = repo_alertas::get_group(&conn, "collector.stalled|sin_objetivo|perf-counter")
+            .unwrap()
+            .unwrap();
+        assert_eq!(g.status, AlertStatus::Active);
+        assert!(
+            g.occurrence_count >= 3,
+            "no deduplicó: {}",
+            g.occurrence_count
+        );
+    }
+
+    #[test]
+    fn collector_stalled_una_fuente_al_dia_y_otra_recien_leida_solo_activa_la_primera() {
+        let conn = conn_de_prueba();
+        let fuentes = [
+            FuenteVigilada {
+                nombre: "smartctl",
+                last_success_at: Some("2026-09-04T09:00:00Z"),
+                intervalo: time::Duration::minutes(5),
+            },
+            FuenteVigilada {
+                nombre: "perf-counter",
+                last_success_at: Some("2026-09-04T09:39:30Z"),
+                intervalo: time::Duration::seconds(30),
+            },
+        ];
+        evaluar_collector_stalled(&conn, "2026-09-04T09:40:00Z", &fuentes).unwrap();
+        assert!(
+            repo_alertas::get_group(&conn, "collector.stalled|sin_objetivo|smartctl")
+                .unwrap()
+                .is_some_and(|g| g.status == AlertStatus::Active)
+        );
+        assert!(
+            repo_alertas::get_group(&conn, "collector.stalled|sin_objetivo|perf-counter")
+                .unwrap()
+                .is_none_or(|g| g.status != AlertStatus::Active)
+        );
     }
 }

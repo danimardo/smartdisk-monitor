@@ -20,19 +20,36 @@ use crate::persistence::db::AppState;
 use crate::persistence::{repo_alertas, repo_varios};
 use crate::platform::rotulos::{locale_actual, t};
 
-/// Cooldown por regla (`alert-rules.md` §2, columna "Cooldown de notificación"). `None` = "ninguno:
-/// siempre notifica". Una regla fuera de esta lista no debería llegar aquí con las 8 en alcance de
-/// J.16, pero si ocurre cae a un cooldown moderado de una hora: más vale una notificación de menos
-/// que un aluvión de una regla que no se ha calibrado.
-fn cooldown_de(rule_key: &str) -> Option<Duration> {
+/// Política de notificación de una ocurrencia repetida (`alert-rules.md` §2, columna "Cooldown de
+/// notificación"). Un episodio nuevo, una recaída o una escalada notifican siempre, sea cual sea la
+/// política; esto solo decide qué hacer cuando la misma condición se vuelve a cumplir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Notificacion {
+    /// Cada ocurrencia notifica (`smart.health.failed`, `nvme.critical_warning`).
+    Siempre,
+    /// Notifica si ha pasado el tiempo indicado desde la última.
+    TrasCooldown(Duration),
+    /// **Nunca** en ocurrencia repetida: solo al cruzar un umbral / cambiar de nivel
+    /// (`capacity.*` — `alert-rules.md`: «Nunca una notificación por muestra»).
+    SoloAlCambiarDeNivel,
+}
+
+/// Política por regla. Una regla fuera de esta lista cae a un cooldown moderado de una hora: más
+/// vale una notificación de menos que un aluvión de una regla que no se ha calibrado.
+fn politica_notificacion(rule_key: &str) -> Notificacion {
+    use Notificacion::*;
     match rule_key {
-        "smart.health.failed" | "nvme.critical_warning" => None,
-        "smart.media_errors" | "smart.error_log" => Some(Duration::hours(1)),
-        "smart.spare_below_threshold" | "smart.unreadable" => Some(Duration::hours(6)),
-        "smart.wear_high" => Some(Duration::days(7)),
-        "temp.above_configured_warn" => Some(Duration::minutes(30)),
-        "temp.above_configured_crit" => Some(Duration::minutes(15)),
-        _ => Some(Duration::hours(1)),
+        "smart.health.failed" | "nvme.critical_warning" => Siempre,
+        "smart.media_errors" | "smart.error_log" => TrasCooldown(Duration::hours(1)),
+        "smart.spare_below_threshold" | "smart.unreadable" => TrasCooldown(Duration::hours(6)),
+        "smart.wear_high" => TrasCooldown(Duration::days(7)),
+        "temp.above_configured_warn" | "temp.above_vendor_limit" => {
+            TrasCooldown(Duration::minutes(30))
+        }
+        "temp.above_configured_crit" => TrasCooldown(Duration::minutes(15)),
+        "collector.stalled" => TrasCooldown(Duration::hours(1)),
+        "capacity.low" | "capacity.critical" => SoloAlCambiarDeNivel,
+        _ => TrasCooldown(Duration::hours(1)),
     }
 }
 
@@ -82,7 +99,7 @@ fn procesar_una(app: &AppHandle, grupo_id: &str, transicion: Transicion) -> rusq
         notificaciones_activas,
         silenciada,
         transicion,
-        cooldown_de(&grupo.rule_key),
+        politica_notificacion(&grupo.rule_key),
         desde_ultima,
     ) {
         enviar_y_registrar(app, &estado, &grupo, ahora);
@@ -96,17 +113,20 @@ fn debe_enviar(
     notificaciones_activas: bool,
     silenciada: bool,
     transicion: Transicion,
-    cooldown: Option<Duration>,
+    politica: Notificacion,
     desde_ultima: Option<Duration>,
 ) -> bool {
     if !notificaciones_activas || silenciada {
         return false;
     }
     match transicion {
+        // Un episodio nuevo, una recaída o una escalada (que en `capacity.*` es el cambio de nivel)
+        // notifican siempre, sea cual sea la política.
         Transicion::CreadaActiva | Transicion::Reactivada | Transicion::Escalada => true,
-        Transicion::OcurrenciaRepetida => match cooldown {
-            None => true,
-            Some(cd) => desde_ultima.map_or(true, |d| d >= cd),
+        Transicion::OcurrenciaRepetida => match politica {
+            Notificacion::Siempre => true,
+            Notificacion::TrasCooldown(cd) => desde_ultima.map_or(true, |d| d >= cd),
+            Notificacion::SoloAlCambiarDeNivel => false,
         },
         Transicion::SinCambio | Transicion::Resuelta => false,
     }
@@ -142,35 +162,76 @@ mod tests {
     use super::*;
 
     #[test]
-    fn health_failed_no_tiene_cooldown_siempre_notifica() {
-        assert_eq!(cooldown_de("smart.health.failed"), None);
+    fn health_failed_notifica_en_cada_ocurrencia() {
+        assert_eq!(
+            politica_notificacion("smart.health.failed"),
+            Notificacion::Siempre
+        );
     }
 
     #[test]
     fn wear_high_tiene_cooldown_de_siete_dias() {
-        assert_eq!(cooldown_de("smart.wear_high"), Some(Duration::days(7)));
+        assert_eq!(
+            politica_notificacion("smart.wear_high"),
+            Notificacion::TrasCooldown(Duration::days(7))
+        );
     }
 
     #[test]
     fn smart_unreadable_tiene_cooldown_de_seis_horas() {
-        assert_eq!(cooldown_de("smart.unreadable"), Some(Duration::hours(6)));
+        assert_eq!(
+            politica_notificacion("smart.unreadable"),
+            Notificacion::TrasCooldown(Duration::hours(6))
+        );
     }
 
     #[test]
     fn temp_warn_y_crit_tienen_cooldowns_distintos() {
         assert_eq!(
-            cooldown_de("temp.above_configured_warn"),
-            Some(Duration::minutes(30))
+            politica_notificacion("temp.above_configured_warn"),
+            Notificacion::TrasCooldown(Duration::minutes(30))
         );
         assert_eq!(
-            cooldown_de("temp.above_configured_crit"),
-            Some(Duration::minutes(15))
+            politica_notificacion("temp.above_configured_crit"),
+            Notificacion::TrasCooldown(Duration::minutes(15))
+        );
+    }
+
+    #[test]
+    fn temp_del_fabricante_hereda_el_cooldown_de_treinta_minutos() {
+        assert_eq!(
+            politica_notificacion("temp.above_vendor_limit"),
+            Notificacion::TrasCooldown(Duration::minutes(30))
+        );
+    }
+
+    #[test]
+    fn collector_stalled_tiene_cooldown_de_una_hora() {
+        assert_eq!(
+            politica_notificacion("collector.stalled"),
+            Notificacion::TrasCooldown(Duration::hours(1))
+        );
+    }
+
+    #[test]
+    fn capacidad_solo_notifica_al_cambiar_de_nivel() {
+        // `alert-rules.md` §Cooldown: «Nunca una notificación por muestra».
+        assert_eq!(
+            politica_notificacion("capacity.low"),
+            Notificacion::SoloAlCambiarDeNivel
+        );
+        assert_eq!(
+            politica_notificacion("capacity.critical"),
+            Notificacion::SoloAlCambiarDeNivel
         );
     }
 
     #[test]
     fn una_regla_desconocida_no_se_queda_sin_cooldown() {
-        assert_eq!(cooldown_de("regla.inventada"), Some(Duration::hours(1)));
+        assert_eq!(
+            politica_notificacion("regla.inventada"),
+            Notificacion::TrasCooldown(Duration::hours(1))
+        );
     }
 
     #[test]
@@ -180,14 +241,20 @@ mod tests {
             false,
             false,
             Transicion::CreadaActiva,
-            None,
+            Notificacion::Siempre,
             None
         ));
     }
 
     #[test]
     fn una_alerta_silenciada_no_notifica_aunque_las_notificaciones_esten_activas() {
-        assert!(!debe_enviar(true, true, Transicion::Escalada, None, None));
+        assert!(!debe_enviar(
+            true,
+            true,
+            Transicion::Escalada,
+            Notificacion::Siempre,
+            None
+        ));
     }
 
     #[test]
@@ -197,47 +264,86 @@ mod tests {
             Transicion::Reactivada,
             Transicion::Escalada,
         ] {
-            assert!(debe_enviar(true, false, t, Some(Duration::days(7)), None));
+            // Incluso con la política más restrictiva: un cambio de nivel siempre avisa.
+            assert!(debe_enviar(
+                true,
+                false,
+                t,
+                Notificacion::SoloAlCambiarDeNivel,
+                None
+            ));
         }
     }
 
     #[test]
     fn una_ocurrencia_repetida_respeta_el_cooldown() {
         // Dentro del cooldown → no; pasado el cooldown → sí; sin registro previo → sí.
+        let cd = Notificacion::TrasCooldown(Duration::minutes(30));
         assert!(!debe_enviar(
             true,
             false,
             Transicion::OcurrenciaRepetida,
-            Some(Duration::minutes(30)),
+            cd,
             Some(Duration::minutes(10))
         ));
         assert!(debe_enviar(
             true,
             false,
             Transicion::OcurrenciaRepetida,
-            Some(Duration::minutes(30)),
+            cd,
             Some(Duration::minutes(31))
         ));
         assert!(debe_enviar(
             true,
             false,
             Transicion::OcurrenciaRepetida,
-            Some(Duration::minutes(30)),
+            cd,
             None
+        ));
+    }
+
+    #[test]
+    fn una_ocurrencia_repetida_de_capacidad_nunca_notifica() {
+        // Aunque haya pasado mucho tiempo desde la última: `SoloAlCambiarDeNivel` no cede.
+        assert!(!debe_enviar(
+            true,
+            false,
+            Transicion::OcurrenciaRepetida,
+            Notificacion::SoloAlCambiarDeNivel,
+            Some(Duration::days(30))
+        ));
+        assert!(!debe_enviar(
+            true,
+            false,
+            Transicion::OcurrenciaRepetida,
+            Notificacion::SoloAlCambiarDeNivel,
+            None
+        ));
+    }
+
+    #[test]
+    fn una_ocurrencia_repetida_con_politica_siempre_notifica() {
+        assert!(debe_enviar(
+            true,
+            false,
+            Transicion::OcurrenciaRepetida,
+            Notificacion::Siempre,
+            Some(Duration::seconds(1))
         ));
     }
 
     #[test]
     fn sin_cambio_o_resuelta_nunca_notifican() {
         for t in [Transicion::SinCambio, Transicion::Resuelta] {
-            assert!(!debe_enviar(true, false, t, None, None));
+            assert!(!debe_enviar(true, false, t, Notificacion::Siempre, None));
         }
     }
 
-    /// Las 8 reglas en alcance (`docs/open-questions.md` J.16) tienen sus claves de i18n propias:
-    /// sin ellas, `enviar_y_registrar` mostraría la clave cruda como título de la notificación.
+    /// Todas las reglas en alcance (`docs/open-questions.md` J.16) tienen sus claves de i18n
+    /// propias: sin ellas, `enviar_y_registrar` mostraría la clave cruda como título de la
+    /// notificación.
     #[test]
-    fn las_ocho_reglas_en_alcance_tienen_titulo_y_resumen_propios() {
+    fn las_reglas_en_alcance_tienen_titulo_y_resumen_propios() {
         for regla in [
             "smart.health.failed",
             "nvme.critical_warning",
@@ -245,8 +351,13 @@ mod tests {
             "smart.error_log",
             "smart.spare_below_threshold",
             "smart.wear_high",
+            "smart.unreadable",
             "temp.above_configured_warn",
             "temp.above_configured_crit",
+            "temp.above_vendor_limit",
+            "capacity.low",
+            "capacity.critical",
+            "collector.stalled",
         ] {
             for sufijo in ["title", "summary"] {
                 let clave = format!("alert.rule.{regla}.{sufijo}");

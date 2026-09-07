@@ -201,6 +201,8 @@
   "alert.rule.capacity.critical.summary": "El volumen está a punto de quedarse sin espacio.",
   "alert.rule.smart.unreadable.title": "El disco no responde a las consultas SMART",
   "alert.rule.smart.unreadable.summary": "Varios ciclos seguidos sin poder leer los datos SMART de un disco que sí los daba. Se sigue vigilando su capacidad y los sucesos de Windows.",
+  "alert.rule.collector.stalled.title": "Un recopilador lleva rato sin completar un ciclo",
+  "alert.rule.collector.stalled.summary": "Una de las fuentes de datos no completa una lectura desde hace varios intervalos. Los datos que muestra pueden estar desactualizados.",
   "alert.fact.ruleKey": "Regla",
   "alert.fact.lastValue": "Último valor",
   "tray.open": "Abrir SmartDisk Monitor",

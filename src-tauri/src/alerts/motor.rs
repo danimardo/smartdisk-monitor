@@ -1,9 +1,10 @@
 //! Evaluación pura de reglas de alerta: activación e histéresis por valor, sin persistencia.
 //!
-//! **Alcance de esta primera versión** (`docs/open-questions.md` J.16): solo las reglas que se
-//! evalúan sobre datos de `smartctl` ya persistidos. Las que dependen de un colector todavía sin
-//! construir —eventos de Windows, capacidad de volumen, límite del fabricante, estado del
-//! recopilador— quedan fuera a propósito, no simuladas con datos inventados.
+//! **Alcance** (`docs/open-questions.md` J.16): las reglas que se evalúan sobre datos de `smartctl`
+//! ya persistidos (incluido el límite operativo del fabricante, `temperature.op_limit_max`, que
+//! reutiliza la lógica de `evaluar_temperatura_configurada_warn` con ese umbral) y el estado del
+//! recopilador (`colector_estancado`). Las reglas de eventos de Windows quedan fuera a propósito,
+//! no simuladas con datos inventados.
 //!
 //! Cada función recibe la serie de valores **ya leída de `metric_samples`, ordenada de más
 //! reciente a más antigua**, y no toca la base de datos: eso es responsabilidad de
@@ -186,6 +187,18 @@ pub fn resuelve_capacidad_critical(pares: &[(f64, f64)], u: &UmbralesCapacidad) 
                 HealthState::Crit
             )
         })
+}
+
+/// `collector.stalled` (`alert-rules.md` §2): un recopilador no completa un ciclo en **3 intervalos
+/// esperados** → advertencia; resuelve con un ciclo completo. Decisión pura sobre el tiempo
+/// transcurrido desde el último éxito y el intervalo nominal de esa fuente; quien la llama
+/// (`alerts::evaluar_collector_stalled`) sabe de fuentes y de `SourceHealth`, esto no.
+///
+/// Nunca crítico: un recopilador parado degrada la confianza en el dato, no dice que un disco esté
+/// roto. Un recopilador que **nunca** ha ido bien no es asunto de esta regla (lo cubre
+/// `source:degraded` / el inventario vacío): eso lo filtra quien llama comprobando `last_success_at`.
+pub fn colector_estancado(desde_ultimo_exito: time::Duration, intervalo: time::Duration) -> bool {
+    desde_ultimo_exito > intervalo * 3
 }
 
 #[cfg(test)]
@@ -581,6 +594,34 @@ mod tests {
         assert!(!resuelve_capacidad_critical(
             &[(3.0 * G, vol), (8.0 * G, vol), (8.0 * G, vol)],
             &cap()
+        ));
+    }
+
+    // ---- collector.stalled ----
+
+    #[test]
+    fn colector_estancado_solo_cuando_pasan_mas_de_tres_intervalos() {
+        let intervalo = time::Duration::minutes(5);
+        assert!(
+            !colector_estancado(intervalo * 2, intervalo),
+            "2× no es estancamiento"
+        );
+        assert!(
+            !colector_estancado(intervalo * 3, intervalo),
+            "justo 3× todavía no (la tabla dice «no completa en 3 intervalos»)"
+        );
+        assert!(
+            colector_estancado(intervalo * 4, intervalo),
+            "4× sí es estancamiento"
+        );
+    }
+
+    #[test]
+    fn colector_estancado_al_filo_por_encima_de_tres_intervalos() {
+        let intervalo = time::Duration::minutes(5);
+        assert!(colector_estancado(
+            intervalo * 3 + time::Duration::seconds(1),
+            intervalo
         ));
     }
 }

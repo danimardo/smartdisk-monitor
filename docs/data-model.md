@@ -195,6 +195,11 @@
 - `smart_query_ok` — 1.0 si `smartctl` pudo leer el disco ese ciclo, 0.0 si la consulta falló o
   devolvió algo irreconocible. **No** es una medida del disco: es el resultado del intento de
   consulta, y es la serie sobre la que se evalúa la regla `smart.unreadable` (`alert-rules.md`).
+- `vendor_temp_limit_celsius` — límite operativo de temperatura que declara el fabricante
+  (`temperature.op_limit_max` de `smartctl`, tabla SCT). Solo lo traen algunos discos SATA; ausente
+  en la mayoría de NVMe. Es el umbral de `temp.above_vendor_limit` y de la línea de referencia de la
+  gráfica de temperatura. **No** hay equivalente para el crítico del fabricante: `smartctl` no lo
+  expone de forma fiable en el JSON (`open-questions.md` J.16).
 
 Los campos no disponibles se omiten; no se almacenan como cero.
 

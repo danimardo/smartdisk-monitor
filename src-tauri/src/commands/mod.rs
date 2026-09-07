@@ -1343,6 +1343,9 @@ fn enrich_with_smart_data(conn: &rusqlite::Connection, d: &Device) -> AppResult<
         .map_err(rusqlite_err_to_app_error)?;
     let salud_smart = repo_metricas::latest_device_sample(conn, &d.id, "health_passed")
         .map_err(rusqlite_err_to_app_error)?;
+    let limite_fabricante =
+        repo_metricas::latest_device_sample(conn, &d.id, "vendor_temp_limit_celsius")
+            .map_err(rusqlite_err_to_app_error)?;
     // Los contadores de rendimiento son un colector aparte, con su propia cadencia
     // (`METRICAS_RAPIDAS`, independiente de `SMART_COMPLETO`): se refleja aunque todavía no haya
     // llegado ninguna lectura SMART, en vez de esperar a `temperatura` como el resto de campos de
@@ -1364,6 +1367,10 @@ fn enrich_with_smart_data(conn: &rusqlite::Connection, d: &Device) -> AppResult<
     resumen.temperature_c = temperatura.as_ref().and_then(|m| m.value_real);
     resumen.percentage_used = desgaste.as_ref().and_then(|m| m.value_real);
     resumen.power_on_hours = horas_encendido.as_ref().and_then(|m| m.value_real);
+    // El límite del fabricante no depende de que la última lectura sea fresca: es una propiedad del
+    // disco que apenas cambia, y sirve para pintar la línea de umbral aunque el disco lleve un rato
+    // sin responder.
+    resumen.vendor_temp_limit_c = limite_fabricante.as_ref().and_then(|m| m.value_real);
     resumen.smart_health_passed = salud_smart
         .as_ref()
         .and_then(|m| m.value_real)
@@ -1403,9 +1410,15 @@ fn build_smart_counters(
 
     Ok(muestras
         .into_iter()
-        // `smart_query_ok` es la señal interna de la regla `smart.unreadable`, no un atributo del
-        // disco: no va en el panel de contadores del detalle.
-        .filter(|m| m.metric_key != "smart_query_ok")
+        // Señales internas, no atributos del disco: `smart_query_ok` alimenta `smart.unreadable` y
+        // `vendor_temp_limit_celsius` es el umbral del fabricante para `temp.above_vendor_limit` y la
+        // gráfica. Ninguna va en el panel de contadores del detalle.
+        .filter(|m| {
+            !matches!(
+                m.metric_key.as_str(),
+                "smart_query_ok" | "vendor_temp_limit_celsius"
+            )
+        })
         .map(|m| SmartCounter {
             metric_key: m.metric_key,
             value: m.value_real,
@@ -1754,14 +1767,77 @@ struct ResultadoCicloPost {
 /// notificaciones, `alerts:changed`, `source:degraded`, `inventory:changed`, `metrics:updated` y el
 /// icono de la bandeja. Se llama solo cuando el ciclo terminó sin error — un error se trata en cada
 /// llamador según su propia semántica (ver comentario de cada uno).
+/// Nombre estable de cada fuente para el `context` y la clave de deduplicación de
+/// `collector.stalled`. Coincide con el valor de wire de `MetricSource` (`ui-contract.md` §2).
+fn nombre_fuente(source: MetricSource) -> &'static str {
+    match source {
+        MetricSource::Smartctl => "smartctl",
+        MetricSource::WindowsStorage => "windows-storage",
+        MetricSource::PerformanceCounter => "perf-counter",
+        MetricSource::Filesystem => "filesystem",
+    }
+}
+
+/// Intervalo nominal en que se espera que cada fuente complete un ciclo, de `planificador.rs`.
+/// `Filesystem` no tiene trabajo periódico propio (se consulta bajo demanda), así que nunca llega
+/// aquí con `last_success_at`; se le da el intervalo de inventario por no dejar el `match` incompleto.
+fn intervalo_fuente(source: MetricSource) -> time::Duration {
+    use crate::collectors::planificador as pl;
+    let std = match source {
+        MetricSource::Smartctl => pl::SMART_COMPLETO.por_defecto,
+        MetricSource::PerformanceCounter => pl::METRICAS_RAPIDAS.por_defecto,
+        MetricSource::WindowsStorage | MetricSource::Filesystem => pl::ALTAS_Y_BAJAS.por_defecto,
+    };
+    time::Duration::seconds(std.as_secs() as i64)
+}
+
+/// Evalúa `collector.stalled` para cada fuente con historial de éxito. Se llama desde
+/// `post_procesar_ciclo`: devuelve las transiciones para que se notifiquen y emitan como las demás.
+fn evaluar_estancamiento_colectores(
+    state: &State<AppState>,
+) -> Vec<(String, crate::alerts::agrupacion::Transicion)> {
+    let ahora = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    let source_health = state
+        .source_health
+        .lock()
+        .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
+
+    let fuentes: Vec<crate::alerts::FuenteVigilada<'_>> = source_health
+        .values()
+        .map(|s| crate::alerts::FuenteVigilada {
+            nombre: nombre_fuente(s.source),
+            last_success_at: s.last_success_at.as_deref(),
+            intervalo: intervalo_fuente(s.source),
+        })
+        .collect();
+
+    match crate::alerts::evaluar_collector_stalled(&conn, &ahora, &fuentes) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = ?e, "no se pudo evaluar collector.stalled");
+            vec![]
+        }
+    }
+}
+
 fn post_procesar_ciclo(
     app: &tauri::AppHandle,
     state: &State<AppState>,
     resultado: &ResultadoCicloPost,
 ) {
-    crate::alerts::notificaciones::procesar_transiciones(app, &resultado.transiciones);
-    let ids: Vec<String> = resultado
-        .transiciones
+    // `collector.stalled` no sale de un ciclo de recopilación concreto (un recopilador *parado* no
+    // produce ciclo): se evalúa aquí, en el post-proceso común, sobre el `source_health` acumulado.
+    let mut transiciones = resultado.transiciones.clone();
+    transiciones.extend(evaluar_estancamiento_colectores(state));
+
+    crate::alerts::notificaciones::procesar_transiciones(app, &transiciones);
+    let ids: Vec<String> = transiciones
         .iter()
         .filter(|(_, t)| *t != crate::alerts::agrupacion::Transicion::SinCambio)
         .map(|(id, _)| id.clone())
@@ -2309,6 +2385,27 @@ fn persist_smart_reading(
                 value_real: Some(metrica.value),
                 value_integer: None,
                 unit: unidad.to_string(),
+                sampled_at_utc: sampled_at_utc.to_string(),
+                source: MetricSource::Smartctl,
+                quality: MetricQuality::Exact,
+                resolution: Resolution::Raw,
+            },
+        )?;
+    }
+
+    // Límite operativo del fabricante (`temperature.op_limit_max` de `smartctl`): serie aparte
+    // porque solo lo declaran algunos discos SATA y alimenta `temp.above_vendor_limit` y la línea de
+    // umbral de la gráfica. No va en `resultado.metrics` porque el parser lo expone como campo
+    // propio, no como métrica normalizada.
+    if let Some(limite) = resultado.vendor_temp_limit_c {
+        repo_metricas::insert_sample(
+            conn,
+            &MetricSample {
+                target: MetricTarget::Device(device_id.to_string()),
+                metric_key: "vendor_temp_limit_celsius".to_string(),
+                value_real: Some(limite),
+                value_integer: None,
+                unit: "celsius".to_string(),
                 sampled_at_utc: sampled_at_utc.to_string(),
                 source: MetricSource::Smartctl,
                 quality: MetricQuality::Exact,
@@ -2871,6 +2968,18 @@ fn get_metric_series_impl(
     let (puntos_finales, downsampled) =
         crate::domain::series::submuestrear(puntos_completos, TOPE_PUNTOS_SERIE);
 
+    // La línea de umbral solo aplica a la temperatura y solo si el disco declara el límite del
+    // fabricante (`temperature.op_limit_max`). Sin `vendor_critical` fiable en el JSON de
+    // `smartctl`, ese sigue en `None` (`open-questions.md` J.16).
+    let vendor_limit = match (device_id, metric_key) {
+        (Some(id), "temperature_celsius") => {
+            repo_metricas::latest_device_sample(conn, id, "vendor_temp_limit_celsius")
+                .map_err(rusqlite_err_to_app_error)?
+                .and_then(|m| m.value_real)
+        }
+        _ => None,
+    };
+
     Ok(MetricSeriesWire {
         metric_key: metric_key.to_string(),
         unit: unidad_para(metric_key).to_string(),
@@ -2886,7 +2995,7 @@ fn get_metric_series_impl(
                 v: p.v,
             })
             .collect(),
-        vendor_limit: None,
+        vendor_limit,
         vendor_critical: None,
     })
 }
@@ -3035,6 +3144,44 @@ mod tests_series {
 
         assert_eq!(serie.resolution, Resolution::Hourly);
         assert!(serie.points.iter().any(|p| p.v == Some(40.0)));
+    }
+
+    #[test]
+    fn la_serie_de_temperatura_lleva_el_limite_del_fabricante_cuando_esta_persistido() {
+        let conn = conn_de_prueba();
+        let ahora = time::OffsetDateTime::now_utc();
+        let fmt = |t: time::OffsetDateTime| {
+            t.format(&time::format_description::well_known::Rfc3339)
+                .unwrap()
+        };
+        let cuando = fmt(ahora - time::Duration::minutes(10));
+        repo_metricas::insert_sample(&conn, &muestra(&cuando, 44.0)).unwrap();
+        let mut lim = muestra(&cuando, 65.0);
+        lim.metric_key = "vendor_temp_limit_celsius".to_string();
+        repo_metricas::insert_sample(&conn, &lim).unwrap();
+
+        let serie = get_metric_series_impl(
+            &conn,
+            Some("d1"),
+            None,
+            "temperature_celsius",
+            &cuando,
+            &fmt(ahora),
+        )
+        .unwrap();
+        assert_eq!(serie.vendor_limit, Some(65.0));
+
+        // Otra métrica cualquiera no arrastra ese valor.
+        let otra = get_metric_series_impl(
+            &conn,
+            Some("d1"),
+            None,
+            "activity_percent",
+            &cuando,
+            &fmt(ahora),
+        )
+        .unwrap();
+        assert_eq!(otra.vendor_limit, None);
     }
 
     #[test]
@@ -5205,11 +5352,35 @@ mod tests_salud {
             firmware_version: Some("1.0".to_string()),
             user_capacity_bytes: Some(1_000_000_000),
             health_passed: Some(true),
+            vendor_temp_limit_c: None,
             metrics: vec![MetricaLeida {
                 metric_key: "temperature_celsius",
                 value: temperatura,
             }],
         }
+    }
+
+    #[test]
+    fn el_limite_de_temperatura_del_fabricante_llega_al_resumen_pero_no_a_los_contadores() {
+        let conn = conn_de_prueba();
+        let d = dispositivo_con_ruta("d1", Some(r"\.\PhysicalDrive0"));
+        repo_inventario::upsert_device(&conn, &d).unwrap();
+
+        let ahora = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        let mut resultado = resultado_de_prueba(44.0);
+        resultado.vendor_temp_limit_c = Some(65.0);
+        persist_smart_reading(&conn, "d1", &resultado, &ahora).unwrap();
+
+        let resumen = get_device_detail_impl(&conn, "d1").unwrap();
+        assert_eq!(resumen.summary.vendor_temp_limit_c, Some(65.0));
+        assert_eq!(
+            resumen.counters.len(),
+            1,
+            "el límite del fabricante es un umbral, no un contador del disco"
+        );
+        assert_eq!(resumen.counters[0].metric_key, "temperature_celsius");
     }
 
     #[test]

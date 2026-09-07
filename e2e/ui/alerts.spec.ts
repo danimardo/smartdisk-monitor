@@ -19,23 +19,27 @@ test.describe("alertas", () => {
     await expect(page.getByText(es["alert.fact.ruleKey"])).toBeVisible();
   });
 
-  test("las reglas capacity.low y smart.unreadable muestran su título traducido, no la clave", async ({
-    page
-  }) => {
+  test("las reglas nuevas del motor muestran su título traducido, no la clave", async ({ page }) => {
     const alerta = (id: string, ruleKey: string) => ({
       ...alertaActiva,
       id,
       ruleKey,
       deduplicationKey: `${ruleKey}|device:disk-0`
     });
+    const reglas = [
+      "capacity.low",
+      "smart.unreadable",
+      "temp.above_vendor_limit",
+      "collector.stalled"
+    ] as const;
     await instalarIpcFalso(page, {
       ...RESPUESTAS,
-      get_alert_groups: [alerta("a-cap", "capacity.low"), alerta("a-unr", "smart.unreadable")]
+      get_alert_groups: reglas.map((r, i) => alerta(`a-${i}`, r))
     });
     await page.goto("/alerts");
 
-    for (const key of ["alert.rule.capacity.low.title", "alert.rule.smart.unreadable.title"] as const) {
-      await expect(page.getByText(es[key]).first()).toBeVisible();
+    for (const r of reglas) {
+      await expect(page.getByText(es[`alert.rule.${r}.title`]).first()).toBeVisible();
     }
     await expect(page.getByText(/^alert\.rule\./)).toHaveCount(0);
   });
