@@ -79,7 +79,7 @@ Están documentadas porque volver a descubrirlas cuesta horas:
   `source_health`. La guarda `recoleccion_smart` serializa ciclo y refresco manual sin retener
   `conn` (ADR-042).
 - Un `Child` con `stdout`/`stderr` en `Stdio::piped()` **se cuelga si nadie vacía esos pipes
-  mientras el proceso sigue vivo** (J.47): el búfer del pipe que da el sistema operativo es
+  mientras el proceso sigue vivo** (J.55): el búfer del pipe que da el sistema operativo es
   limitado, y en cuanto el hijo lo llena se bloquea en su propio `write()` esperando a que alguien
   lea — si el padre solo llama a `try_wait()` en bucle y deja `read_to_end()` para después de que
   la salida se confirme, ese "después" no llega nunca. `collectors::smartctl::ejecutar_con_limite`

@@ -77,7 +77,7 @@ impl From<std::io::Error> for ErrorConsulta {
 /// vacía mientras el hijo sigue escribiendo, el hijo se bloquea en su propio `write()` en cuanto lo
 /// llena, y nunca llega a salir — un punto muerto de facto entre el hijo y este bucle, que antes
 /// leía los pipes **después** de que `try_wait()` confirmara la salida. Verificado contra hardware
-/// real (`docs/open-questions.md` J.47): la salida de `smartctl -a -j` en un SATA con la tabla de
+/// real (`docs/open-questions.md` J.55): la salida de `smartctl -a -j` en un SATA con la tabla de
 /// atributos completa (10-13 KB en los dos discos de esta máquina) supera ese búfer con facilidad,
 /// y el proceso se colgaba los 15 s completos en cada uno de los cinco modos de la cascada —
 /// `NingunModoFunciono` sin decir por qué. La de un NVMe (7 KB en esta máquina) se quedaba por
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn ejecutar_con_limite_no_se_bloquea_con_una_salida_mas_grande_que_el_pipe() {
-        // Regresión (J.47): antes se leían los pipes solo después de que `try_wait()` confirmara
+        // Regresión (J.55): antes se leían los pipes solo después de que `try_wait()` confirmara
         // la salida del proceso. Con una salida mayor que el búfer del pipe, el hijo se bloqueaba
         // escribiendo y nunca llegaba a salir — se agotaba el límite entero, indistinguible de un
         // dispositivo que de verdad no responde. No hace falta smartctl real para reproducirlo:
