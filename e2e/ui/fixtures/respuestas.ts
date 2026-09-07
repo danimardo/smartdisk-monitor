@@ -272,7 +272,7 @@ export const settingsDeFabrica = {
 
 export const appInfoDePrueba = {
   name: "SmartDisk Monitor",
-  version: "0.1.0",
+  version: "0.1.1",
   author: "Daniel Diez Mardomingo"
 };
 
