@@ -305,8 +305,71 @@ export const settings = z.object({
   }),
   logging: z.object({
     verbose: z.boolean()
+  }),
+  /** Ayuda con IA (spec `005-explicacion-ia`, FR-024). La clave de API no viaja aquí: vive en el
+   *  Administrador de credenciales de Windows. */
+  ai: z.object({
+    enabled: z.boolean(),
+    model: z.string(),
+    previewAcknowledged: z.boolean()
   })
 });
+
+/* --------------------------------------------------------------- ayuda con IA */
+
+/** Estado de la ayuda con IA (`estado_ia`). `claveValida` es la última comprobación de esta
+ *  sesión: `null` = sin comprobar. */
+export const estadoIa = z.object({
+  activa: z.boolean(),
+  modelo: z.string(),
+  previewAcknowledged: z.boolean(),
+  claveValida: z.boolean().nullable()
+});
+
+/** Un modelo del catálogo del proveedor (`listar_modelos_ia`). */
+export const modeloIa = z.object({
+  id: z.string(),
+  nombre: z.string(),
+  esDePago: z.boolean()
+});
+
+/** Explicación devuelta por el modelo. `markdown` es contenido no confiable: se renderiza como
+ *  markdown seguro, nunca como HTML (principio XVI). */
+export const explicacionIa = z.object({
+  markdown: z.string(),
+  modeloUsado: z.string(),
+  detalleRecortado: z.boolean()
+});
+
+const fragmentoDudoso = z.object({
+  texto: z.string(),
+  motivoKey: z.string()
+});
+
+/** Texto que se enviaría al proveedor, para revisión previa (FR-010 / FR-026). `fragmentos` vacío
+ *  = es la vista previa completa; no vacío = fragmentos dudosos que revisar. */
+export const revisionAnonimizacion = z.object({
+  textoCompleto: z.string(),
+  fragmentos: z.array(fragmentoDudoso)
+});
+
+/** Entrada de `explicar_detalle_tecnico`. `deviceId` solo para el caso SMART; en el de alerta el
+ *  disco sale del grupo. */
+export const origenExplicacion = z.object({
+  tipo: z.enum(["alerta", "smart"]),
+  deviceId: z.string().nullable(),
+  alertGroupId: z.string().nullable(),
+  idioma: z.enum(["es", "en"]),
+  revision: z.enum(["ninguna", "enviar_igual", "quitar_fragmentos"]),
+  previewConfirmada: z.boolean()
+});
+
+/** Resultado de `explicar_detalle_tecnico`: o la explicación, o una pantalla de revisión. El
+ *  backend etiqueta con `estado`; el `AppError` va por la vía de error, no aquí. */
+export const resultadoExplicacion = z.discriminatedUnion("estado", [
+  explicacionIa.extend({ estado: z.literal("ok") }),
+  revisionAnonimizacion.extend({ estado: z.literal("revision") })
+]);
 
 export const windowsAccent = z.object({
   hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, "se esperaba #RRGGBB"),
@@ -382,6 +445,11 @@ export const eventSchemas = {
 /* ---------------------------------------------------------- tipos inferidos */
 
 export type AppErrorShape = z.infer<typeof appError>;
+export type EstadoIaShape = z.infer<typeof estadoIa>;
+export type ModeloIaShape = z.infer<typeof modeloIa>;
+export type ExplicacionIaShape = z.infer<typeof explicacionIa>;
+export type RevisionAnonimizacionShape = z.infer<typeof revisionAnonimizacion>;
+export type ResultadoExplicacionShape = z.infer<typeof resultadoExplicacion>;
 export type DiskSummaryShape = z.infer<typeof diskSummary>;
 export type DeviceListResponseShape = z.infer<typeof deviceListResponse>;
 export type DeviceDetailShape = z.infer<typeof deviceDetail>;

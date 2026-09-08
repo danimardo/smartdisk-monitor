@@ -84,7 +84,9 @@
         : alineacion === 'izquierda'
           ? 'left-0'
           : 'right-0'}"
-      style={acento ? `border-left: 3px solid ${healthToken[acento].fg}` : undefined}
+      style="background: var(--sdm-glass-strong){acento
+        ? `; border-left: 3px solid ${healthToken[acento].fg}`
+        : ''}"
     >
       {#if titulo}<span class="mb-1 block font-semibold text-fg">{titulo}</span>{/if}
       <span class="block text-fg-dim">{text}</span>

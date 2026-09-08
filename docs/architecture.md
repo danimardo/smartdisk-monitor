@@ -141,6 +141,29 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
 - Exporta datos normalizados y metadatos de procedencia.
 - Anonimiza identificadores mediante sustitución estable dentro de cada paquete.
 
+### Ayuda con IA (spec `005-explicacion-ia`, principio XVI, ADR-046)
+
+- **Única ruta de red saliente de toda la aplicación.** Apagada de fábrica: sin clave de API no se
+  construye ningún cliente HTTP ni hay resolución de nombres.
+- Tres piezas, en tres capas:
+  - `domain::ia` — **puro** (sin `reqwest`, sin Tauri, sin Windows): compone el prompt
+    (`componer_consulta`), barre el texto en busca de fragmentos que la anonimización no garantiza
+    limpios (`barrer_texto_residual`), recorta, y analiza la respuesta y los errores del proveedor
+    en tipos `serde` explícitos.
+  - `platform::ia_openrouter` — transporte: `reqwest` (async, `native-tls`/SChannel), destino fijo
+    `https://openrouter.ai/api/v1`, tiempo máximo 60 s. El cliente se construye **aquí**, nunca en
+    el arranque.
+  - `platform::credenciales` — FFI a mano contra `advapi32` (`CredReadW`/`CredWriteW`/`CredDeleteW`),
+    sin crate nuevo, mismo patrón que `platform::energia`.
+- El comando `explicar_detalle_tecnico` orquesta: recupera la alerta o los contadores SMART,
+  **anonimiza en la capa de comando** (reutiliza `reporting::anonimizar::Anonimizador`, para no
+  invertir la dependencia `domain → reporting`), gestiona la vista previa y la revisión, y llama al
+  transporte. Todo desde un comando `async`; **no hay permiso de capacidades** porque la red la
+  origina Rust, no el WebView.
+- La respuesta del modelo es **contenido no confiable**: la interfaz la renderiza con un analizador
+  de subconjunto de Markdown propio (`src/lib/design/markdown.ts` + `Markdown.svelte`), nunca con
+  `{@html}`, y nunca alimenta una decisión de la aplicación (color de estado, alerta, regla).
+
 ## 4. Concurrencia y ciclo de vida
 
 - La UI y los colectores no comparten operaciones bloqueantes.
@@ -200,7 +223,11 @@ La ruta de datos se obtiene de Windows y no se codifica como literal en la lógi
 - Límites de tamaño y reserva de espacio antes de escribir.
 - SQL parametrizado y migraciones verificadas.
 - Contenido procedente de eventos o dispositivos renderizado como texto, nunca como HTML sin sanear.
-- Sin endpoints de red ni telemetría.
+- Sin endpoints de red ni telemetría. **Única excepción**: la ayuda con IA (principio XVI,
+  ADR-046), apagada de fábrica, de destino único (`openrouter.ai`), iniciada siempre por la persona,
+  con la clave de API en el Administrador de credenciales de Windows y el detalle técnico
+  anonimizado antes de salir del proceso. Sin permiso de capacidades nuevo. Cero telemetría propia:
+  el contenido de las peticiones y respuestas no se registra.
 
 ## 7. Tolerancia a fallos
 

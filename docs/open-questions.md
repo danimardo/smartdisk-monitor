@@ -451,6 +451,7 @@ asunción del programador.
 | J.57 | Probando el instalador real (no `pnpm app:dev`), el usuario reportó dos síntomas juntos: (a) varias ventanas de PowerShell parpadeando al arrancar, y (b) la aplicación quedándose "(No responde)" justo después — una vez en el asistente inicial con "Hemos encontrado 0 discos" (paso 2), otra en "Primera lectura en marcha" (paso 4) con la barra de progreso congelada a media carrera. Reiniciando la aplicación varias veces, acabó funcionando y mostrando los cuatro discos con SMART correcto | **Dos causas independientes, ambas en cómo se lanzan los procesos externos, ninguna nueva de esta sesión pero nunca antes ejercitadas contra una instalación real recién hecha**. (1) Ningún `Command::new("powershell.exe")` llevaba `CREATE_NO_WINDOW`: Windows asigna una consola nueva al lanzar un proceso de este tipo desde una aplicación sin terminal propia, y la ventana parpadea aunque el proceso termine en milisegundos — `-WindowStyle Hidden` no lo evita, porque la ventana ya existe antes de que PowerShell decida nada sobre su estilo. `platform::autoarranque` ya lo sabía y lo aplicaba a mano para `schtasks`; los demás puntos no. (2) `windows_storage::list_physical_disks` y `capacidad::list_volumes` usaban `Command::output()`, que espera **sin límite de tiempo**: un WMI lento a inicializar (más probable justo después de instalar, o nada más arrancar Windows, que es exactamente cuando el asistente hace su primer barrido) bloquea el hilo que llama para siempre en vez de devolver "sin discos todavía", que es lo que ya hace cualquier otro fallo de esta consulta. La barra de progreso "congelada a medio camino" del paso 4 no es un tercer bug: es `<ProgressBar indeterminate>` (deliberadamente no ligada a un porcentaje real, `onboarding/+page.svelte`), fotografiada a media animación en el instante exacto en que toda la aplicación dejó de repintarse por (2) — se resuelve solo en cuanto (2) deja de bloquear. Corregido extrayendo `ejecutar_con_limite` (ya escrita para J.55) a `platform::proceso_externo`, compartida por los cuatro puntos que lanzan PowerShell (`windows_storage`, `capacidad`, `proteccion_carpetas` ×2) y por `smartctl.rs`, con `CREATE_NO_WINDOW` aplicado siempre y un límite de 20 s en las dos consultas de inventario. Quedan sin tocar, a propósito, los dos `Command::output()` de `ejecutar_autotest_corto` (`commands/mod.rs`, iniciar/cancelar el autotest SMART manual): son acciones iniciadas por el usuario, no parte del barrido automático de arranque, y su alcance no lo pidió esta tarea — mismo criterio de no ampliar sin que haga falta |
 | J.58 | Usando la aplicación real ya instalada, el usuario señaló cuatro cosas sueltas: (1) el icono del fondo del riel lateral no explica nada al pasar el ratón ni hace nada al pulsarlo; (2) el detalle de una alerta no dice a qué disco corresponde, aunque la lista de la izquierda sí lo hace; (3) la alerta `smart.error_log` ("el registro de errores del disco ha aumentado") solo enseña un contador que sube, sin ninguna pista de qué error es; (4) la leyenda "Duración del silencio" queda descuadrada respecto a los botones de al lado | Cuatro causas independientes, todas ya resueltas. **(1)** El icono es un indicador de estado pasivo (`role="status"`, misma fuente que la píldora de la `Toolbar`, que tampoco es clicable — coherente con el resto de la app) al que le faltaba el `title` que sí llevan los demás iconos del riel: añadido, sin hacerlo interactivo. **(2)** `detail.target` ya llegaba al frontend (`AlertDetail` hereda `target` de `AlertGroupWire`) pero nunca se pintaba en el panel de detalle: añadida una línea bajo el título, igual que ya se ve en la tarjeta de la lista. **(3)** SMART no da una descripción legible de cada error — el contador (`error_log_entries_total`) es el dato real; lo más parecido a "más información" es la tabla de errores completa que trae el JSON entero de `smartctl`, que **ya se genera hoy** dentro del paquete de diagnóstico pero no estaba enlazada desde la alerta. Nuevo comando `get_alert_smart_raw_json` (mismo patrón que `get_event_raw_xml` para las alertas de sucesos: se resuelve el `target_device_id` internamente en el backend, la ruta de `smartctl` nunca viaja al frontend) que consulta smartctl al momento y lo muestra con el mismo `CodeOutput` que ya usan `chkdsk` y el XML de eventos; solo se ofrece en alertas `smart.*`/`temp.*`/`nvme.*` (`docs/alert-rules.md`, columna "Fuente"), nunca en `capacity.*`/`events.*`/`device.*`, que no tienen ningún JSON de smartctl que mostrar. **(4)** Maquetación: `Select` es el único control de esa fila con su propia etiqueta encima, y centrar verticalmente toda la fila la descuadraba frente a los botones sin etiqueta — la fila pasa de `items-center` a `items-end` |
 | J.59 | **DECIDIDO** e implementado. El usuario ve «Desgaste 5 %» en una tarjeta de disco y no sabe qué significa ni si es preocupante; quiere un tooltip que lo explique al pasar el ratón, en el panel general y en el detalle de disco, con un veredicto sobre el valor actual | Se construye el componente **`Tooltip`** (que `ui-design.md` §3 ya tenía autorizado y pendiente) y un módulo `src/lib/design/metricHelp.ts` con `veredictoMetrica` (puro) + `ayudaMetrica` (texto traducido). El veredicto («normal» / «alto» / «demasiado alto») usa `classifyAgainstThresholds` y los umbrales de `settings.alerts`, así **nunca contradice** al color de la tarjeta ni a una alerta; actividad y horas de encendido son informativas (siempre `ok`), y un disco SATA sin desgaste lo explica. **Alcance**: 3 métricas de `DiskCard` (panel) + las 4 `MetricCard` (detalle); **no** la tabla «Contadores». **Panel: tooltip solo con el ratón**, porque la `DiskCard` es un `<a>` entero y no puede contener un elemento tabulable — con teclado, la versión completa (`Tooltip focusable`, `Escape`, `aria-describedby`, WCAG 1.4.13) está en el detalle. En la `DiskCard` el tooltip es **local y ligero** (no el componente `Tooltip`): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006, `e2e/ui/rendimiento.spec.ts`); el silencio `a11y_no_static_element_interactions` está en `known-issues.md` #4. El panel pide `settings` una vez sin bloquear el pintado; hasta que llega, `metricHelp` usa los umbrales de fábrica. Textos en `metric.help.{temperature,wear,activity,powerOnHours}.*` |
+| J.60 | **DECIDIDO** e implementado (ADR-045). Sobre la aplicación real, el usuario señaló que una alerta `smart.error_log` de su NVMe Crucial `CT2000P3SSD8` (contador en 2162) parecía un fallo de disco pero, al mirar el registro de errores, **todas** las entradas eran `"Invalid Field in Command"` (`status_code_type` 0, `status_code` 2) con `media_errors` 0, `critical_warning` 0, `smart_status.passed` verdadero y `percentage_used` 3 — no es daño, y aun así no se podía ignorar porque `smart.error_log` estaba en el conjunto vetado de ADR-044. «Quizá hemos sido demasiado radicales» | **`smart.error_log` sale de `REGLAS_NO_IGNORABLES`** (ADR-044 → seis reglas). En NVMe de consumo ese contador (`num_err_log_entries`) lo dominan rechazos de protocolo benignos: `smartctl` o Windows piden una página de log opcional que la controladora no implementa y esta apunta cada comando rechazado. El daño de medio real lo sigue cubriendo `smart.media_errors`, que **no** se toca y sigue vetada. Cambio de una línea en `alerts::reglas` + su prueba + `docs/alert-rules.md` §1 (los tres juntos, como pide ADR-044), más `ui-contract.md` §3.4 y `ui-design.md` §3. **Pendiente, spec propia**: afinar la regla para que solo dispare con entradas del registro de tipo «media/integridad» (NVMe `status_code_type == 2`) en vez del contador bruto — es el arreglo de raíz, toca el parser de `smartctl` y cambia comportamiento observable; poder ignorarla ya resuelve el caso mientras tanto |
 
 ---
 
@@ -1253,3 +1254,70 @@ al empaquetar): primer arranque a 1695 × 988; redimensionar/mover/cerrar y reab
 geometría; maximizar/cerrar/reabrir maximizada; mover a un segundo monitor, cerrarlo y reabrir sin
 que la ventana quede fuera de pantalla; «Restaurar valores de fábrica» vuelve a 1695 × 988; salir
 desde la bandeja también guarda.
+
+## X. Ayuda con IA — decisiones adoptadas (spec `005-explicacion-ia`, ADR-046)
+
+Cerrada el 2026-09-08 al implementar la spec 005 (principio XVI de la constitución, versión 1.8.1).
+
+### X.1 · Backend TLS: `native-tls` (SChannel), no `rustls`
+
+`DECIDIDO`. En reqwest 0.13 el feature `rustls` declara su dependencia sin `default-features = false`
+y arrastra **`aws-lc-sys`** (BoringSSL vendorizado, compilación de C) sin forma de desactivarlo. En
+un proyecto solo-Windows, `native-tls` usa **SChannel** —la pila TLS del propio sistema operativo,
+crate `schannel`, FFI puro— y añade ~6 crates efectivos frente a ~20. Sin criptografía vendorizada
+en el binario privilegiado, y ya parcheada por Windows Update.
+
+### X.2 · Almacén de la clave: FFI a mano contra `advapi32`, sin crate nuevo
+
+`DECIDIDO`. El crate `windows` (ampliado) o `keyring` habrían sido árboles de dependencias nuevos.
+Se hace con `extern "system"` contra `advapi32` (`CredReadW`/`CredWriteW`/`CredDeleteW`, struct
+`CREDENTIALW`), mismo patrón que `platform::energia`. `CRED_PERSIST_LOCAL_MACHINE` porque el proceso
+va elevado (ADR-004); las pruebas usan `CRED_PERSIST_SESSION` para no exigir elevación en CI.
+
+### X.3 · Tiempo máximo de espera: 60 s
+
+`DECIDIDO` (clarify de la spec). Holgado sobre los ~20 s del caso normal (SC-002); superado, se
+cancela y se ofrece reintentar.
+
+### X.4 · Recorte del detalle técnico: 8 000 caracteres
+
+`PROPUESTO`. Valor de `MAX_DETALLE_CHARS` en `platform::ia_openrouter`. No medido: es una defensa
+contra un detalle absurdamente largo, no un límite ajustado a nada concreto. Si se recorta, la
+respuesta lo advierte (FR-021).
+
+### X.5 · La explicación devuelta es efímera
+
+`DECIDIDO` (asunción de la spec). No se guarda ni se cachea: volver a pedirla lanza una consulta
+nueva. Por simplicidad y por la cuota gratuita; revisable si el gasto molesta.
+
+### X.6 · Sin `{@html}`: analizador de subconjunto de Markdown propio
+
+`DECIDIDO`. La respuesta del LLM es contenido no confiable (principio XVI). En vez de una biblioteca
+de terceros + saneador, `src/lib/design/markdown.ts` analiza un subconjunto a un árbol de tokens y
+`Markdown.svelte` lo pinta con marcado Svelte. Los enlaces se muestran como texto + URL entre
+paréntesis, nunca como `href`.
+
+### X.7 · La anonimización vive en la capa de comando, no en `domain::ia`
+
+`DECIDIDO`. `reporting/` depende de `domain::tipos`; meter `reporting::anonimizar` dentro de
+`domain::ia` crearía un ciclo `domain → reporting → domain`. El comando (que ya usa ambas capas
+legítimamente) anonimiza y entrega cadenas limpias a `domain::ia`, que se queda como hoja pura.
+
+### X.8 · Sin streaming en la v1
+
+`DECIDIDO`. Un `await` y el indicador de progreso bastan. El streaming SSE sería mejora futura.
+
+### X.9 · `reset_settings` del ámbito `ai` borra también la credencial
+
+`DECIDIDO`. Borrar el modelo y el `preview_acknowledged` sin borrar la clave dejaría la función
+medio configurada; el estado de fábrica es «sin credencial».
+
+### X.10 · Pendiente de verificar a mano
+
+`explicar_detalle_tecnico`, `guardar_clave_ia`, `probar_clave_ia`, `listar_modelos_ia` y
+`platform::credenciales` (con `LOCAL_MACHINE`) **no** se prueban de punta a punta en `cargo test`:
+necesitan red real, una clave real y/o el proceso elevado. Recorrido en
+`specs/005-explicacion-ia/quickstart.md` con una clave de OpenRouter: activar/probar/borrar la
+clave; explicar una alerta (vista previa la primera vez, luego no); explicar el detalle SMART;
+elegir un modelo de pago (aviso) y uno gratuito; fallo de red (el modal degrada, la pantalla
+sigue); fragmento de texto libre no anonimizable (diálogo de revisión).

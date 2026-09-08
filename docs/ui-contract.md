@@ -61,6 +61,15 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
 | `app.log_reload_failed` | no se pudo aplicar en caliente el nuevo nivel de registro | sí |
 | `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
+| `ia.no_key` | comando de IA sin clave de API configurada | no |
+| `ia.invalid_key_format` | la clave de API no tiene el formato esperado | no |
+| `ia.unauthorized` | OpenRouter rechazó la clave (HTTP 401/403) | no |
+| `ia.rate_limited` | límite de uso de OpenRouter alcanzado (HTTP 402/429) | sí |
+| `ia.timeout` | sin respuesta del modelo en 60 s | sí |
+| `ia.network` | no se pudo conectar con OpenRouter (DNS, TLS, red) | sí |
+| `ia.empty_response` | 200 sin explicación usable | sí |
+| `ia.provider` | otro error de OpenRouter (4xx/5xx, respuesta ilegible) | sí si es 5xx |
+| `ia.credential_store` | fallo al leer/escribir en el Administrador de credenciales de Windows | no |
 
 ---
 
@@ -270,8 +279,9 @@ invoke<AlertGroup[]>("get_alert_groups", { status?: AlertStatus[], deviceId?: st
 invoke<AlertDetail>("get_alert_detail", { alertGroupId: string })
 
 interface AlertDetail extends AlertGroup {
-  ruleIgnorable: boolean;                 // false para las 7 reglas no ignorables (ADR-044): la
-                                          // acción «Ignorar» se muestra deshabilitada con su motivo
+  ruleIgnorable: boolean;                 // false para las 6 reglas no ignorables (ADR-044,
+                                          // enmendado por ADR-045): la acción «Ignorar» se
+                                          // muestra deshabilitada con su motivo
   facts: { labelKey: string; value: string | null }[];
   occurrences: {
     occurredAt: string;
@@ -290,7 +300,7 @@ invoke<void>("archive_alert", { alertGroupId: string })
 
 // Ignorar de forma permanente (ADR-044): estado terminal `ignored` — no notifica, no cuenta para
 // el color, no se reactiva solo. Sigue registrando ocurrencias. Falla con
-// `alert.rule_not_ignorable` (i18n `error.alertRuleNotIgnorable`) para las siete reglas de daño
+// `alert.rule_not_ignorable` (i18n `error.alertRuleNotIgnorable`) para las seis reglas de daño
 // físico / predicción de fallo. `unignore_alert` deja el grupo en `resolved`; el motor lo sube a
 // `active` en el ciclo siguiente si la condición se cumple.
 invoke<void>("ignore_alert", { alertGroupId: string })
@@ -443,6 +453,49 @@ una segunda vía de acceso al sistema de ficheros, que es justo lo que el princi
 
 ---
 
+### 3.10 Ayuda con IA (spec `005-explicacion-ia`, principio XVI)
+
+Capacidad **opcional**: sin clave de API configurada, ninguno de estos comandos hace red y las
+acciones de explicación no aparecen en la interfaz.
+
+```ts
+invoke<EstadoIaWire>("estado_ia")                                    // sin red
+invoke<EstadoIaWire>("guardar_clave_ia", { clave: string })          // valida y guarda en el Administrador de credenciales
+invoke<EstadoIaWire>("probar_clave_ia")                              // revalida la clave guardada
+invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado
+invoke<ModeloIaWire[]>("listar_modelos_ia")                          // catálogo para el selector; el primero es «automático»
+invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplicacion })
+```
+
+```ts
+type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; claveValida: boolean | null };
+type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
+type OrigenExplicacion = {
+  tipo: "alerta" | "smart";
+  deviceId: string | null;        // obligatorio si tipo === "smart"
+  alertGroupId: string | null;    // obligatorio si tipo === "alerta"
+  idioma: "es" | "en";
+  revision: "ninguna" | "enviar_igual" | "quitar_fragmentos";
+  previewConfirmada: boolean;
+};
+type ResultadoExplicacion =
+  | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean }
+  | { estado: "revision"; textoCompleto: string; fragmentos: { texto: string; motivoKey: string }[] };
+```
+
+- La **clave de API no viaja por el contrato**: vive solo en el Administrador de credenciales de
+  Windows. `estado_ia` expone únicamente si existe y si la última comprobación fue válida.
+- `explicar_detalle_tecnico` devuelve `{ estado: "revision" }` en dos casos: `fragmentos` vacío es
+  la **vista previa** de FR-010 (primera vez); `fragmentos` no vacío es la **revisión** de FR-026
+  (la anonimización no pudo garantizar que un fragmento esté limpio). En ambos, la interfaz vuelve
+  a invocar con `revision`/`previewConfirmada` ajustados.
+- El detalle técnico se **anonimiza** en Rust (número de serie, nombre de equipo, nombre de
+  usuario, rutas de perfil) antes de salir del proceso. La marca/modelo/firmware del disco **sí**
+  se envían.
+- Errores: los códigos `ia.*` de §1.
+
+---
+
 ## 4. Eventos emitidos por el backend
 
 La UI **no hace sondeo**. El backend empuja (ADR-015). Cada carga útil lleva `emittedAt` para poder
@@ -480,3 +533,6 @@ La política de capacidades es de mínimo privilegio dentro de un proceso ya ele
   entra en el backend, y aun así se valida.
 - Cualquier permiso nuevo requiere una entrada en `docs/decisions.md`. La definición de terminado de
   una pantalla incluye "sin permisos Tauri nuevos".
+- La ayuda con IA (spec `005-explicacion-ia`) **no añade ningún permiso de capacidades**: la única
+  llamada de red saliente la hace Rust desde un comando `async` (no el WebView), con destino fijo
+  (`openrouter.ai`), y no se usa `tauri-plugin-http` (ADR-046).

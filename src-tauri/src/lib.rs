@@ -53,6 +53,13 @@ pub fn run() {
             commands::set_setting,
             commands::get_settings,
             commands::reset_settings,
+            // ayuda con IA (spec 005-explicacion-ia)
+            commands::estado_ia,
+            commands::guardar_clave_ia,
+            commands::probar_clave_ia,
+            commands::borrar_clave_ia,
+            commands::listar_modelos_ia,
+            commands::explicar_detalle_tecnico,
             // inventario
             commands::get_devices,
             commands::get_device_detail,

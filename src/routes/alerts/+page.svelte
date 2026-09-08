@@ -10,6 +10,7 @@
     ConfirmDialog,
     DataRow,
     EmptyState,
+    ExplicacionModal,
     Select,
     SegmentedControl,
     StatusPill
@@ -27,8 +28,10 @@
   } from "$lib/api";
   import { formatDateTime } from "$lib/design/format";
   import { severityToHealth } from "$lib/design/health";
-  import { t } from "$lib/i18n";
+  import { i18n, t } from "$lib/i18n";
   import { app } from "$lib/stores/app.svelte";
+  import { ia } from "$lib/stores/ia.svelte";
+  import { explicacion } from "$lib/stores/explicacion.svelte";
   import type { AlertDetail } from "$lib/api";
   import type { AlertGroup, AlertStatus, AppError } from "$lib/design/types";
   import type { PageData } from "./$types";
@@ -108,6 +111,18 @@
     } finally {
       smartRawLoading = false;
     }
+  }
+
+  /* ---------------------------------------------------------- explicación con IA (spec 005, US2) */
+
+  function explicarAlerta() {
+    if (!detail) return;
+    void explicacion.lanzar({
+      tipo: "alerta",
+      deviceId: null,
+      alertGroupId: detail.id,
+      idioma: i18n.locale
+    });
   }
 
   async function cargarDetalle(id: string) {
@@ -243,6 +258,18 @@
             <DataRow label={t(fact.labelKey)} value={fact.value ?? t("common.notAvailable")} />
           {/each}
         </div>
+
+        {#if ia.activa}
+          <Button
+            size="sm"
+            variant="secondary"
+            full={false}
+            disabled={detail !== null && ia.estaEnCurso(`alerta:${detail.id}`)}
+            onclick={explicarAlerta}
+          >
+            {t("alerts.explainCta")}
+          </Button>
+        {/if}
 
         {#if esAlertaSmart}
           <div class="flex flex-col gap-2">
@@ -399,4 +426,21 @@
     if (detail) void ejecutar(() => ignoreAlert(detail!.id));
   }}
   oncancel={() => (ignoreDialogOpen = false)}
+/>
+
+<ExplicacionModal
+  open={explicacion.open}
+  fase={explicacion.fase}
+  markdown={explicacion.markdown}
+  modeloUsado={explicacion.modeloUsado}
+  detalleRecortado={explicacion.detalleRecortado}
+  error={explicacion.error}
+  textoRevision={explicacion.textoRevision}
+  fragmentos={explicacion.fragmentos}
+  onclose={explicacion.cerrar}
+  oncancel={explicacion.cerrar}
+  onretry={() => void explicacion.reintentar()}
+  onconfirmar={() => void explicacion.confirmarPreview()}
+  onenviarigual={() => void explicacion.enviarIgual()}
+  onquitarfragmentos={() => void explicacion.quitarFragmentos()}
 />

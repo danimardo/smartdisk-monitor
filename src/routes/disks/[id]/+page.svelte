@@ -9,6 +9,7 @@
     DataRow,
     DateRangePicker,
     EmptyState,
+    ExplicacionModal,
     Icon,
     MetricCard,
     SegmentedControl,
@@ -36,6 +37,8 @@
   import { classifyAgainstThresholds, temperatureThresholds } from "$lib/design/health";
   import { ayudaMetrica } from "$lib/design/metricHelp";
   import { i18n, t } from "$lib/i18n";
+  import { ia } from "$lib/stores/ia.svelte";
+  import { explicacion } from "$lib/stores/explicacion.svelte";
   import { goto } from "$app/navigation";
   import type { AppError } from "$lib/design/types";
   import type { MetricSeries } from "$lib/api";
@@ -46,6 +49,17 @@
   const disk = $derived(data.disk);
   const settings = $derived(data.settings);
   const tone = $derived(healthToken[disk.state]);
+
+  /** «Explícamelo» sobre los contadores SMART (spec 005, US4). Reusa la máquina de estados del
+   *  modal, igual que `/alerts`. */
+  function explicarSmart() {
+    void explicacion.lanzar({
+      tipo: "smart",
+      deviceId: disk.id,
+      alertGroupId: null,
+      idioma: i18n.locale
+    });
+  }
 
   const tempThresholds = $derived(
     temperatureThresholds(
@@ -368,6 +382,35 @@
           deltaState={counter.deltaIsMeaningful ? "warn" : null}
         />
       {/each}
+
+      {#if ia.activa && disk.counters.length > 0}
+        <Button
+          size="sm"
+          variant="secondary"
+          full={false}
+          disabled={ia.estaEnCurso(`smart:${disk.id}`)}
+          onclick={explicarSmart}
+        >
+          {t("alerts.explainCta")}
+        </Button>
+      {/if}
     </Card>
   </div>
 </div>
+
+<ExplicacionModal
+  open={explicacion.open}
+  fase={explicacion.fase}
+  markdown={explicacion.markdown}
+  modeloUsado={explicacion.modeloUsado}
+  detalleRecortado={explicacion.detalleRecortado}
+  error={explicacion.error}
+  textoRevision={explicacion.textoRevision}
+  fragmentos={explicacion.fragmentos}
+  onclose={explicacion.cerrar}
+  oncancel={explicacion.cerrar}
+  onretry={() => void explicacion.reintentar()}
+  onconfirmar={() => void explicacion.confirmarPreview()}
+  onenviarigual={() => void explicacion.enviarIgual()}
+  onquitarfragmentos={() => void explicacion.quitarFragmentos()}
+/>

@@ -289,6 +289,11 @@ El producto debe ayudar a responder:
 - Español e inglés, seleccionados inicialmente según el idioma del sistema.
 - Tema claro, oscuro o automático según el sistema.
 - Instalador manual y desinstalador.
+- **Ayuda con IA opcional** (spec `005-explicacion-ia`, principio XVI): si la persona configura una
+  clave de API de OpenRouter, puede pedir que se le traduzca a lenguaje llano el detalle técnico de
+  una alerta o del detalle SMART de un disco, con posibles pasos a seguir. Apagada de fábrica; sin
+  clave, la aplicación no hace ninguna conexión a Internet. El detalle técnico se anonimiza antes
+  de enviarse y la persona ve el texto exacto la primera vez.
 
 #### Fuera del alcance inicial
 
@@ -1344,6 +1349,29 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
 - Exporta datos normalizados y metadatos de procedencia.
 - Anonimiza identificadores mediante sustitución estable dentro de cada paquete.
 
+#### Ayuda con IA (spec `005-explicacion-ia`, principio XVI, ADR-046)
+
+- **Única ruta de red saliente de toda la aplicación.** Apagada de fábrica: sin clave de API no se
+  construye ningún cliente HTTP ni hay resolución de nombres.
+- Tres piezas, en tres capas:
+  - `domain::ia` — **puro** (sin `reqwest`, sin Tauri, sin Windows): compone el prompt
+    (`componer_consulta`), barre el texto en busca de fragmentos que la anonimización no garantiza
+    limpios (`barrer_texto_residual`), recorta, y analiza la respuesta y los errores del proveedor
+    en tipos `serde` explícitos.
+  - `platform::ia_openrouter` — transporte: `reqwest` (async, `native-tls`/SChannel), destino fijo
+    `https://openrouter.ai/api/v1`, tiempo máximo 60 s. El cliente se construye **aquí**, nunca en
+    el arranque.
+  - `platform::credenciales` — FFI a mano contra `advapi32` (`CredReadW`/`CredWriteW`/`CredDeleteW`),
+    sin crate nuevo, mismo patrón que `platform::energia`.
+- El comando `explicar_detalle_tecnico` orquesta: recupera la alerta o los contadores SMART,
+  **anonimiza en la capa de comando** (reutiliza `reporting::anonimizar::Anonimizador`, para no
+  invertir la dependencia `domain → reporting`), gestiona la vista previa y la revisión, y llama al
+  transporte. Todo desde un comando `async`; **no hay permiso de capacidades** porque la red la
+  origina Rust, no el WebView.
+- La respuesta del modelo es **contenido no confiable**: la interfaz la renderiza con un analizador
+  de subconjunto de Markdown propio (`src/lib/design/markdown.ts` + `Markdown.svelte`), nunca con
+  `{@html}`, y nunca alimenta una decisión de la aplicación (color de estado, alerta, regla).
+
 ### 4. Concurrencia y ciclo de vida
 
 - La UI y los colectores no comparten operaciones bloqueantes.
@@ -1403,7 +1431,11 @@ La ruta de datos se obtiene de Windows y no se codifica como literal en la lógi
 - Límites de tamaño y reserva de espacio antes de escribir.
 - SQL parametrizado y migraciones verificadas.
 - Contenido procedente de eventos o dispositivos renderizado como texto, nunca como HTML sin sanear.
-- Sin endpoints de red ni telemetría.
+- Sin endpoints de red ni telemetría. **Única excepción**: la ayuda con IA (principio XVI,
+  ADR-046), apagada de fábrica, de destino único (`openrouter.ai`), iniciada siempre por la persona,
+  con la clave de API en el Administrador de credenciales de Windows y el detalle técnico
+  anonimizado antes de salir del proceso. Sin permiso de capacidades nuevo. Cero telemetría propia:
+  el contenido de las peticiones y respuestas no se registra.
 
 ### 7. Tolerancia a fallos
 
@@ -1598,6 +1630,19 @@ Fichero de origen: `docs/data-model.md`
   observable (tema ≠ `system`, idioma forzado, perfil de alerta ≠ `balanced`, algún alias o alguna
   exclusión), en cuyo caso la graba y sigue sin mostrarlo (FR-043, sin migración). No la restaura
   `reset_settings`.
+- **Ayuda con IA** (spec `005-explicacion-ia`, FR-024). Exactamente tres claves; sin migración:
+  - `settings.ai.enabled`: booleano, fábrica `false`. Espejo de «existe credencial». Lo escriben
+    solo `guardar_clave_ia` (→ `true`) y `borrar_clave_ia` (→ `false`), nunca `set_setting`.
+  - `settings.ai.model`: identificador del modelo, fábrica `"openrouter/free"` (= «automático»).
+    Se valida solo por forma (no vacío, ≤120, sin espacios), no contra el catálogo del proveedor.
+  - `settings.ai.preview_acknowledged`: booleano, fábrica `false`. `true` cuando la persona ha
+    confirmado la vista previa del texto a enviar (FR-010). `borrar_clave_ia` lo vuelve a `false`.
+  - **La clave de API no está aquí.** Vive en el Administrador de credenciales de Windows
+    (`CRED_TYPE_GENERIC`, `TargetName` `SmartDisk Monitor/OpenRouter`, `CRED_PERSIST_LOCAL_MACHINE`,
+    blob UTF-8), fuera de SQLite y de cualquier fichero (FR-004). `reset_settings` en el ámbito
+    `"ai"` (o `"all"`) borra las tres claves **y** la credencial.
+  - Las entidades de una consulta de explicación (texto a enviar, respuesta del modelo, catálogo de
+    modelos) son **efímeras**: no se persisten en ninguna tabla.
 - **`volume_free_bytes`** (`metric_samples`, `MetricTarget::Volume`): muestra periódica del espacio
   libre de cada volumen monitorizado, persistida en el ciclo de descubrimiento (ADR-036). Antes la
   capacidad solo vivía como instantánea en `volumes.free_bytes`; ahora también como serie, para que
@@ -1747,18 +1792,23 @@ color ni la presencia en la lista. Valores: `null`, una fecha UTC, o `"infinite"
 **Qué cuenta para el color.** Los estados `active` y `acknowledged`. Ni `resolved`, ni `archived`,
 ni `ignored`. El silencio nunca afecta al color. Una sola implementación: `deviceState()`.
 
-**Reglas no ignorables** (ADR-044). Estas señalan daño físico o predicción de fallo del propio
-disco: ignorarlas para siempre convertiría el monitor en algo que oculta su motivo de existir
-(constitución §I). La acción «Ignorar» está vetada para ellas (deshabilitada en la interfaz con su
-motivo; el backend rechaza cualquier intento con `alert.rule_not_ignorable`):
+**Reglas no ignorables** (ADR-044, enmendado por ADR-045). Estas señalan daño físico o predicción
+de fallo del propio disco: ignorarlas para siempre convertiría el monitor en algo que oculta su
+motivo de existir (constitución §I). La acción «Ignorar» está vetada para ellas (deshabilitada en
+la interfaz con su motivo; el backend rechaza cualquier intento con `alert.rule_not_ignorable`):
 
 `smart.health.failed` · `nvme.critical_warning` · `smart.wear_high` · `smart.spare_below_threshold`
-· `smart.media_errors` · `smart.error_log` · `events.disk_predictive`.
+· `smart.media_errors` · `events.disk_predictive`.
 
 Cualquier otra regla (temperatura, capacidad, controladora, `events.filesystem_error`,
-`events.disk_error`, reintentos de E/S, `smart.unreadable`, `collector.stalled`…) sí se puede
-ignorar: la lista canónica vive en `alerts::reglas::REGLAS_NO_IGNORABLES` y una prueba la contrasta
-contra la tabla de §2.
+`events.disk_error`, reintentos de E/S, `smart.unreadable`, `smart.error_log`, `collector.stalled`…)
+sí se puede ignorar: la lista canónica vive en `alerts::reglas::REGLAS_NO_IGNORABLES` y una prueba
+la contrasta contra la tabla de §2.
+
+`smart.error_log` salió del conjunto vetado en ADR-045: el contador `error_log_entries_total`
+(`num_err_log_entries` en NVMe) lo dominan rechazos de protocolo benignos —«Invalid Field in
+Command»— que no son daño de medio. El daño de medio real lo cubre `smart.media_errors`, que sigue
+vetada.
 
 ---
 
@@ -2052,6 +2102,15 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
 | `app.log_reload_failed` | no se pudo aplicar en caliente el nuevo nivel de registro | sí |
 | `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
+| `ia.no_key` | comando de IA sin clave de API configurada | no |
+| `ia.invalid_key_format` | la clave de API no tiene el formato esperado | no |
+| `ia.unauthorized` | OpenRouter rechazó la clave (HTTP 401/403) | no |
+| `ia.rate_limited` | límite de uso de OpenRouter alcanzado (HTTP 402/429) | sí |
+| `ia.timeout` | sin respuesta del modelo en 60 s | sí |
+| `ia.network` | no se pudo conectar con OpenRouter (DNS, TLS, red) | sí |
+| `ia.empty_response` | 200 sin explicación usable | sí |
+| `ia.provider` | otro error de OpenRouter (4xx/5xx, respuesta ilegible) | sí si es 5xx |
+| `ia.credential_store` | fallo al leer/escribir en el Administrador de credenciales de Windows | no |
 
 ---
 
@@ -2261,8 +2320,9 @@ invoke<AlertGroup[]>("get_alert_groups", { status?: AlertStatus[], deviceId?: st
 invoke<AlertDetail>("get_alert_detail", { alertGroupId: string })
 
 interface AlertDetail extends AlertGroup {
-  ruleIgnorable: boolean;                 // false para las 7 reglas no ignorables (ADR-044): la
-                                          // acción «Ignorar» se muestra deshabilitada con su motivo
+  ruleIgnorable: boolean;                 // false para las 6 reglas no ignorables (ADR-044,
+                                          // enmendado por ADR-045): la acción «Ignorar» se
+                                          // muestra deshabilitada con su motivo
   facts: { labelKey: string; value: string | null }[];
   occurrences: {
     occurredAt: string;
@@ -2281,7 +2341,7 @@ invoke<void>("archive_alert", { alertGroupId: string })
 
 // Ignorar de forma permanente (ADR-044): estado terminal `ignored` — no notifica, no cuenta para
 // el color, no se reactiva solo. Sigue registrando ocurrencias. Falla con
-// `alert.rule_not_ignorable` (i18n `error.alertRuleNotIgnorable`) para las siete reglas de daño
+// `alert.rule_not_ignorable` (i18n `error.alertRuleNotIgnorable`) para las seis reglas de daño
 // físico / predicción de fallo. `unignore_alert` deja el grupo en `resolved`; el motor lo sube a
 // `active` en el ciclo siguiente si la condición se cumple.
 invoke<void>("ignore_alert", { alertGroupId: string })
@@ -2434,6 +2494,49 @@ una segunda vía de acceso al sistema de ficheros, que es justo lo que el princi
 
 ---
 
+#### 3.10 Ayuda con IA (spec `005-explicacion-ia`, principio XVI)
+
+Capacidad **opcional**: sin clave de API configurada, ninguno de estos comandos hace red y las
+acciones de explicación no aparecen en la interfaz.
+
+```ts
+invoke<EstadoIaWire>("estado_ia")                                    // sin red
+invoke<EstadoIaWire>("guardar_clave_ia", { clave: string })          // valida y guarda en el Administrador de credenciales
+invoke<EstadoIaWire>("probar_clave_ia")                              // revalida la clave guardada
+invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado
+invoke<ModeloIaWire[]>("listar_modelos_ia")                          // catálogo para el selector; el primero es «automático»
+invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplicacion })
+```
+
+```ts
+type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; claveValida: boolean | null };
+type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
+type OrigenExplicacion = {
+  tipo: "alerta" | "smart";
+  deviceId: string | null;        // obligatorio si tipo === "smart"
+  alertGroupId: string | null;    // obligatorio si tipo === "alerta"
+  idioma: "es" | "en";
+  revision: "ninguna" | "enviar_igual" | "quitar_fragmentos";
+  previewConfirmada: boolean;
+};
+type ResultadoExplicacion =
+  | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean }
+  | { estado: "revision"; textoCompleto: string; fragmentos: { texto: string; motivoKey: string }[] };
+```
+
+- La **clave de API no viaja por el contrato**: vive solo en el Administrador de credenciales de
+  Windows. `estado_ia` expone únicamente si existe y si la última comprobación fue válida.
+- `explicar_detalle_tecnico` devuelve `{ estado: "revision" }` en dos casos: `fragmentos` vacío es
+  la **vista previa** de FR-010 (primera vez); `fragmentos` no vacío es la **revisión** de FR-026
+  (la anonimización no pudo garantizar que un fragmento esté limpio). En ambos, la interfaz vuelve
+  a invocar con `revision`/`previewConfirmada` ajustados.
+- El detalle técnico se **anonimiza** en Rust (número de serie, nombre de equipo, nombre de
+  usuario, rutas de perfil) antes de salir del proceso. La marca/modelo/firmware del disco **sí**
+  se envían.
+- Errores: los códigos `ia.*` de §1.
+
+---
+
 ### 4. Eventos emitidos por el backend
 
 La UI **no hace sondeo**. El backend empuja (ADR-015). Cada carga útil lleva `emittedAt` para poder
@@ -2471,6 +2574,9 @@ La política de capacidades es de mínimo privilegio dentro de un proceso ya ele
   entra en el backend, y aun así se valida.
 - Cualquier permiso nuevo requiere una entrada en `docs/decisions.md`. La definición de terminado de
   una pantalla incluye "sin permisos Tauri nuevos".
+- La ayuda con IA (spec `005-explicacion-ia`) **no añade ningún permiso de capacidades**: la única
+  llamada de red saliente la hace Rust desde un comando `async` (no el WebView), con destino fijo
+  (`openrouter.ai`), y no se usa `tauri-plugin-http` (ADR-046).
 
 
 ---
@@ -2498,6 +2604,7 @@ no se hace una excepción local.
 | TypeScript | 5.x, `strict: true` | sin `any` implícito, sin `@ts-ignore` sin justificar |
 | Tailwind | 3.x | solo utilidades mapeadas desde tokens |
 | SQLite | vía `rusqlite` con `bundled` | evita depender de la DLL del sistema |
+| `reqwest` | 0.13, `default-features = false`, features `native-tls` + `json` | **solo** para la ayuda con IA (principio XVI, ADR-046); ya lo arrastra `tauri`. `native-tls` = SChannel del sistema, no `rustls` (que traería `aws-lc-sys`) |
 | Vitest | 5.x | dos configuraciones: Node y navegador (ADR-027) |
 | Playwright | 1.x | solo Chromium: es el motor del WebView2 (ADR-028) |
 | `@axe-core/playwright` | 4.x | accesibilidad automática, ambos temas |
@@ -3664,7 +3771,7 @@ SQLite almacenará configuración, inventario, muestras, eventos, alertas y prue
 
 ### ADR-007 — Sin red ni telemetría
 
-Estado: aceptada.
+Estado: **aceptada, matizada por ADR-046** (2026-09-08) en lo relativo a la red saliente. La prohibición de telemetría y de actualizador automático sigue vigente sin cambios.
 
 El funcionamiento normal no necesita red. No se recopila ni transmite telemetría. Las actualizaciones son totalmente manuales.
 
@@ -5005,7 +5112,8 @@ llamada real a PowerShell no, por la misma razón que el resto de `platform/` no
 
 ### ADR-044 — Un conjunto cerrado de reglas de alerta que nunca se pueden ignorar
 
-Estado: aceptada. Fecha: 2026-09-08. Feature: `specs/004-ignorar-alertas`.
+Estado: aceptada; **enmendada por ADR-045** (2026-09-08): `smart.error_log` sale del conjunto
+vetado, que pasa de siete reglas a seis. Fecha: 2026-09-08. Feature: `specs/004-ignorar-alertas`.
 
 #### El problema
 
@@ -5070,6 +5178,155 @@ deje una de estas siete en estado `ignored`.
   prueba **y** de `docs/alert-rules.md`: los tres tienen que moverse juntos, que es lo que se
   quiere para una lista de esta importancia.
 - `docs/alert-rules.md` §1 pasa a describir el estado `ignored`, sus transiciones y este veto.
+
+### ADR-045 — `smart.error_log` sale del conjunto de reglas no ignorables
+
+Estado: aceptada. Fecha: 2026-09-08. Enmienda ADR-044. Feature: `specs/004-ignorar-alertas`
+(corrección posterior a partir de datos reales).
+
+#### El problema
+
+ADR-044 vetó «Ignorar» para siete reglas, entre ellas `smart.error_log`, que se activa cuando el
+contador `error_log_entries_total` de un disco crece (`num_err_log_entries` en NVMe). La lista se
+dejó explícitamente como «el punto más revisable si la experiencia real lo desaconseja».
+
+La experiencia real lo desaconseja. En un NVMe de consumo —medido sobre un Crucial `CT2000P3SSD8`,
+firmware `P9CR30A`— ese contador estaba en 2162 y **todas** las entradas del registro de errores
+eran idénticas: `"Invalid Field in Command"` (`status_code_type` 0, `status_code` 2). Es un rechazo
+de protocolo: `smartctl` o Windows piden una página de log opcional que la controladora no
+implementa, y la controladora apunta cada comando rechazado. En la misma lectura, `media_errors`
+era 0, `critical_warning` 0, `smart_status.passed` verdadero y `percentage_used` 3. No hay daño ni
+predicción de fallo; es ruido de fondo de la controladora, y crece sin parar.
+
+Con la regla vetada, esa alerta —que en la interfaz **parece** un fallo de disco— no se puede
+silenciar de forma permanente ni deja de teñir el disco. Justo el falso positivo recurrente que la
+feature 004 existe para poder aceptar y no volver a ver.
+
+#### La decisión
+
+`smart.error_log` sale de `alerts::reglas::REGLAS_NO_IGNORABLES`. El conjunto vetado pasa a seis
+reglas: `smart.health.failed`, `nvme.critical_warning`, `smart.wear_high`,
+`smart.spare_below_threshold`, `smart.media_errors`, `events.disk_predictive`.
+
+El daño de medio acumulado real lo sigue cubriendo `smart.media_errors`, que **no** se toca: ese
+contador sí cuenta bloques que el disco no ha podido leer ni escribir.
+
+#### Alternativas descartadas
+
+- **Dejarla vetada y afinar la regla** para que solo dispare con entradas del registro de tipo
+  «media / integridad» (NVMe `status_code_type == 2`; equivalente ATA), no ante el contador bruto.
+  Es el arreglo de raíz y elimina el falso positivo en origen, pero toca el parser de `smartctl`,
+  cambia comportamiento observable y necesita fixtures nuevos (ATA y NVMe): es una spec propia. Se
+  pospone, no se abandona. Mientras tanto, poder ignorar la alerta por disco + contexto ya
+  resuelve el caso del usuario.
+- **Sacar también `smart.media_errors`.** Descartada: ese contador es daño físico acumulado, no
+  ruido de protocolo. Es la señal que la de `smart.error_log` aparentaba ser.
+
+#### Consecuencias
+
+- Una alerta `smart.error_log` en cualquier estado puede pasar a `ignored` por disco + contexto:
+  deja de notificar y de teñir el disco, pero sigue registrando ocurrencias en su cronología y es
+  reversible desde la pestaña «Ignoradas» (ADR-044, sin cambios).
+- Cambio de una línea en `reglas.rs`, su prueba y `docs/alert-rules.md` §1, movidos juntos. El
+  contrato no cambia de forma: `AlertDetail.ruleIgnorable` ahora devuelve `true` para esta regla.
+- Sin permiso nuevo de Tauri, sin dependencia nueva.
+
+### ADR-046 — Red saliente opcional para la asistencia con IA, con un único proveedor
+
+Estado: aceptada.
+
+#### El problema
+
+Las alertas y el detalle SMART se presentan con su detalle técnico literal (principio X): eso es
+correcto para quien sabe leerlo, pero el público objetivo no es técnico y `Reallocated_Sector_Ct =
+8` o `UDMA_CRC_Error_Count subió a 120` no le dicen si tiene que hacer algo hoy. Se quiere una
+traducción a lenguaje llano y, cuando exista, una posible solución o siguientes pasos.
+
+Una explicación de calidad exige un modelo de lenguaje. Hacerlo sin red obligaría a empaquetar uno
+local, y ADR-007 prohíbe la red por completo. Esta decisión abre una excepción acotada; la enmienda
+constitucional 1.8.0 (principio XVI) fija sus límites y este ADR fija el proveedor, el endpoint y
+las dependencias.
+
+#### La decisión
+
+Se permite **una única ruta de red saliente**, hacia `https://openrouter.ai/api/v1`, con estas
+condiciones:
+
+- **Activación**: solo si la persona configura una clave de API de OpenRouter (en el asistente
+  inicial, marcada como opcional, o en la configuración). Sin clave, no se instancia ningún cliente
+  de red.
+- **Disparo**: solo tras un gesto explícito en una alerta o en un detalle técnico («Explícamelo en
+  lenguaje claro»). El resultado se muestra en un modal renderizado como markdown, con indicador de
+  progreso mientras se espera.
+- **Modelo**: por defecto el identificador `openrouter/free`, que OpenRouter resuelve en cada
+  llamada a uno de los modelos gratuitos disponibles y compatibles con la petición, sin que la
+  aplicación mantenga una lista. La persona puede elegir otro modelo; la lista se puebla desde
+  `GET /api/v1/models`. Se registra y se puede mostrar el modelo realmente usado (campo `model` de
+  la respuesta).
+- **Datos enviados**: solo el texto técnico visible, anonimizado en el dominio (Rust) antes de
+  salir del proceso, con las reglas del principio IX y XV. La persona ve el texto exacto que se
+  enviará antes de la primera consulta.
+- **Clave**: se guarda en el almacén de credenciales de Windows (DPAPI). En `settings` solo el
+  estado de activación y el modelo elegido.
+- **Ubicación de la llamada**: en el backend Rust, no en el WebView (principio XVI).
+
+#### Alternativas descartadas
+
+- **Modelo local empaquetado (llama.cpp + un GGUF cuantizado).** Ventaja: cumple ADR-007 sin
+  excepción, funciona sin conexión, que es donde vive un monitor de discos. Lo supera: entre 300 y
+  700 MB añadidos a un instalador que hoy pesa poco; otro binario nativo que verificar por hash,
+  firmar y mantener (principio IX); consumo de CPU y RAM en el mismo equipo que se está vigilando;
+  y calidad de explicación en español netamente peor con modelos que caben en un portátil. El valor
+  no compensa el coste permanente.
+- **API directa de un proveedor (Anthropic, OpenAI, …).** Ventaja: un intermediario menos, relación
+  contractual clara. Lo supera: obliga a la persona a abrir cuenta y pagar en ese proveedor
+  concreto; OpenRouter ofrece un nivel gratuito y permite cambiar de modelo sin tocar la
+  aplicación, que es justo lo que pidió el usuario.
+- **`openrouter/auto`.** Ventaja: elige el modelo «mejor» para la petición. Descartado: puede
+  enrutar a modelos de pago y cobra según el que use; incompatible con «gratuito por defecto».
+- **No hacer la función.** Ventaja: coherencia total con ADR-007. Lo supera: es una petición
+  explícita del responsable del producto y el detalle técnico sin traducir es una barrera real para
+  el público al que va dirigido.
+- **Llamar desde el WebView con `tauri-plugin-http`.** Descartado: metería la clave en el proceso
+  de la interfaz, obligaría a abrir `http` en las *capabilities* del frontend y dejaría la
+  anonimización del lado no confiable. La llamada va en Rust.
+
+#### Permiso de Tauri y dependencias nuevas
+
+**Concretado en la implementación** (spec `005-explicacion-ia`, 2026-09-08):
+
+- **Red saliente desde el backend.** `reqwest` 0.13 promovido a dependencia directa con
+  `default-features = false, features = ["native-tls", "json"]`. Ya estaba en `Cargo.lock` (lo
+  arrastra `tauri` 2.11.5) pero sin backend TLS. Se usa **`native-tls`**, no `rustls`: en reqwest
+  0.13 el feature `rustls` declara su dependencia sin `default-features = false` y arrastra
+  `aws-lc-sys` (BoringSSL vendorizado, compilación de C) sin forma de desactivarlo. En un proyecto
+  solo-Windows, `native-tls` usa **SChannel** —la pila TLS del propio sistema, crate `schannel`,
+  FFI puro, ya parcheada por Windows Update—: menos superficie y sin criptografía vendorizada en
+  el binario privilegiado. La llamada va en un comando `async`, nunca desde el WebView, así que
+  **no requiere ningún permiso de `capabilities`** ni `tauri-plugin-http`.
+- **Almacén de credenciales de Windows.** **Sin crate nuevo.** Se implementa con FFI a mano contra
+  `advapi32` (`CredReadW` / `CredWriteW` / `CredDeleteW`, struct `CREDENTIALW`), siguiendo el
+  patrón que el proyecto ya usa en `src-tauri/src/platform/energia.rs`. Se descartan el crate
+  `windows` y `keyring` por ser árboles de dependencias nuevos que el patrón hecho a mano evita.
+- Cada permiso o plugin de Tauri nuevo lleva además su entrada propia en este fichero (principio
+  IX). Esta feature **no añade ninguno**.
+
+#### Consecuencias
+
+- ADR-007 deja de ser absoluto en cuanto a la red: existe una ruta saliente, aunque apagada de
+  fábrica, de destino único y siempre iniciada por la persona.
+- Nueva superficie en un binario privilegiado: una conexión TLS a un host fijo. Se acota con
+  *allowlist* de host y sin cliente HTTP de propósito general expuesto.
+- La calidad, la latencia y la disponibilidad de la explicación dependen de un tercero y de modelos
+  gratuitos que cambian con el tiempo. La función se presenta como ayuda orientativa, nunca como
+  fuente de verdad, y su procedencia (modelo, proveedor) se indica.
+- Aparece una credencial que gestionar: alta, edición, borrado y el caso de clave inválida o
+  revocada, y un almacén nuevo que direccionar (Administrador de credenciales de Windows), aunque
+  sin dependencia nueva (FFI a mano).
+- Hay que redactar el aviso de privacidad del asistente y de la configuración, y la vista previa
+  del texto que se enviará.
+- Los límites de OpenRouter (p. ej. 50 peticiones/día en cuenta gratuita) no se codifican: se
+  maneja el error de cuota como un `AppError` con reintento diferido.
 
 
 ---
@@ -5529,6 +5786,7 @@ asunción del programador.
 | J.57 | Probando el instalador real (no `pnpm app:dev`), el usuario reportó dos síntomas juntos: (a) varias ventanas de PowerShell parpadeando al arrancar, y (b) la aplicación quedándose "(No responde)" justo después — una vez en el asistente inicial con "Hemos encontrado 0 discos" (paso 2), otra en "Primera lectura en marcha" (paso 4) con la barra de progreso congelada a media carrera. Reiniciando la aplicación varias veces, acabó funcionando y mostrando los cuatro discos con SMART correcto | **Dos causas independientes, ambas en cómo se lanzan los procesos externos, ninguna nueva de esta sesión pero nunca antes ejercitadas contra una instalación real recién hecha**. (1) Ningún `Command::new("powershell.exe")` llevaba `CREATE_NO_WINDOW`: Windows asigna una consola nueva al lanzar un proceso de este tipo desde una aplicación sin terminal propia, y la ventana parpadea aunque el proceso termine en milisegundos — `-WindowStyle Hidden` no lo evita, porque la ventana ya existe antes de que PowerShell decida nada sobre su estilo. `platform::autoarranque` ya lo sabía y lo aplicaba a mano para `schtasks`; los demás puntos no. (2) `windows_storage::list_physical_disks` y `capacidad::list_volumes` usaban `Command::output()`, que espera **sin límite de tiempo**: un WMI lento a inicializar (más probable justo después de instalar, o nada más arrancar Windows, que es exactamente cuando el asistente hace su primer barrido) bloquea el hilo que llama para siempre en vez de devolver "sin discos todavía", que es lo que ya hace cualquier otro fallo de esta consulta. La barra de progreso "congelada a medio camino" del paso 4 no es un tercer bug: es `<ProgressBar indeterminate>` (deliberadamente no ligada a un porcentaje real, `onboarding/+page.svelte`), fotografiada a media animación en el instante exacto en que toda la aplicación dejó de repintarse por (2) — se resuelve solo en cuanto (2) deja de bloquear. Corregido extrayendo `ejecutar_con_limite` (ya escrita para J.55) a `platform::proceso_externo`, compartida por los cuatro puntos que lanzan PowerShell (`windows_storage`, `capacidad`, `proteccion_carpetas` ×2) y por `smartctl.rs`, con `CREATE_NO_WINDOW` aplicado siempre y un límite de 20 s en las dos consultas de inventario. Quedan sin tocar, a propósito, los dos `Command::output()` de `ejecutar_autotest_corto` (`commands/mod.rs`, iniciar/cancelar el autotest SMART manual): son acciones iniciadas por el usuario, no parte del barrido automático de arranque, y su alcance no lo pidió esta tarea — mismo criterio de no ampliar sin que haga falta |
 | J.58 | Usando la aplicación real ya instalada, el usuario señaló cuatro cosas sueltas: (1) el icono del fondo del riel lateral no explica nada al pasar el ratón ni hace nada al pulsarlo; (2) el detalle de una alerta no dice a qué disco corresponde, aunque la lista de la izquierda sí lo hace; (3) la alerta `smart.error_log` ("el registro de errores del disco ha aumentado") solo enseña un contador que sube, sin ninguna pista de qué error es; (4) la leyenda "Duración del silencio" queda descuadrada respecto a los botones de al lado | Cuatro causas independientes, todas ya resueltas. **(1)** El icono es un indicador de estado pasivo (`role="status"`, misma fuente que la píldora de la `Toolbar`, que tampoco es clicable — coherente con el resto de la app) al que le faltaba el `title` que sí llevan los demás iconos del riel: añadido, sin hacerlo interactivo. **(2)** `detail.target` ya llegaba al frontend (`AlertDetail` hereda `target` de `AlertGroupWire`) pero nunca se pintaba en el panel de detalle: añadida una línea bajo el título, igual que ya se ve en la tarjeta de la lista. **(3)** SMART no da una descripción legible de cada error — el contador (`error_log_entries_total`) es el dato real; lo más parecido a "más información" es la tabla de errores completa que trae el JSON entero de `smartctl`, que **ya se genera hoy** dentro del paquete de diagnóstico pero no estaba enlazada desde la alerta. Nuevo comando `get_alert_smart_raw_json` (mismo patrón que `get_event_raw_xml` para las alertas de sucesos: se resuelve el `target_device_id` internamente en el backend, la ruta de `smartctl` nunca viaja al frontend) que consulta smartctl al momento y lo muestra con el mismo `CodeOutput` que ya usan `chkdsk` y el XML de eventos; solo se ofrece en alertas `smart.*`/`temp.*`/`nvme.*` (`docs/alert-rules.md`, columna "Fuente"), nunca en `capacity.*`/`events.*`/`device.*`, que no tienen ningún JSON de smartctl que mostrar. **(4)** Maquetación: `Select` es el único control de esa fila con su propia etiqueta encima, y centrar verticalmente toda la fila la descuadraba frente a los botones sin etiqueta — la fila pasa de `items-center` a `items-end` |
 | J.59 | **DECIDIDO** e implementado. El usuario ve «Desgaste 5 %» en una tarjeta de disco y no sabe qué significa ni si es preocupante; quiere un tooltip que lo explique al pasar el ratón, en el panel general y en el detalle de disco, con un veredicto sobre el valor actual | Se construye el componente **`Tooltip`** (que `ui-design.md` §3 ya tenía autorizado y pendiente) y un módulo `src/lib/design/metricHelp.ts` con `veredictoMetrica` (puro) + `ayudaMetrica` (texto traducido). El veredicto («normal» / «alto» / «demasiado alto») usa `classifyAgainstThresholds` y los umbrales de `settings.alerts`, así **nunca contradice** al color de la tarjeta ni a una alerta; actividad y horas de encendido son informativas (siempre `ok`), y un disco SATA sin desgaste lo explica. **Alcance**: 3 métricas de `DiskCard` (panel) + las 4 `MetricCard` (detalle); **no** la tabla «Contadores». **Panel: tooltip solo con el ratón**, porque la `DiskCard` es un `<a>` entero y no puede contener un elemento tabulable — con teclado, la versión completa (`Tooltip focusable`, `Escape`, `aria-describedby`, WCAG 1.4.13) está en el detalle. En la `DiskCard` el tooltip es **local y ligero** (no el componente `Tooltip`): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006, `e2e/ui/rendimiento.spec.ts`); el silencio `a11y_no_static_element_interactions` está en `known-issues.md` #4. El panel pide `settings` una vez sin bloquear el pintado; hasta que llega, `metricHelp` usa los umbrales de fábrica. Textos en `metric.help.{temperature,wear,activity,powerOnHours}.*` |
+| J.60 | **DECIDIDO** e implementado (ADR-045). Sobre la aplicación real, el usuario señaló que una alerta `smart.error_log` de su NVMe Crucial `CT2000P3SSD8` (contador en 2162) parecía un fallo de disco pero, al mirar el registro de errores, **todas** las entradas eran `"Invalid Field in Command"` (`status_code_type` 0, `status_code` 2) con `media_errors` 0, `critical_warning` 0, `smart_status.passed` verdadero y `percentage_used` 3 — no es daño, y aun así no se podía ignorar porque `smart.error_log` estaba en el conjunto vetado de ADR-044. «Quizá hemos sido demasiado radicales» | **`smart.error_log` sale de `REGLAS_NO_IGNORABLES`** (ADR-044 → seis reglas). En NVMe de consumo ese contador (`num_err_log_entries`) lo dominan rechazos de protocolo benignos: `smartctl` o Windows piden una página de log opcional que la controladora no implementa y esta apunta cada comando rechazado. El daño de medio real lo sigue cubriendo `smart.media_errors`, que **no** se toca y sigue vetada. Cambio de una línea en `alerts::reglas` + su prueba + `docs/alert-rules.md` §1 (los tres juntos, como pide ADR-044), más `ui-contract.md` §3.4 y `ui-design.md` §3. **Pendiente, spec propia**: afinar la regla para que solo dispare con entradas del registro de tipo «media/integridad» (NVMe `status_code_type == 2`) en vez del contador bruto — es el arreglo de raíz, toca el parser de `smartctl` y cambia comportamiento observable; poder ignorarla ya resuelve el caso mientras tanto |
 
 ---
 
@@ -6332,6 +6590,73 @@ geometría; maximizar/cerrar/reabrir maximizada; mover a un segundo monitor, cer
 que la ventana quede fuera de pantalla; «Restaurar valores de fábrica» vuelve a 1695 × 988; salir
 desde la bandeja también guarda.
 
+### X. Ayuda con IA — decisiones adoptadas (spec `005-explicacion-ia`, ADR-046)
+
+Cerrada el 2026-09-08 al implementar la spec 005 (principio XVI de la constitución, versión 1.8.1).
+
+#### X.1 · Backend TLS: `native-tls` (SChannel), no `rustls`
+
+`DECIDIDO`. En reqwest 0.13 el feature `rustls` declara su dependencia sin `default-features = false`
+y arrastra **`aws-lc-sys`** (BoringSSL vendorizado, compilación de C) sin forma de desactivarlo. En
+un proyecto solo-Windows, `native-tls` usa **SChannel** —la pila TLS del propio sistema operativo,
+crate `schannel`, FFI puro— y añade ~6 crates efectivos frente a ~20. Sin criptografía vendorizada
+en el binario privilegiado, y ya parcheada por Windows Update.
+
+#### X.2 · Almacén de la clave: FFI a mano contra `advapi32`, sin crate nuevo
+
+`DECIDIDO`. El crate `windows` (ampliado) o `keyring` habrían sido árboles de dependencias nuevos.
+Se hace con `extern "system"` contra `advapi32` (`CredReadW`/`CredWriteW`/`CredDeleteW`, struct
+`CREDENTIALW`), mismo patrón que `platform::energia`. `CRED_PERSIST_LOCAL_MACHINE` porque el proceso
+va elevado (ADR-004); las pruebas usan `CRED_PERSIST_SESSION` para no exigir elevación en CI.
+
+#### X.3 · Tiempo máximo de espera: 60 s
+
+`DECIDIDO` (clarify de la spec). Holgado sobre los ~20 s del caso normal (SC-002); superado, se
+cancela y se ofrece reintentar.
+
+#### X.4 · Recorte del detalle técnico: 8 000 caracteres
+
+`PROPUESTO`. Valor de `MAX_DETALLE_CHARS` en `platform::ia_openrouter`. No medido: es una defensa
+contra un detalle absurdamente largo, no un límite ajustado a nada concreto. Si se recorta, la
+respuesta lo advierte (FR-021).
+
+#### X.5 · La explicación devuelta es efímera
+
+`DECIDIDO` (asunción de la spec). No se guarda ni se cachea: volver a pedirla lanza una consulta
+nueva. Por simplicidad y por la cuota gratuita; revisable si el gasto molesta.
+
+#### X.6 · Sin `{@html}`: analizador de subconjunto de Markdown propio
+
+`DECIDIDO`. La respuesta del LLM es contenido no confiable (principio XVI). En vez de una biblioteca
+de terceros + saneador, `src/lib/design/markdown.ts` analiza un subconjunto a un árbol de tokens y
+`Markdown.svelte` lo pinta con marcado Svelte. Los enlaces se muestran como texto + URL entre
+paréntesis, nunca como `href`.
+
+#### X.7 · La anonimización vive en la capa de comando, no en `domain::ia`
+
+`DECIDIDO`. `reporting/` depende de `domain::tipos`; meter `reporting::anonimizar` dentro de
+`domain::ia` crearía un ciclo `domain → reporting → domain`. El comando (que ya usa ambas capas
+legítimamente) anonimiza y entrega cadenas limpias a `domain::ia`, que se queda como hoja pura.
+
+#### X.8 · Sin streaming en la v1
+
+`DECIDIDO`. Un `await` y el indicador de progreso bastan. El streaming SSE sería mejora futura.
+
+#### X.9 · `reset_settings` del ámbito `ai` borra también la credencial
+
+`DECIDIDO`. Borrar el modelo y el `preview_acknowledged` sin borrar la clave dejaría la función
+medio configurada; el estado de fábrica es «sin credencial».
+
+#### X.10 · Pendiente de verificar a mano
+
+`explicar_detalle_tecnico`, `guardar_clave_ia`, `probar_clave_ia`, `listar_modelos_ia` y
+`platform::credenciales` (con `LOCAL_MACHINE`) **no** se prueban de punta a punta en `cargo test`:
+necesitan red real, una clave real y/o el proceso elevado. Recorrido en
+`specs/005-explicacion-ia/quickstart.md` con una clave de OpenRouter: activar/probar/borrar la
+clave; explicar una alerta (vista previa la primera vez, luego no); explicar el detalle SMART;
+elegir un modelo de pago (aviso) y uno gratuito; fallo de red (el modal degrada, la pantalla
+sigue); fragmento de texto libre no anonimizable (diálogo de revisión).
+
 
 ---
 
@@ -6444,6 +6769,10 @@ tailwind.config.cjs              ← mapeo de tokens a utilidades
 - Tres capas y nada más: `.sdm-material-chrome` (barra lateral y barra de herramientas),
   `.sdm-material` (tarjetas) y `.sdm-material-overlay` (diálogos y menús). **No escribas
   `backdrop-filter` a mano** ni inventes nuevos niveles de desenfoque.
+- **Excepción, solo para el tooltip de ayuda con mucho texto** (`Tooltip`, tooltip local de
+  `DiskCard`): mantienen `.sdm-material-overlay` pero pintan el fondo con `--sdm-glass-strong`
+  (casi opaco). El texto largo sobre el fondo translúcido normal molesta la lectura. `ChartTip` y
+  el resto de overlays **no** cambian: son de una línea o llevan velo detrás.
 - **No apiles materiales**: una tarjeta nunca contiene otra tarjeta. Los bloques internos usan
   `bg-glass-3` + `rounded-inner`.
 - Toda superficie de material lleva su filo de 1 px (`shadow-edge`, es decir
@@ -6510,7 +6839,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
 | `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
-| `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
+| `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Fondo casi opaco (`--sdm-glass-strong`): lleva párrafos y el material translúcido normal dificultaba la lectura. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |
@@ -6520,6 +6849,8 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `RadioGroup` | 2–4 opciones excluyentes con explicación | cada opción admite descripción; obligatorio para tema e idioma |
 | `TextField` | entrada de texto o número | `suffix` para la unidad; validar en `onblur`, nunca en cada pulsación |
 | `CodeOutput` | salida literal de un proceso auxiliar | monoespaciada, `white-space: pre`, scroll propio; **renderiza texto, jamás HTML**; botón de copiar obligatorio |
+| `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
+| `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
 
 #### Autorizados y pendientes de construir
 
@@ -6673,7 +7004,7 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una
    alerta ya ignorada) y cronología de ocurrencias. El `SegmentedControl` de filtro tiene cinco
    segmentos: Activas / Resueltas / Archivadas / **Ignoradas** / Todas. «Ignorar» (ADR-044) abre
-   `ConfirmDialog` con su impacto; para las siete reglas no ignorables el botón aparece
+   `ConfirmDialog` con su impacto; para las seis reglas no ignorables (ADR-045) el botón aparece
    deshabilitado con `disabledReason` (`alerts.ignore.notIgnorable`).
 4. **Pruebas y diagnóstico** (v3) — **si hay una prueba en curso**, su bloque va arriba y a ancho
    completo: cabecera con píldora «Prueba en curso» + tipo de prueba `.sdm-display` + cifra de progreso
@@ -7079,6 +7410,7 @@ Fichero de origen: `src/design-system/tokens.css`
   --sdm-glass: rgba(255, 255, 255, 0.72);
   --sdm-glass-2: rgba(255, 255, 255, 0.5);
   --sdm-glass-3: rgba(124, 114, 128, 0.1);   /* pistas de barra, bloques internos */
+  --sdm-glass-strong: #ffffff; /* tooltip de ayuda: opaco, mucho texto sobre el que el fondo translúcido molesta y difumina el filo */
   --sdm-solid: #fdfcfe;
 
   --sdm-hairline: rgba(30, 23, 35, 0.09);
@@ -7138,6 +7470,7 @@ Fichero de origen: `src/design-system/tokens.css`
   --sdm-glass: rgba(48, 42, 52, 0.66);
   --sdm-glass-2: rgba(64, 56, 68, 0.42);
   --sdm-glass-3: rgba(255, 255, 255, 0.06);
+  --sdm-glass-strong: #26212a; /* tooltip de ayuda: opaco, mucho texto sobre el que el fondo translúcido molesta y difumina el filo */
   --sdm-solid: #1c1620;
 
   --sdm-hairline: rgba(255, 255, 255, 0.09);
@@ -7436,6 +7769,7 @@ Fichero de origen: `src/design-system/tokens.json`
       "glass": "rgba(255,255,255,0.72)",
       "glass2": "rgba(255,255,255,0.5)",
       "glass3": "rgba(124,114,128,0.1)",
+      "glassStrong": "#ffffff",
       "solid": "#fdfcfe",
       "hairline": "rgba(30,23,35,0.09)",
       "highlight": "rgba(255,255,255,0.9)",
@@ -7459,6 +7793,7 @@ Fichero de origen: `src/design-system/tokens.json`
       "glass": "rgba(48,42,52,0.66)",
       "glass2": "rgba(64,56,68,0.42)",
       "glass3": "rgba(255,255,255,0.06)",
+      "glassStrong": "#26212a",
       "solid": "#1c1620",
       "hairline": "rgba(255,255,255,0.09)",
       "highlight": "rgba(255,255,255,0.13)",
@@ -7635,7 +7970,10 @@ export { default as HeroPanel } from "./HeroPanel.svelte";
 export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 
+export { default as AiModelSelect } from "./AiModelSelect.svelte";
 export { default as ConfirmDialog } from "./ConfirmDialog.svelte";
+export { default as ExplicacionModal } from "./ExplicacionModal.svelte";
+export { default as Markdown } from "./Markdown.svelte";
 export { default as Toast } from "./Toast.svelte";
 export { default as EmptyState } from "./EmptyState.svelte";
 export { default as CodeOutput } from "./CodeOutput.svelte";
@@ -8703,8 +9041,35 @@ Fichero de origen: `src/lib/i18n/es.json`
   "onboarding.done.firstScan": "Primera lectura en marcha…",
   "onboarding.done.cta": "Ir al panel",
   "onboarding.done.footnote": "Todo esto se cambia en Ajustes.",
+  "onboarding.ai.title": "¿Quieres ayuda para entender los detalles técnicos?",
+  "onboarding.ai.body": "Es opcional. Si pegas una clave de API de OpenRouter, la aplicación podrá traducir a lenguaje claro el detalle técnico de una alerta o de un disco, y sugerir qué hacer. El detalle se anonimiza (número de serie, nombre del equipo, rutas de usuario) antes de enviarse a OpenRouter. Sin clave, la aplicación no hace ninguna conexión a Internet.",
+  "onboarding.ai.exampleTitle": "Ejemplo de lo que se envía",
+  "onboarding.ai.example": "«Disco SSD NVMe, firmware EXM03B6Q. Reallocated_Sector_Ct = 8, subiendo. Horas de encendido: 14200.» Sin número de serie ni nombre del equipo.",
+  "onboarding.ai.skipHint": "Puedes dejarlo en blanco y añadir la clave más tarde en Ajustes.",
+  "onboarding.ai.cta.activate": "Activar y continuar",
+  "onboarding.ai.cta.skip": "Continuar sin IA",
   "settings.onboarding.repeat": "Repetir la configuración inicial",
   "settings.onboarding.repeatHint": "Reabre el asistente con los valores actuales. No borra discos, alias ni umbrales.",
+  "settings.ai.title": "Ayuda con IA",
+  "settings.ai.hint": "Opcional. Con una clave de API de OpenRouter, la aplicación puede explicar en lenguaje claro el detalle técnico de una alerta o de un disco. El detalle se anonimiza (número de serie, nombre del equipo y rutas de usuario) antes de enviarse. Sin clave, la aplicación no hace ninguna conexión.",
+  "settings.ai.status.on": "Activada",
+  "settings.ai.status.off": "Desactivada",
+  "settings.ai.status.invalid": "OpenRouter rechazó la clave en la última comprobación. Cámbiala para volver a usar la ayuda.",
+  "settings.ai.key.label": "Clave de API de OpenRouter",
+  "settings.ai.key.hint": "Se guarda en el Administrador de credenciales de Windows, nunca en un fichero.",
+  "settings.ai.key.placeholder": "sk-or-v1-…",
+  "settings.ai.cta.activate": "Activar",
+  "settings.ai.cta.test": "Probar",
+  "settings.ai.cta.change": "Cambiar clave",
+  "settings.ai.cta.remove": "Desactivar",
+  "settings.ai.model.change": "Modelo",
+  "settings.ai.model.auto": "Modelo gratuito automático",
+  "settings.ai.model.paidSuffix": "{name} (de pago)",
+  "settings.ai.model.listUnavailable": "No se ha podido cargar la lista de modelos. Puedes seguir con el modelo gratuito automático.",
+  "settings.ai.model.paidTitle": "Este modelo tiene coste",
+  "settings.ai.model.paidBody": "«{name}» no es un modelo gratuito.",
+  "settings.ai.model.paidImpact": "Cada explicación que generes con este modelo puede generar cargos en tu cuenta de OpenRouter.",
+  "settings.ai.model.paidConfirm": "Usar este modelo",
   "common.back": "Atrás",
   "common.retry": "Reintentar",
   "disk.noSmartData": "Sin datos SMART",
@@ -8800,6 +9165,22 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alerts.actions.unignore": "Dejar de ignorar",
   "alerts.actions.unignore.hint": "Devuelve la alerta a la vigilancia normal. Si la condición se sigue cumpliendo, volverá a Activas en el próximo ciclo.",
   "alerts.viewTechnicalDetail": "Ver detalle técnico",
+  "alerts.explainCta": "Explícamelo en lenguaje claro",
+  "ai.modal.title": "Explicación de la alerta",
+  "ai.modal.progress": "Pensando la explicación…",
+  "ai.modal.retry": "Reintentar",
+  "ai.modal.model": "Generado por el modelo {model}",
+  "ai.modal.disclaimer": "Es una orientación generada por IA, no un diagnóstico de la aplicación. Contrasta lo importante.",
+  "ai.modal.truncated": "El detalle técnico era largo y se envió un extracto.",
+  "ai.preview.body": "Esto es exactamente lo que se enviará a OpenRouter para generar la explicación. Solo se muestra la primera vez.",
+  "ai.preview.confirm": "Enviar y explicar",
+  "ai.review.body": "El texto a enviar contiene fragmentos que podrían identificar tu equipo y que no se han podido sustituir automáticamente. Revísalo antes de continuar.",
+  "ai.review.flaggedTitle": "Fragmentos a revisar",
+  "ai.review.sendAnyway": "Enviar tal cual",
+  "ai.review.stripFragments": "Quitar y enviar",
+  "ai.review.path": "parece una ruta de tu equipo",
+  "ai.review.networkPath": "parece una carpeta compartida en red",
+  "ai.review.identifierLike": "parece un número de serie o identificador",
   "alerts.mute.duration": "Duración del silencio",
   "alerts.mute.15": "15 minutos",
   "alerts.mute.60": "1 hora",
@@ -8901,6 +9282,15 @@ Fichero de origen: `src/lib/i18n/es.json`
   "error.testIoFailed": "No se pudo preparar o ejecutar la prueba.",
   "error.pathInvalid": "La ruta no es válida para esta operación.",
   "error.exportWriteFailed": "No se pudo escribir el destino elegido.",
+  "error.ia.noKey": "La ayuda con IA no está activada.",
+  "error.ia.invalidKeyFormat": "Esa clave no tiene el formato que espera OpenRouter.",
+  "error.ia.unauthorized": "OpenRouter ha rechazado la clave. Revísala en Ajustes.",
+  "error.ia.rateLimited": "Has alcanzado el límite de uso de OpenRouter. Inténtalo más tarde.",
+  "error.ia.timeout": "La respuesta ha tardado demasiado (más de 60 segundos).",
+  "error.ia.network": "No se ha podido conectar con OpenRouter. Comprueba tu conexión.",
+  "error.ia.emptyResponse": "El modelo no ha devuelto ninguna explicación.",
+  "error.ia.provider": "OpenRouter ha devuelto un error al generar la explicación.",
+  "error.ia.credentialStore": "No se ha podido guardar o leer la clave en el Administrador de credenciales de Windows.",
   "reports.range.title": "Intervalo",
   "reports.devices.title": "Discos incluidos",
   "reports.includeSerials.label": "Incluir números de serie",
@@ -9203,8 +9593,35 @@ Fichero de origen: `src/lib/i18n/en.json`
   "onboarding.done.firstScan": "First reading under way…",
   "onboarding.done.cta": "Go to the dashboard",
   "onboarding.done.footnote": "All of this can be changed in Settings.",
+  "onboarding.ai.title": "Want help understanding the technical details?",
+  "onboarding.ai.body": "This is optional. If you paste an OpenRouter API key, the app can translate the technical detail of an alert or a disk into plain language and suggest what to do. The detail is anonymised (serial number, computer name, user paths) before it is sent to OpenRouter. Without a key, the app makes no internet connection at all.",
+  "onboarding.ai.exampleTitle": "Example of what gets sent",
+  "onboarding.ai.example": "\"NVMe SSD, firmware EXM03B6Q. Reallocated_Sector_Ct = 8, rising. Power-on hours: 14200.\" No serial number, no computer name.",
+  "onboarding.ai.skipHint": "You can leave this blank and add the key later in Settings.",
+  "onboarding.ai.cta.activate": "Turn on and continue",
+  "onboarding.ai.cta.skip": "Continue without AI",
   "settings.onboarding.repeat": "Repeat the initial setup",
   "settings.onboarding.repeatHint": "Reopens the wizard with your current values. It does not delete disks, aliases or thresholds.",
+  "settings.ai.title": "AI help",
+  "settings.ai.hint": "Optional. With an OpenRouter API key, the app can explain the technical detail of an alert or a disk in plain language. The detail is anonymised (serial number, computer name and user paths) before it is sent. Without a key, the app makes no connection at all.",
+  "settings.ai.status.on": "On",
+  "settings.ai.status.off": "Off",
+  "settings.ai.status.invalid": "OpenRouter rejected the key on the last check. Change it to use AI help again.",
+  "settings.ai.key.label": "OpenRouter API key",
+  "settings.ai.key.hint": "Stored in Windows Credential Manager, never in a file.",
+  "settings.ai.key.placeholder": "sk-or-v1-…",
+  "settings.ai.cta.activate": "Turn on",
+  "settings.ai.cta.test": "Test",
+  "settings.ai.cta.change": "Change key",
+  "settings.ai.cta.remove": "Turn off",
+  "settings.ai.model.change": "Model",
+  "settings.ai.model.auto": "Automatic free model",
+  "settings.ai.model.paidSuffix": "{name} (paid)",
+  "settings.ai.model.listUnavailable": "Couldn't load the model list. You can carry on with the automatic free model.",
+  "settings.ai.model.paidTitle": "This model has a cost",
+  "settings.ai.model.paidBody": "“{name}” is not a free model.",
+  "settings.ai.model.paidImpact": "Every explanation you generate with this model may incur charges on your OpenRouter account.",
+  "settings.ai.model.paidConfirm": "Use this model",
   "common.back": "Back",
   "common.retry": "Retry",
   "disk.noSmartData": "No SMART data",
@@ -9300,6 +9717,22 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alerts.actions.unignore": "Stop ignoring",
   "alerts.actions.unignore.hint": "Returns the alert to normal monitoring. If the condition still holds, it will reappear under Active on the next cycle.",
   "alerts.viewTechnicalDetail": "View technical detail",
+  "alerts.explainCta": "Explain this in plain language",
+  "ai.modal.title": "Alert explanation",
+  "ai.modal.progress": "Working out the explanation…",
+  "ai.modal.retry": "Try again",
+  "ai.modal.model": "Generated by the {model} model",
+  "ai.modal.disclaimer": "This is AI-generated guidance, not a diagnosis from the app. Double-check anything important.",
+  "ai.modal.truncated": "The technical detail was long, so an excerpt was sent.",
+  "ai.preview.body": "This is exactly what will be sent to OpenRouter to generate the explanation. Shown only the first time.",
+  "ai.preview.confirm": "Send and explain",
+  "ai.review.body": "The text to send contains fragments that could identify your computer and could not be replaced automatically. Review it before continuing.",
+  "ai.review.flaggedTitle": "Fragments to review",
+  "ai.review.sendAnyway": "Send as is",
+  "ai.review.stripFragments": "Remove and send",
+  "ai.review.path": "looks like a path on your computer",
+  "ai.review.networkPath": "looks like a shared network folder",
+  "ai.review.identifierLike": "looks like a serial number or identifier",
   "alerts.mute.duration": "Mute duration",
   "alerts.mute.15": "15 minutes",
   "alerts.mute.60": "1 hour",
@@ -9401,6 +9834,15 @@ Fichero de origen: `src/lib/i18n/en.json`
   "error.testIoFailed": "The test couldn't be prepared or run.",
   "error.pathInvalid": "The path isn't valid for this operation.",
   "error.exportWriteFailed": "The chosen destination couldn't be written.",
+  "error.ia.noKey": "AI help isn't turned on.",
+  "error.ia.invalidKeyFormat": "That key isn't in the format OpenRouter expects.",
+  "error.ia.unauthorized": "OpenRouter rejected the key. Check it in Settings.",
+  "error.ia.rateLimited": "You've hit OpenRouter's usage limit. Try again later.",
+  "error.ia.timeout": "The response took too long (over 60 seconds).",
+  "error.ia.network": "Couldn't reach OpenRouter. Check your connection.",
+  "error.ia.emptyResponse": "The model didn't return an explanation.",
+  "error.ia.provider": "OpenRouter returned an error while generating the explanation.",
+  "error.ia.credentialStore": "Couldn't save or read the key in Windows Credential Manager.",
   "reports.range.title": "Interval",
   "reports.devices.title": "Disks included",
   "reports.includeSerials.label": "Include serial numbers",

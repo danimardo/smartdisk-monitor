@@ -10,6 +10,7 @@
    *  `{key, value}` a la espera de quien los llamara y los guardara.
    */
   import {
+    AiModelSelect,
     Button,
     Card,
     ConfirmDialog,
@@ -19,16 +20,20 @@
     TextField
   } from "$lib/components";
   import {
+    borrarClaveIa,
     deleteAllData,
     getSettings,
+    guardarClaveIa,
     openLogFolder,
     pauseMonitoring,
+    probarClaveIa,
     resetSettings,
     resumeMonitoring,
     setLogLevel,
     setSetting,
     toAppError
   } from "$lib/api";
+  import { ia } from "$lib/stores/ia.svelte";
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent, clearSystemAccent } from "$lib/design/accent";
   import { PERFILES, perfilLabelKey, type PerfilAlerta } from "$lib/design/perfiles";
@@ -57,6 +62,68 @@
   });
 
   let saveError = $state<AppError | null>(null);
+
+  /* -------------------------------------------------------------------- ayuda con IA (spec 005) */
+
+  $effect(() => {
+    if (ia.estado === null) ia.set(data.iaEstado);
+  });
+
+  let claveIa = $state("");
+  let editandoClave = $state(false);
+  let accionIa = $state<"" | "guardar" | "probar" | "borrar">("");
+  let errorIa = $state<AppError | null>(null);
+
+  async function activarIa() {
+    if (claveIa.trim().length === 0) return;
+    accionIa = "guardar";
+    errorIa = null;
+    try {
+      ia.set(await guardarClaveIa(claveIa.trim()));
+      claveIa = "";
+      editandoClave = false;
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      accionIa = "";
+    }
+  }
+
+  async function probarIa() {
+    accionIa = "probar";
+    errorIa = null;
+    try {
+      ia.set(await probarClaveIa());
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      accionIa = "";
+    }
+  }
+
+  async function borrarIa() {
+    accionIa = "borrar";
+    errorIa = null;
+    try {
+      ia.set(await borrarClaveIa());
+      claveIa = "";
+      editandoClave = false;
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      accionIa = "";
+    }
+  }
+
+  async function cambiarModeloIa(id: string) {
+    errorIa = null;
+    try {
+      await setSetting("settings.ai.model", id);
+      await ia.refrescar();
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    }
+  }
 
   /* -------------------------------------------------------------------------------- apariencia */
 
@@ -670,6 +737,103 @@
       <Button variant="secondary" onclick={repetirAsistente}>
         {t("settings.onboarding.repeat")}
       </Button>
+    </Card>
+
+    <Card title={t("settings.ai.title")}>
+      <p class="m-0 text-xs leading-relaxed text-fg-dim" style="text-wrap: pretty">
+        {t("settings.ai.hint")}
+      </p>
+
+      {#if ia.estado?.activa && !editandoClave}
+        <p class="m-0 text-sm font-medium text-ok">{t("settings.ai.status.on")}</p>
+        {#if ia.estado.claveValida === false}
+          <p class="m-0 text-xs text-warn" style="text-wrap: pretty">
+            {t("settings.ai.status.invalid")}
+          </p>
+        {/if}
+
+        <AiModelSelect modelo={ia.estado.modelo} disabled={accionIa !== ""} onchange={cambiarModeloIa} />
+
+        <div class="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            loading={accionIa === "probar"}
+            disabled={accionIa !== ""}
+            onclick={probarIa}
+          >
+            {t("settings.ai.cta.test")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={accionIa !== ""}
+            onclick={() => {
+              editandoClave = true;
+              errorIa = null;
+            }}
+          >
+            {t("settings.ai.cta.change")}
+          </Button>
+          <Button
+            variant="danger"
+            loading={accionIa === "borrar"}
+            disabled={accionIa !== ""}
+            onclick={borrarIa}
+          >
+            {t("settings.ai.cta.remove")}
+          </Button>
+        </div>
+      {:else}
+        <p class="m-0 text-sm font-medium text-fg-dim">{t("settings.ai.status.off")}</p>
+        <TextField
+          value={claveIa}
+          label={t("settings.ai.key.label")}
+          hint={t("settings.ai.key.hint")}
+          placeholder={t("settings.ai.key.placeholder")}
+          error={errorIa ? t(errorIa.messageKey) : ""}
+          disabled={accionIa !== ""}
+          oninput={(v: string) => {
+            claveIa = v;
+          }}
+        />
+        <div class="flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            loading={accionIa === "guardar"}
+            disabled={accionIa !== "" || claveIa.trim().length === 0}
+            onclick={activarIa}
+          >
+            {t("settings.ai.cta.activate")}
+          </Button>
+          {#if editandoClave}
+            <Button
+              variant="ghost"
+              disabled={accionIa !== ""}
+              onclick={() => {
+                editandoClave = false;
+                claveIa = "";
+                errorIa = null;
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+          {/if}
+        </div>
+      {/if}
+
+      {#if errorIa}
+        {#if ia.estado?.activa && !editandoClave}
+          <p class="m-0 text-xs text-crit" style="text-wrap: pretty">{t(errorIa.messageKey)}</p>
+        {/if}
+        {#if errorIa.detail}
+          <details>
+            <summary class="cursor-pointer text-xs font-semibold text-fg-dim">
+              {t("common.technicalDetail")}
+            </summary>
+            <pre
+              class="mt-2 overflow-x-auto whitespace-pre-wrap rounded-inner bg-glass-3 p-3 text-xs text-fg-dim">{errorIa.detail}</pre>
+          </details>
+        {/if}
+      {/if}
     </Card>
 
     <!-- Separada del resto (`06-ajustes.md`): 12 px extra sobre el `gap-5` del contenedor ≈ 32 px. -->

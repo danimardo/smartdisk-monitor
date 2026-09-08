@@ -74,6 +74,8 @@ Las tecnologías de la sección **Pila y versiones** son obligatorias y exclusiv
   añadida amplía la superficie de un binario privilegiado que se distribuye a terceros.
 - **Cero red en funcionamiento normal.** No hay endpoints, ni telemetría, ni actualizador, ni
   fuentes o recursos remotos. Cualquier petición de red es una violación, no una optimización.
+  **Única excepción: la asistencia con IA del principio XVI**, apagada de fábrica, de destino único
+  y siempre iniciada por la persona.
 - **Windows x64 es la única plataforma de la 1.0.** El código se estructura para no impedir Linux o
   macOS en el futuro, pero no se construye para ellos hoy.
 
@@ -208,7 +210,9 @@ serie ni nombres de equipo reales.
 ### IX. Seguridad y privacidad por construcción (INNEGOCIABLE)
 
 - **Cero telemetría.** No se recopila ni se transmite nada, ni siquiera anónimo, ni siquiera para
-  diagnóstico.
+  diagnóstico. **La asistencia con IA del principio XVI no es telemetría** —no la origina la
+  aplicación sino una petición explícita de la persona, y va anonimizada— pero se rige por las
+  condiciones estrictas de ese principio.
 - **La interfaz web no puede ejecutar órdenes arbitrarias.** Sin shell genérica, sin `fs` abierto.
   El frontend solo alcanza comandos de una lista cerrada y enumerada.
 - **Mínimo privilegio dentro de un proceso elevado.** La aplicación corre con `requireAdministrator`
@@ -540,6 +544,51 @@ contratos de componentes **se valida con `svelte-check`**.
   a una entrada del registro hace fallar la integración.** Corregir un fallo preexistente fuera del
   alcance tampoco es libre: se acuerda antes, para que la revisión no mezcle dos cambios distintos.
 
+### XVI. Asistencia con IA en la nube: opcional, explícita y sin datos identificables (INNEGOCIABLE)
+
+La aplicación puede ofrecer una ayuda que traduce el detalle técnico a lenguaje llano usando un
+modelo de lenguaje alojado por un tercero. Es la única excepción a «cero red» del principio III y a
+«no se transmite nada» del principio IX, y solo se sostiene si se cumplen **todas** estas
+condiciones. Incumplir una es un defecto, no un matiz.
+
+- **Apagada de fábrica.** Sin una clave de API configurada por la persona no existe ninguna ruta de
+  red: ni cliente, ni conexión, ni resolución de nombres. La aplicación se comporta exactamente
+  como si el principio III siguiera siendo absoluto.
+- **Iniciada por la persona, nunca automática.** Cada llamada al modelo responde a un gesto
+  explícito e inequívoco (pulsar «Explícamelo en lenguaje claro»). Nada en segundo plano, nada al
+  arrancar, nada al detectarse una alerta, ningún reintento automático que la persona no haya
+  pedido.
+- **Un solo proveedor, un solo destino.** La capacidad tiene un host fijo declarado en la pila. No
+  es un cliente HTTP de propósito general: no puede alcanzar ninguna otra dirección.
+- **Solo el detalle técnico que la persona ya tiene delante.** Se envía el texto de la alerta o del
+  detalle SMART visible en ese momento y el mínimo contexto para explicarlo. Nunca el inventario,
+  el historial, la configuración ni datos de otras pantallas.
+- **Anonimización obligatoria antes de que el texto salga del proceso.** Rigen las mismas reglas
+  del principio IX y del XV: números de serie, nombre del equipo, nombre de usuario, rutas con
+  perfil de usuario y etiquetas de volumen se sustituyen por marcadores, con sustitución
+  consistente dentro de una misma petición. La anonimización ocurre en el dominio (Rust), no en la
+  interfaz.
+- **La persona ve qué se envía.** Antes de la primera consulta se muestra el texto exacto que
+  saldrá del equipo y una explicación de a dónde va y para qué. La activación de la función es un
+  consentimiento informado, no una casilla.
+- **La clave vive en el almacén de credenciales de Windows (DPAPI).** Nunca en SQLite, nunca en un
+  fichero, nunca en `localStorage`. En `settings` solo se guarda que la función está activa y qué
+  modelo se ha elegido.
+- **La llamada se hace desde el backend, no desde el WebView.** Así la clave no entra en el proceso
+  de la interfaz, la anonimización precede a la salida del texto y no se abre `http` en las
+  *capabilities* del frontend.
+- **La respuesta del modelo es contenido no confiable.** Se renderiza como texto o markdown seguro,
+  jamás como HTML, jamás se ejecuta y jamás alimenta una decisión de la aplicación. Una explicación
+  de un LLM no es un dato de salud (principio I): es orientación para la persona, se presenta como
+  tal y su procedencia se indica.
+- **El fallo degrada la función, no la aplicación.** Sin red, con la cuota agotada o con el
+  proveedor caído, la ayuda muestra su error con la forma del principio X y todo lo demás sigue.
+- **Sigue sin haber telemetría propia.** No se añade analítica. El contenido de las peticiones y de
+  las respuestas no se escribe en el log (principio XV); como mucho, metadatos no identificables
+  (que hubo una consulta, el modelo, si hubo error).
+
+Requiere el ADR-046, que fija el proveedor, el endpoint y las dependencias.
+
 ---
 
 ## Pila y versiones
@@ -581,6 +630,7 @@ o **major** requiere enmienda de esta constitución.
 | `ts-rs` | 10.1.0 |
 | `tracing` + `tracing-subscriber` + `tracing-appender` | 0.1 / 0.3 / 0.2 |
 | `time` | 0.3 |
+| `reqwest` | 0.13, `default-features = false`, features `native-tls` + `json` | solo principio XVI; ya en el árbol vía `tauri`, se le añade el backend TLS. `native-tls` = SChannel (pila TLS del sistema), no `rustls` (arrastra `aws-lc-sys`). Única dependencia nueva. ADR-046 |
 
 ### Herramientas de calidad
 
@@ -719,6 +769,8 @@ sola razón, sin necesidad de más argumento.
 | 1.5.2 | 2026-09-05 | `tauri-plugin-notification` 2.4.0 entra en la pila fija (T053, notificaciones nativas de alertas). No se añade, relaja ni reinterpreta ningún principio: solo actualiza la tabla de dependencias que exige el principio III |
 | 1.6.0 | 2026-09-06 | Principio VIII: el mínimo de «resto de `src-tauri/src/`» baja de 80 % a 69 % (K.6, medido con `cargo llvm-cov`: 69,80 %). No es una excepción de dos casos como se planteó al principio — separar los envoltorios `#[tauri::command]` a un fichero excluido de la medición resultó no ser honesto: ~20 de los 35 tienen lógica real sin extraer a un `_impl`, y excluirlos habría escondido código sin probar. El déficit es arquitectónico (el envoltorio no se puede instanciar en un `#[test]` sin un proceso de Tauri real), no pereza de pruebas; extraer esa lógica a funciones `_impl` con prueba propia es mejora futura que subirá este mínimo de nuevo, no una condición para esta enmienda. Es `minor` porque **ajusta** un número a la realidad medida sin relajar la disciplina de prueba de ningún otro principio |
 | 1.7.0 | 2026-09-06 | Principio VI, viñeta del acento: se precisa que heredar el acento de Windows es una opción **apagada de fábrica** (ADR-035, spec `002-rediseno-v3`), no el comportamiento por defecto. La corrección de contraste del acento heredado (ADR-017) no se toca. Es `minor` porque **añade** una precisión que refleja una decisión ya adoptada; ningún principio se relaja ni cambia de contenido |
+| 1.8.0 | 2026-09-08 | Principio XVI (asistencia con IA en la nube): capacidad opcional, apagada de fábrica, de proveedor y destino único, iniciada siempre por la persona, con anonimización obligatoria y clave en el almacén de credenciales de Windows. Los principios III y IX ganan una excepción **acotada** que no se aplica en estado de fábrica; ninguna otra norma se relaja. Entran dependencias nuevas (cliente HTTP, almacén de credenciales) y un permiso de red de Tauri, cada uno con su ADR. Requiere ADR-046 |
+| 1.8.1 | 2026-09-08 | Precisión (patch) de la tabla de pila (spec `005-explicacion-ia`): la única dependencia nueva es `reqwest` 0.13 (`native-tls`, `json` — SChannel, la pila TLS del sistema; `rustls` se descartó porque arrastra `aws-lc-sys`), ya en el árbol vía `tauri`; el almacén de credenciales se hace con FFI a mano contra `advapi32`, sin crate nuevo. La vía elegida (llamada desde Rust) no requiere permiso de *capabilities*. No cambia ni relaja ninguna norma. ADR-046 |
 
 ### Cumplimiento
 
@@ -735,4 +787,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.7.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-06
+**Versión**: 1.8.1 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-08

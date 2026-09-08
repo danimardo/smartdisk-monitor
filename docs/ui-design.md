@@ -105,6 +105,10 @@ tailwind.config.cjs              ← mapeo de tokens a utilidades
 - Tres capas y nada más: `.sdm-material-chrome` (barra lateral y barra de herramientas),
   `.sdm-material` (tarjetas) y `.sdm-material-overlay` (diálogos y menús). **No escribas
   `backdrop-filter` a mano** ni inventes nuevos niveles de desenfoque.
+- **Excepción, solo para el tooltip de ayuda con mucho texto** (`Tooltip`, tooltip local de
+  `DiskCard`): mantienen `.sdm-material-overlay` pero pintan el fondo con `--sdm-glass-strong`
+  (casi opaco). El texto largo sobre el fondo translúcido normal molesta la lectura. `ChartTip` y
+  el resto de overlays **no** cambian: son de una línea o llevan velo detrás.
 - **No apiles materiales**: una tarjeta nunca contiene otra tarjeta. Los bloques internos usan
   `bg-glass-3` + `rounded-inner`.
 - Toda superficie de material lleva su filo de 1 px (`shadow-edge`, es decir
@@ -171,7 +175,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
 | `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
-| `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
+| `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Fondo casi opaco (`--sdm-glass-strong`): lleva párrafos y el material translúcido normal dificultaba la lectura. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |
@@ -181,6 +185,8 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `RadioGroup` | 2–4 opciones excluyentes con explicación | cada opción admite descripción; obligatorio para tema e idioma |
 | `TextField` | entrada de texto o número | `suffix` para la unidad; validar en `onblur`, nunca en cada pulsación |
 | `CodeOutput` | salida literal de un proceso auxiliar | monoespaciada, `white-space: pre`, scroll propio; **renderiza texto, jamás HTML**; botón de copiar obligatorio |
+| `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
+| `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
 
 ### Autorizados y pendientes de construir
 
@@ -334,7 +340,7 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una
    alerta ya ignorada) y cronología de ocurrencias. El `SegmentedControl` de filtro tiene cinco
    segmentos: Activas / Resueltas / Archivadas / **Ignoradas** / Todas. «Ignorar» (ADR-044) abre
-   `ConfirmDialog` con su impacto; para las siete reglas no ignorables el botón aparece
+   `ConfirmDialog` con su impacto; para las seis reglas no ignorables (ADR-045) el botón aparece
    deshabilitado con `disabledReason` (`alerts.ignore.notIgnorable`).
 4. **Pruebas y diagnóstico** (v3) — **si hay una prueba en curso**, su bloque va arriba y a ancho
    completo: cabecera con píldora «Prueba en curso» + tipo de prueba `.sdm-display` + cifra de progreso

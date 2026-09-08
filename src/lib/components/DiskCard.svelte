@@ -108,7 +108,9 @@
   <svelte:element
     this={href ? "a" : "div"}
     href={href || undefined}
-    class="sdm-block-link flex flex-col rounded-card text-left {href ? 'sdm-hover-bloque' : ''}"
+    class="sdm-block-link flex flex-col rounded-card text-left {href ? 'sdm-hover-bloque' : ''} {tip
+      ? 'relative z-30'
+      : ''}"
     aria-label={href ? t("disk.open", { name: disk.alias ?? disk.model }) : undefined}
   >
     <Card padding="none" class="flex-1">
@@ -177,7 +179,9 @@
               class="sdm-material-overlay pointer-events-none absolute z-50 w-max max-w-xs whitespace-pre-line rounded-inner p-3 text-2xs leading-normal"
               style="left: {tip.x}px; top: {tip.y}px; transform: translate({desplazamientoX[
                 tip.ali
-              ]}, {tip.debajo ? 'calc(46px)' : 'calc(-100% - 6px)'}); border-left: 3px solid {healthToken[
+              ]}, {tip.debajo
+                ? 'calc(46px)'
+                : 'calc(-100% - 6px)'}); background: var(--sdm-glass-strong); border-left: 3px solid {healthToken[
                 tip.estado
               ].fg}"
             >

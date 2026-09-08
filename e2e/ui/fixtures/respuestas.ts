@@ -292,8 +292,42 @@ export const settingsDeFabrica = {
   },
   logging: {
     verbose: false
+  },
+  ai: {
+    enabled: false,
+    model: "openrouter/free",
+    previewAcknowledged: false
   }
 };
+
+/** Ayuda con IA activada, con la vista previa ya confirmada (spec 005). */
+export const estadoIaActiva = {
+  activa: true,
+  modelo: "openrouter/free",
+  previewAcknowledged: true,
+  claveValida: true
+};
+
+export const estadoIaDesactivada = {
+  activa: false,
+  modelo: "openrouter/free",
+  previewAcknowledged: false,
+  claveValida: null
+};
+
+export const explicacionOk = {
+  estado: "ok" as const,
+  markdown:
+    "## Qué significa\n\nEl desgaste del disco es alto pero no crítico.\n\n## Qué hacer\n\n- Haz una copia de seguridad.\n- Planifica sustituirlo este año.",
+  modeloUsado: "meta-llama/llama-3.1-8b-instruct:free",
+  detalleRecortado: false
+};
+
+export const catalogoModelos = [
+  { id: "openrouter/free", nombre: "openrouter/free", esDePago: false },
+  { id: "meta-llama/llama-3.1-8b-instruct:free", nombre: "Llama 3.1 8B", esDePago: false },
+  { id: "anthropic/claude-sonnet-4.5", nombre: "Claude Sonnet 4.5", esDePago: true }
+];
 
 export const appInfoDePrueba = {
   name: "SmartDisk Monitor",
@@ -327,6 +361,12 @@ export const RESPUESTAS: Record<string, unknown> = {
   get_settings: settingsDeFabrica,
   reset_settings: settingsDeFabrica,
   set_setting: null,
+  estado_ia: estadoIaDesactivada,
+  guardar_clave_ia: estadoIaActiva,
+  probar_clave_ia: estadoIaActiva,
+  borrar_clave_ia: estadoIaDesactivada,
+  listar_modelos_ia: catalogoModelos,
+  explicar_detalle_tecnico: explicacionOk,
   set_log_level: null,
   open_log_folder: null,
   delete_all_data: null,
@@ -354,4 +394,8 @@ export function validar(): void {
   S.testRun.parse(testRunActivo);
   S.diagnosticPreview.parse(vistaPreviaDiagnostico);
   S.appInfo.parse(appInfoDePrueba);
+  S.estadoIa.parse(estadoIaActiva);
+  S.estadoIa.parse(estadoIaDesactivada);
+  S.resultadoExplicacion.parse(explicacionOk);
+  S.modeloIa.array().parse(catalogoModelos);
 }

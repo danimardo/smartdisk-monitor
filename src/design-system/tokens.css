@@ -125,6 +125,7 @@
   --sdm-glass: rgba(255, 255, 255, 0.72);
   --sdm-glass-2: rgba(255, 255, 255, 0.5);
   --sdm-glass-3: rgba(124, 114, 128, 0.1);   /* pistas de barra, bloques internos */
+  --sdm-glass-strong: #ffffff; /* tooltip de ayuda: opaco, mucho texto sobre el que el fondo translúcido molesta y difumina el filo */
   --sdm-solid: #fdfcfe;
 
   --sdm-hairline: rgba(30, 23, 35, 0.09);
@@ -184,6 +185,7 @@
   --sdm-glass: rgba(48, 42, 52, 0.66);
   --sdm-glass-2: rgba(64, 56, 68, 0.42);
   --sdm-glass-3: rgba(255, 255, 255, 0.06);
+  --sdm-glass-strong: #26212a; /* tooltip de ayuda: opaco, mucho texto sobre el que el fondo translúcido molesta y difumina el filo */
   --sdm-solid: #1c1620;
 
   --sdm-hairline: rgba(255, 255, 255, 0.09);

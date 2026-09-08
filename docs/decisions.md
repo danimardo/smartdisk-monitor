@@ -55,7 +55,7 @@ SQLite almacenará configuración, inventario, muestras, eventos, alertas y prue
 
 ## ADR-007 — Sin red ni telemetría
 
-Estado: aceptada.
+Estado: **aceptada, matizada por ADR-046** (2026-09-08) en lo relativo a la red saliente. La prohibición de telemetría y de actualizador automático sigue vigente sin cambios.
 
 El funcionamiento normal no necesita red. No se recopila ni transmite telemetría. Las actualizaciones son totalmente manuales.
 
@@ -1396,7 +1396,8 @@ llamada real a PowerShell no, por la misma razón que el resto de `platform/` no
 
 ## ADR-044 — Un conjunto cerrado de reglas de alerta que nunca se pueden ignorar
 
-Estado: aceptada. Fecha: 2026-09-08. Feature: `specs/004-ignorar-alertas`.
+Estado: aceptada; **enmendada por ADR-045** (2026-09-08): `smart.error_log` sale del conjunto
+vetado, que pasa de siete reglas a seis. Fecha: 2026-09-08. Feature: `specs/004-ignorar-alertas`.
 
 ### El problema
 
@@ -1461,3 +1462,152 @@ deje una de estas siete en estado `ignored`.
   prueba **y** de `docs/alert-rules.md`: los tres tienen que moverse juntos, que es lo que se
   quiere para una lista de esta importancia.
 - `docs/alert-rules.md` §1 pasa a describir el estado `ignored`, sus transiciones y este veto.
+
+## ADR-045 — `smart.error_log` sale del conjunto de reglas no ignorables
+
+Estado: aceptada. Fecha: 2026-09-08. Enmienda ADR-044. Feature: `specs/004-ignorar-alertas`
+(corrección posterior a partir de datos reales).
+
+### El problema
+
+ADR-044 vetó «Ignorar» para siete reglas, entre ellas `smart.error_log`, que se activa cuando el
+contador `error_log_entries_total` de un disco crece (`num_err_log_entries` en NVMe). La lista se
+dejó explícitamente como «el punto más revisable si la experiencia real lo desaconseja».
+
+La experiencia real lo desaconseja. En un NVMe de consumo —medido sobre un Crucial `CT2000P3SSD8`,
+firmware `P9CR30A`— ese contador estaba en 2162 y **todas** las entradas del registro de errores
+eran idénticas: `"Invalid Field in Command"` (`status_code_type` 0, `status_code` 2). Es un rechazo
+de protocolo: `smartctl` o Windows piden una página de log opcional que la controladora no
+implementa, y la controladora apunta cada comando rechazado. En la misma lectura, `media_errors`
+era 0, `critical_warning` 0, `smart_status.passed` verdadero y `percentage_used` 3. No hay daño ni
+predicción de fallo; es ruido de fondo de la controladora, y crece sin parar.
+
+Con la regla vetada, esa alerta —que en la interfaz **parece** un fallo de disco— no se puede
+silenciar de forma permanente ni deja de teñir el disco. Justo el falso positivo recurrente que la
+feature 004 existe para poder aceptar y no volver a ver.
+
+### La decisión
+
+`smart.error_log` sale de `alerts::reglas::REGLAS_NO_IGNORABLES`. El conjunto vetado pasa a seis
+reglas: `smart.health.failed`, `nvme.critical_warning`, `smart.wear_high`,
+`smart.spare_below_threshold`, `smart.media_errors`, `events.disk_predictive`.
+
+El daño de medio acumulado real lo sigue cubriendo `smart.media_errors`, que **no** se toca: ese
+contador sí cuenta bloques que el disco no ha podido leer ni escribir.
+
+### Alternativas descartadas
+
+- **Dejarla vetada y afinar la regla** para que solo dispare con entradas del registro de tipo
+  «media / integridad» (NVMe `status_code_type == 2`; equivalente ATA), no ante el contador bruto.
+  Es el arreglo de raíz y elimina el falso positivo en origen, pero toca el parser de `smartctl`,
+  cambia comportamiento observable y necesita fixtures nuevos (ATA y NVMe): es una spec propia. Se
+  pospone, no se abandona. Mientras tanto, poder ignorar la alerta por disco + contexto ya
+  resuelve el caso del usuario.
+- **Sacar también `smart.media_errors`.** Descartada: ese contador es daño físico acumulado, no
+  ruido de protocolo. Es la señal que la de `smart.error_log` aparentaba ser.
+
+### Consecuencias
+
+- Una alerta `smart.error_log` en cualquier estado puede pasar a `ignored` por disco + contexto:
+  deja de notificar y de teñir el disco, pero sigue registrando ocurrencias en su cronología y es
+  reversible desde la pestaña «Ignoradas» (ADR-044, sin cambios).
+- Cambio de una línea en `reglas.rs`, su prueba y `docs/alert-rules.md` §1, movidos juntos. El
+  contrato no cambia de forma: `AlertDetail.ruleIgnorable` ahora devuelve `true` para esta regla.
+- Sin permiso nuevo de Tauri, sin dependencia nueva.
+
+## ADR-046 — Red saliente opcional para la asistencia con IA, con un único proveedor
+
+Estado: aceptada.
+
+### El problema
+
+Las alertas y el detalle SMART se presentan con su detalle técnico literal (principio X): eso es
+correcto para quien sabe leerlo, pero el público objetivo no es técnico y `Reallocated_Sector_Ct =
+8` o `UDMA_CRC_Error_Count subió a 120` no le dicen si tiene que hacer algo hoy. Se quiere una
+traducción a lenguaje llano y, cuando exista, una posible solución o siguientes pasos.
+
+Una explicación de calidad exige un modelo de lenguaje. Hacerlo sin red obligaría a empaquetar uno
+local, y ADR-007 prohíbe la red por completo. Esta decisión abre una excepción acotada; la enmienda
+constitucional 1.8.0 (principio XVI) fija sus límites y este ADR fija el proveedor, el endpoint y
+las dependencias.
+
+### La decisión
+
+Se permite **una única ruta de red saliente**, hacia `https://openrouter.ai/api/v1`, con estas
+condiciones:
+
+- **Activación**: solo si la persona configura una clave de API de OpenRouter (en el asistente
+  inicial, marcada como opcional, o en la configuración). Sin clave, no se instancia ningún cliente
+  de red.
+- **Disparo**: solo tras un gesto explícito en una alerta o en un detalle técnico («Explícamelo en
+  lenguaje claro»). El resultado se muestra en un modal renderizado como markdown, con indicador de
+  progreso mientras se espera.
+- **Modelo**: por defecto el identificador `openrouter/free`, que OpenRouter resuelve en cada
+  llamada a uno de los modelos gratuitos disponibles y compatibles con la petición, sin que la
+  aplicación mantenga una lista. La persona puede elegir otro modelo; la lista se puebla desde
+  `GET /api/v1/models`. Se registra y se puede mostrar el modelo realmente usado (campo `model` de
+  la respuesta).
+- **Datos enviados**: solo el texto técnico visible, anonimizado en el dominio (Rust) antes de
+  salir del proceso, con las reglas del principio IX y XV. La persona ve el texto exacto que se
+  enviará antes de la primera consulta.
+- **Clave**: se guarda en el almacén de credenciales de Windows (DPAPI). En `settings` solo el
+  estado de activación y el modelo elegido.
+- **Ubicación de la llamada**: en el backend Rust, no en el WebView (principio XVI).
+
+### Alternativas descartadas
+
+- **Modelo local empaquetado (llama.cpp + un GGUF cuantizado).** Ventaja: cumple ADR-007 sin
+  excepción, funciona sin conexión, que es donde vive un monitor de discos. Lo supera: entre 300 y
+  700 MB añadidos a un instalador que hoy pesa poco; otro binario nativo que verificar por hash,
+  firmar y mantener (principio IX); consumo de CPU y RAM en el mismo equipo que se está vigilando;
+  y calidad de explicación en español netamente peor con modelos que caben en un portátil. El valor
+  no compensa el coste permanente.
+- **API directa de un proveedor (Anthropic, OpenAI, …).** Ventaja: un intermediario menos, relación
+  contractual clara. Lo supera: obliga a la persona a abrir cuenta y pagar en ese proveedor
+  concreto; OpenRouter ofrece un nivel gratuito y permite cambiar de modelo sin tocar la
+  aplicación, que es justo lo que pidió el usuario.
+- **`openrouter/auto`.** Ventaja: elige el modelo «mejor» para la petición. Descartado: puede
+  enrutar a modelos de pago y cobra según el que use; incompatible con «gratuito por defecto».
+- **No hacer la función.** Ventaja: coherencia total con ADR-007. Lo supera: es una petición
+  explícita del responsable del producto y el detalle técnico sin traducir es una barrera real para
+  el público al que va dirigido.
+- **Llamar desde el WebView con `tauri-plugin-http`.** Descartado: metería la clave en el proceso
+  de la interfaz, obligaría a abrir `http` en las *capabilities* del frontend y dejaría la
+  anonimización del lado no confiable. La llamada va en Rust.
+
+### Permiso de Tauri y dependencias nuevas
+
+**Concretado en la implementación** (spec `005-explicacion-ia`, 2026-09-08):
+
+- **Red saliente desde el backend.** `reqwest` 0.13 promovido a dependencia directa con
+  `default-features = false, features = ["native-tls", "json"]`. Ya estaba en `Cargo.lock` (lo
+  arrastra `tauri` 2.11.5) pero sin backend TLS. Se usa **`native-tls`**, no `rustls`: en reqwest
+  0.13 el feature `rustls` declara su dependencia sin `default-features = false` y arrastra
+  `aws-lc-sys` (BoringSSL vendorizado, compilación de C) sin forma de desactivarlo. En un proyecto
+  solo-Windows, `native-tls` usa **SChannel** —la pila TLS del propio sistema, crate `schannel`,
+  FFI puro, ya parcheada por Windows Update—: menos superficie y sin criptografía vendorizada en
+  el binario privilegiado. La llamada va en un comando `async`, nunca desde el WebView, así que
+  **no requiere ningún permiso de `capabilities`** ni `tauri-plugin-http`.
+- **Almacén de credenciales de Windows.** **Sin crate nuevo.** Se implementa con FFI a mano contra
+  `advapi32` (`CredReadW` / `CredWriteW` / `CredDeleteW`, struct `CREDENTIALW`), siguiendo el
+  patrón que el proyecto ya usa en `src-tauri/src/platform/energia.rs`. Se descartan el crate
+  `windows` y `keyring` por ser árboles de dependencias nuevos que el patrón hecho a mano evita.
+- Cada permiso o plugin de Tauri nuevo lleva además su entrada propia en este fichero (principio
+  IX). Esta feature **no añade ninguno**.
+
+### Consecuencias
+
+- ADR-007 deja de ser absoluto en cuanto a la red: existe una ruta saliente, aunque apagada de
+  fábrica, de destino único y siempre iniciada por la persona.
+- Nueva superficie en un binario privilegiado: una conexión TLS a un host fijo. Se acota con
+  *allowlist* de host y sin cliente HTTP de propósito general expuesto.
+- La calidad, la latencia y la disponibilidad de la explicación dependen de un tercero y de modelos
+  gratuitos que cambian con el tiempo. La función se presenta como ayuda orientativa, nunca como
+  fuente de verdad, y su procedencia (modelo, proveedor) se indica.
+- Aparece una credencial que gestionar: alta, edición, borrado y el caso de clave inválida o
+  revocada, y un almacén nuevo que direccionar (Administrador de credenciales de Windows), aunque
+  sin dependencia nueva (FFI a mano).
+- Hay que redactar el aviso de privacidad del asistente y de la configuración, y la vista previa
+  del texto que se enviará.
+- Los límites de OpenRouter (p. ej. 50 peticiones/día en cuenta gratuita) no se codifican: se
+  maneja el error de cuota como un `AppError` con reintento diferido.

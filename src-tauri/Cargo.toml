@@ -63,6 +63,15 @@ tauri-plugin-dialog = "2"
 # ahorro razonable frente a la dependencia, a diferencia del LCG de T079 (mucho más simple).
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# Ayuda con IA (spec 005-explicacion-ia, principio XVI, ADR-046). **Único destino de red saliente**
+# de la aplicación, apagado de fábrica. Ya está en el árbol (lo arrastra `tauri`) pero sin backend
+# TLS. Se usa `native-tls` → en Windows es SChannel, la pila TLS del propio sistema (crate
+# `schannel`, FFI puro): sin compilar C, sin crypto vendorizado, ya parcheada por Windows Update.
+# `rustls` en reqwest 0.13 arrastraría `aws-lc-sys` (BoringSSL vendorizado) sin forma de evitarlo.
+# `json` para (de)serializar con tipos serde explícitos (principio XI). La llamada va en un comando
+# async, nunca desde el webview.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "json"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
 

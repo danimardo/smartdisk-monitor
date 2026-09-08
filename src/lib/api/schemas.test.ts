@@ -229,11 +229,22 @@ describe("settings — perfiles de alerta v3 (ADR-036)", () => {
     },
     lifecycle: { closeAction: "minimize", closeActionRemembered: false, startWithSystem: false },
     notifications: { soundEnabled: false, enabled: true },
-    logging: { verbose: false }
+    logging: { verbose: false },
+    ai: { enabled: false, model: "openrouter/free", previewAcknowledged: false }
   };
 
   it("acepta el settings de fábrica v3", () => {
     expect(S.settings.safeParse(base).success).toBe(true);
+  });
+
+  it("RECHAZA un settings sin el grupo ai (spec 005)", () => {
+    const sinIa = { ...base } as Record<string, unknown>;
+    delete sinIa.ai;
+    expect(S.settings.safeParse(sinIa).success).toBe(false);
+  });
+
+  it("RECHAZA un grupo ai con enabled que no es booleano", () => {
+    expect(S.settings.safeParse({ ...base, ai: { ...base.ai, enabled: "sí" } }).success).toBe(false);
   });
 
   it("RECHAZA un perfil de alerta que no está en el enum", () => {
@@ -260,5 +271,70 @@ describe("settings — perfiles de alerta v3 (ADR-036)", () => {
       lifecycle: { closeAction: "minimize", closeActionRemembered: false }
     };
     expect(S.settings.safeParse(sinAutoarranque).success).toBe(false);
+  });
+});
+
+describe("ayuda con IA (spec 005-explicacion-ia)", () => {
+  it("estadoIa acepta una respuesta completa y con claveValida null", () => {
+    expect(
+      S.estadoIa.safeParse({
+        activa: true,
+        modelo: "openrouter/free",
+        previewAcknowledged: false,
+        claveValida: null
+      }).success
+    ).toBe(true);
+  });
+
+  it("estadoIa RECHAZA claveValida como cadena", () => {
+    expect(
+      S.estadoIa.safeParse({
+        activa: true,
+        modelo: "x",
+        previewAcknowledged: false,
+        claveValida: "sí"
+      }).success
+    ).toBe(false);
+  });
+
+  it("modeloIa RECHAZA esDePago ausente (cambio de contrato del backend)", () => {
+    expect(S.modeloIa.safeParse({ id: "a/b", nombre: "A B" }).success).toBe(false);
+  });
+
+  it("explicacionIa RECHAZA markdown como número", () => {
+    expect(
+      S.explicacionIa.safeParse({ markdown: 42, modeloUsado: "x", detalleRecortado: false }).success
+    ).toBe(false);
+  });
+
+  it("resultadoExplicacion acepta la variante ok y la variante revision", () => {
+    expect(
+      S.resultadoExplicacion.safeParse({
+        estado: "ok",
+        markdown: "## Hola",
+        modeloUsado: "vendor/model:free",
+        detalleRecortado: false
+      }).success
+    ).toBe(true);
+    expect(
+      S.resultadoExplicacion.safeParse({
+        estado: "revision",
+        textoCompleto: "…",
+        fragmentos: [{ texto: "D:\\datos", motivoKey: "ia.review.path" }]
+      }).success
+    ).toBe(true);
+  });
+
+  it("resultadoExplicacion RECHAZA un estado desconocido", () => {
+    expect(S.resultadoExplicacion.safeParse({ estado: "otro", markdown: "x" }).success).toBe(false);
+  });
+
+  it("revisionAnonimizacion RECHAZA un fragmento sin motivoKey", () => {
+    expect(
+      S.revisionAnonimizacion.safeParse({
+        textoCompleto: "x",
+        fragmentos: [{ texto: "algo" }]
+      }).success
+    ).toBe(false);
   });
 });

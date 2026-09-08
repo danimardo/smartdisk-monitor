@@ -14,6 +14,9 @@ pub enum ErrorAjuste {
     /// no es menor). Sin esto, un aviso y un crítico invertidos dejarían el segundo nivel
     /// inalcanzable en silencio.
     CriticoNoMasSeveroQueAviso,
+    /// Un valor de texto no cumple su formato (p. ej. el identificador de modelo de IA). El texto
+    /// es el detalle técnico, no una frase de interfaz.
+    FormatoInvalido(&'static str),
 }
 
 /// Límites de temperatura configurada (J.32). El motor **lee** estos valores desde v3 (ADR-036):
@@ -80,6 +83,32 @@ pub const RETENTION_HOURLY_DAYS_DEFAULT: i64 = 730;
 /// propios: US-071 solo exige poder cambiar los tres periodos de retención, no estos dos valores.
 pub const STORAGE_FREE_SPACE_WARN_DEFAULT_BYTES: i64 = 1024 * 1024 * 1024;
 pub const STORAGE_FREE_SPACE_HALT_DEFAULT_BYTES: i64 = 256 * 1024 * 1024;
+
+/// Longitud máxima del identificador de modelo de IA (`settings.ai.model`). OpenRouter no produce
+/// identificadores más largos; el tope es solo una defensa contra un valor absurdo.
+pub const MODELO_IA_MAX_LEN: usize = 120;
+
+/// Valida el identificador de modelo de IA. **Solo forma**: no se comprueba contra el catálogo del
+/// proveedor porque cambia con el tiempo (si el proveedor lo rechaza luego, es `ia.provider`).
+pub fn validar_modelo_ia(modelo: &str) -> Result<String, ErrorAjuste> {
+    let m = modelo.trim();
+    if m.is_empty() {
+        return Err(ErrorAjuste::FormatoInvalido(
+            "el identificador de modelo no puede estar vacío",
+        ));
+    }
+    if m.chars().count() > MODELO_IA_MAX_LEN {
+        return Err(ErrorAjuste::FormatoInvalido(
+            "el identificador de modelo es demasiado largo",
+        ));
+    }
+    if m.chars().any(char::is_whitespace) {
+        return Err(ErrorAjuste::FormatoInvalido(
+            "el identificador de modelo no puede llevar espacios ni saltos de línea",
+        ));
+    }
+    Ok(m.to_owned())
+}
 
 fn en_rango(valor: f64, minimo: f64, maximo: f64) -> Result<f64, ErrorAjuste> {
     if valor < minimo || valor > maximo {
@@ -545,5 +574,41 @@ mod tests {
         assert!(validar_retencion_raw_days(0).is_err());
         assert!(validar_retencion_five_minutes_days(1).is_err());
         assert!(validar_retencion_hourly_days(10).is_err());
+    }
+
+    #[test]
+    fn modelo_ia_valido_se_acepta_y_se_recorta() {
+        assert_eq!(
+            validar_modelo_ia("  openrouter/free  "),
+            Ok("openrouter/free".to_owned())
+        );
+        assert_eq!(
+            validar_modelo_ia("anthropic/claude-sonnet-4.5"),
+            Ok("anthropic/claude-sonnet-4.5".to_owned())
+        );
+    }
+
+    #[test]
+    fn modelo_ia_vacio_o_solo_espacios_se_rechaza() {
+        assert!(matches!(
+            validar_modelo_ia(""),
+            Err(ErrorAjuste::FormatoInvalido(_))
+        ));
+        assert!(matches!(
+            validar_modelo_ia("   "),
+            Err(ErrorAjuste::FormatoInvalido(_))
+        ));
+    }
+
+    #[test]
+    fn modelo_ia_con_espacio_interior_o_salto_se_rechaza() {
+        assert!(validar_modelo_ia("vendor/ modelo").is_err());
+        assert!(validar_modelo_ia("vendor/modelo\ninject").is_err());
+    }
+
+    #[test]
+    fn modelo_ia_demasiado_largo_se_rechaza() {
+        let largo = format!("vendor/{}", "x".repeat(MODELO_IA_MAX_LEN));
+        assert!(validar_modelo_ia(&largo).is_err());
     }
 }

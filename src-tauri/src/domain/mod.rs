@@ -10,6 +10,7 @@ pub mod capacidad;
 pub mod correlacion;
 pub mod espacio;
 pub mod estado;
+pub mod ia;
 pub mod identidad;
 pub mod retencion;
 pub mod salud;

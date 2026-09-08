@@ -33,7 +33,10 @@ export { default as HeroPanel } from "./HeroPanel.svelte";
 export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 
+export { default as AiModelSelect } from "./AiModelSelect.svelte";
 export { default as ConfirmDialog } from "./ConfirmDialog.svelte";
+export { default as ExplicacionModal } from "./ExplicacionModal.svelte";
+export { default as Markdown } from "./Markdown.svelte";
 export { default as Toast } from "./Toast.svelte";
 export { default as EmptyState } from "./EmptyState.svelte";
 export { default as CodeOutput } from "./CodeOutput.svelte";

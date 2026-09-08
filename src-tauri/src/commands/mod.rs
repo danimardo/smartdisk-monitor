@@ -379,6 +379,7 @@ fn error_ajuste_a_app_error(e: crate::domain::ajustes::ErrorAjuste) -> Box<AppEr
         ErrorAjuste::CriticoNoMasSeveroQueAviso => {
             "el valor crítico debe ser más severo que el de aviso".to_string()
         }
+        ErrorAjuste::FormatoInvalido(motivo) => motivo.to_string(),
     };
     Box::new(
         AppError::new("settings.out_of_range", "error.settingsOutOfRange").with_detail(detalle),
@@ -528,6 +529,9 @@ pub struct SettingsWire {
     pub lifecycle: LifecycleSettingsWire,
     pub notifications: NotificationSettingsWire,
     pub logging: LoggingSettingsWire,
+    /// Ayuda con IA (spec `005-explicacion-ia`, FR-024): activación, modelo y si la vista previa
+    /// ya se mostró. La clave de API **no** vive aquí (va al Administrador de credenciales).
+    pub ai: crate::domain::ia::AiSettingsWire,
 }
 
 /// Umbrales de las reglas SMART parametrizadas (v3, ADR-036), leídos de `settings.alerts` con los
@@ -721,6 +725,15 @@ fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
         logging: LoggingSettingsWire {
             verbose: leer_ajuste_bool(conn, "logging.verbose", false),
         },
+        ai: crate::domain::ia::AiSettingsWire {
+            enabled: leer_ajuste_bool(conn, "settings.ai.enabled", false),
+            model: leer_ajuste_string(
+                conn,
+                "settings.ai.model",
+                crate::domain::ia::MODELO_AUTOMATICO,
+            ),
+            preview_acknowledged: leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false),
+        },
     }
 }
 
@@ -731,6 +744,411 @@ pub fn get_settings(state: State<AppState>) -> AppResult<SettingsWire> {
         .lock()
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
     Ok(get_settings_impl(&conn))
+}
+
+/// Compone `EstadoIaWire` a partir de la presencia de credencial, los ajustes y la validez
+/// cacheada. Sin red.
+fn construir_estado_ia(
+    conn: &rusqlite::Connection,
+    clave_valida: Option<bool>,
+) -> crate::domain::ia::EstadoIaWire {
+    crate::domain::ia::EstadoIaWire {
+        activa: crate::platform::credenciales::leer().is_some(),
+        modelo: leer_ajuste_string(
+            conn,
+            "settings.ai.model",
+            crate::domain::ia::MODELO_AUTOMATICO,
+        ),
+        preview_acknowledged: leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false),
+        clave_valida,
+    }
+}
+
+/// Estado de la ayuda con IA (spec `005-explicacion-ia`, principio XVI). **No toca la red**: solo
+/// mira si hay credencial, los ajustes `settings.ai.*` y la validez que se haya comprobado en esta
+/// sesión del proceso. Lo consume el `load` de Ajustes y el store de la interfaz.
+#[tauri::command]
+pub fn estado_ia(state: State<AppState>) -> AppResult<crate::domain::ia::EstadoIaWire> {
+    let clave_valida = *state
+        .ia_clave_valida
+        .lock()
+        .expect("el mutex no se envenena: sin pánicos dentro");
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    Ok(construir_estado_ia(&conn, clave_valida))
+}
+
+/// Comprueba la clave ya guardada sin cambiarla (botón «Probar» de Ajustes). Actualiza la validez
+/// cacheada. Sin credencial → `ia.no_key`.
+#[tauri::command]
+pub async fn probar_clave_ia(
+    state: State<'_, AppState>,
+) -> AppResult<crate::domain::ia::EstadoIaWire> {
+    let Some(clave) = crate::platform::credenciales::leer() else {
+        return Err(Box::new(AppError::new("ia.no_key", "error.ia.noKey")));
+    };
+    let resultado = crate::platform::ia_openrouter::validar_clave(&clave).await;
+    let valida = interpretar_validacion(resultado)?;
+    guardar_validez_ia(&state, Some(valida));
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    Ok(construir_estado_ia(&conn, Some(valida)))
+}
+
+/// Guarda (o sustituye) la clave: valida su forma, la comprueba contra el proveedor y solo
+/// entonces la escribe en el Administrador de credenciales. Una clave inválida no se guarda
+/// (FR-003, FR-018).
+#[tauri::command]
+pub async fn guardar_clave_ia(
+    state: State<'_, AppState>,
+    clave: String,
+) -> AppResult<crate::domain::ia::EstadoIaWire> {
+    let clave = clave.trim().to_owned();
+    if clave.len() < 8 || clave.chars().any(char::is_whitespace) {
+        return Err(Box::new(
+            AppError::new("ia.invalid_key_format", "error.ia.invalidKeyFormat")
+                .with_detail("la clave está vacía, es demasiado corta o lleva espacios"),
+        ));
+    }
+
+    let resultado = crate::platform::ia_openrouter::validar_clave(&clave).await;
+    let valida = interpretar_validacion(resultado)?;
+
+    crate::platform::credenciales::guardar(
+        &clave,
+        crate::platform::credenciales::CredPersist::LocalMachine,
+    )?;
+    guardar_validez_ia(&state, Some(valida));
+
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    guardar_ajuste(&conn, "settings.ai.enabled", &true, &ahora_rfc3339())?;
+    tracing::info!("ayuda con IA activada");
+    Ok(construir_estado_ia(&conn, Some(valida)))
+}
+
+/// Desactiva la ayuda: borra la credencial y limpia los ajustes de estado. Conserva el modelo
+/// elegido por si la persona vuelve a activarla.
+#[tauri::command]
+pub fn borrar_clave_ia(state: State<AppState>) -> AppResult<crate::domain::ia::EstadoIaWire> {
+    crate::platform::credenciales::borrar()?;
+    guardar_validez_ia(&state, None);
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    let ahora = ahora_rfc3339();
+    guardar_ajuste(&conn, "settings.ai.enabled", &false, &ahora)?;
+    guardar_ajuste(&conn, "settings.ai.preview_acknowledged", &false, &ahora)?;
+    tracing::info!("ayuda con IA desactivada");
+    Ok(construir_estado_ia(&conn, None))
+}
+
+/// Catálogo de modelos de OpenRouter para el selector (spec 005, US3). No requiere clave; solo se
+/// invoca desde el selector que la persona ha abierto (gesto explícito, principio XVI).
+#[tauri::command]
+pub async fn listar_modelos_ia() -> AppResult<Vec<crate::domain::ia::ModeloIaWire>> {
+    match crate::platform::ia_openrouter::listar_modelos().await {
+        Ok(respuesta) => Ok(crate::domain::ia::catalogo_modelos(respuesta)),
+        Err(err) => Err(crate::domain::ia::analizar_error(err)),
+    }
+}
+
+/// `Ok(true)` si la clave sirve; `Ok(false)` no ocurre (una clave que no sirve es un error, no un
+/// estado); `Err(AppError)` con la clasificación de `domain::ia` en cualquier fallo.
+fn interpretar_validacion(
+    resultado: Result<(), crate::domain::ia::ErrorTransporte>,
+) -> AppResult<bool> {
+    match resultado {
+        Ok(()) => Ok(true),
+        Err(err) => Err(crate::domain::ia::analizar_error(err)),
+    }
+}
+
+fn guardar_validez_ia(state: &AppState, valida: Option<bool>) {
+    *state
+        .ia_clave_valida
+        .lock()
+        .expect("el mutex no se envenena: sin pánicos dentro") = valida;
+}
+
+/// Datos que el comando de explicación necesita de la base, recogidos con el candado breve.
+struct DatosExplicacion {
+    system: String,
+    user_crudo: String,
+    modelo: String,
+    preview_ack: bool,
+}
+
+fn tipo_disco_legible(t: &crate::domain::tipos::DeviceType) -> &'static str {
+    use crate::domain::tipos::DeviceType::*;
+    match t {
+        Nvme => "NVMe",
+        SataSsd => "SSD SATA",
+        Hdd => "disco duro (HDD)",
+        Usb => "disco USB",
+        Virtual => "disco virtual",
+        RaidLogical => "volumen RAID",
+        Unknown => "tipo desconocido",
+    }
+}
+
+fn meses_desde(fecha_utc: &str) -> Option<u32> {
+    let inicio =
+        time::OffsetDateTime::parse(fecha_utc, &time::format_description::well_known::Rfc3339)
+            .ok()?;
+    let dias = (time::OffsetDateTime::now_utc() - inicio).whole_days();
+    if dias < 0 {
+        None
+    } else {
+        Some((dias / 30) as u32)
+    }
+}
+
+fn reunir_datos_explicacion(
+    conn: &rusqlite::Connection,
+    origen: &crate::domain::ia::OrigenExplicacion,
+) -> AppResult<DatosExplicacion> {
+    use crate::domain::ia;
+
+    let modelo = leer_ajuste_string(conn, "settings.ai.model", ia::MODELO_AUTOMATICO);
+    let preview_ack = leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false);
+
+    match origen.tipo {
+        ia::TipoOrigen::Alerta => {
+            let gid = origen.alert_group_id.as_deref().ok_or_else(|| {
+                Box::new(
+                    AppError::new("ipc.schema_mismatch", "error.schemaMismatch")
+                        .with_detail("alertGroupId es obligatorio para tipo \"alerta\""),
+                )
+            })?;
+            let grupo = repo_alertas::get_group(conn, gid)
+                .map_err(rusqlite_err_to_app_error)?
+                .ok_or_else(|| {
+                    Box::new(
+                        AppError::new("ipc.schema_mismatch", "error.schemaMismatch")
+                            .with_detail("grupo de alerta desconocido"),
+                    )
+                })?;
+            let device_id = grupo.target_device_id.clone().ok_or_else(|| {
+                Box::new(AppError::new(
+                    "alert.no_smart_data",
+                    "error.alertNoSmartData",
+                ))
+            })?;
+            let disp = repo_inventario::get_device(conn, &device_id)
+                .map_err(rusqlite_err_to_app_error)?
+                .ok_or_else(|| {
+                    Box::new(AppError::new("device.not_found", "error.deviceNotFound"))
+                })?;
+
+            let mut tendencia: Vec<f64> = repo_alertas::list_occurrences(conn, gid)
+                .map_err(rusqlite_err_to_app_error)?
+                .iter()
+                .take(6)
+                .filter_map(|o| o.value_real)
+                .collect();
+            tendencia.reverse(); // list_occurrences va de más nuevo a más viejo
+
+            let ctx = ia::ContextoDisco {
+                modelo: &disp.model,
+                tipo: tipo_disco_legible(&disp.device_type),
+                bus: disp.bus_type.as_deref(),
+                firmware: disp.firmware.as_deref(),
+                antiguedad_meses: meses_desde(&disp.first_seen_at),
+            };
+            let det = ia::DetalleAlerta {
+                regla: &grupo.rule_key,
+                valor_actual: grupo.last_value_real,
+                tendencia: &tendencia,
+            };
+            let (system, user_crudo) = ia::componer_consulta(
+                &ia::Detalle::Alerta(det),
+                &ctx,
+                ia::Idioma::de_codigo(&origen.idioma),
+            );
+            Ok(DatosExplicacion {
+                system,
+                user_crudo,
+                modelo,
+                preview_ack,
+            })
+        }
+        ia::TipoOrigen::Smart => {
+            let device_id = origen.device_id.as_deref().ok_or_else(|| {
+                Box::new(
+                    AppError::new("ipc.schema_mismatch", "error.schemaMismatch")
+                        .with_detail("deviceId es obligatorio para tipo \"smart\""),
+                )
+            })?;
+            let disp = repo_inventario::get_device(conn, device_id)
+                .map_err(rusqlite_err_to_app_error)?
+                .ok_or_else(|| {
+                    Box::new(AppError::new("device.not_found", "error.deviceNotFound"))
+                })?;
+
+            let contadores_wire = build_smart_counters(conn, device_id)?;
+            if contadores_wire.is_empty() {
+                return Err(Box::new(AppError::new(
+                    "alert.no_smart_data",
+                    "error.alertNoSmartData",
+                )));
+            }
+            let contadores: Vec<ia::ContadorSmart> = contadores_wire
+                .iter()
+                .map(|c| ia::ContadorSmart {
+                    nombre: &c.metric_key,
+                    valor: c.value,
+                    unidad: c.unit.as_deref(),
+                    significativo: c.delta_is_meaningful,
+                })
+                .collect();
+
+            let ctx = ia::ContextoDisco {
+                modelo: &disp.model,
+                tipo: tipo_disco_legible(&disp.device_type),
+                bus: disp.bus_type.as_deref(),
+                firmware: disp.firmware.as_deref(),
+                antiguedad_meses: meses_desde(&disp.first_seen_at),
+            };
+            let (system, user_crudo) = ia::componer_consulta(
+                &ia::Detalle::Smart(&contadores),
+                &ctx,
+                ia::Idioma::de_codigo(&origen.idioma),
+            );
+            Ok(DatosExplicacion {
+                system,
+                user_crudo,
+                modelo,
+                preview_ack,
+            })
+        }
+    }
+}
+
+/// El gesto «Explícamelo en lenguaje claro» (spec 005, US2). Anonimiza el detalle técnico, lo
+/// muestra para revisión la primera vez, y devuelve la explicación del modelo en Markdown, o un
+/// `AppError` que no rompe la pantalla.
+#[tauri::command]
+pub async fn explicar_detalle_tecnico(
+    state: State<'_, AppState>,
+    origen: crate::domain::ia::OrigenExplicacion,
+) -> AppResult<crate::domain::ia::ResultadoExplicacion> {
+    use crate::domain::ia;
+
+    let Some(clave) = crate::platform::credenciales::leer() else {
+        return Err(Box::new(AppError::new("ia.no_key", "error.ia.noKey")));
+    };
+
+    // Serie de esta máquina para el anonimizador; `para_esta_maquina` ya añade equipo y usuario.
+    let series: Vec<String> = {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        repo_inventario::list_present_devices(&conn)
+            .map_err(rusqlite_err_to_app_error)?
+            .into_iter()
+            .filter_map(|d| d.serial_number)
+            .collect()
+    };
+
+    let datos = {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        reunir_datos_explicacion(&conn, &origen)?
+    };
+
+    let anon = crate::reporting::anonimizar::Anonimizador::para_esta_maquina(&series);
+    let user_anon = anon.aplicar(&datos.user_crudo);
+    let (mut user, recortado) = ia::recortar(
+        &user_anon,
+        crate::platform::ia_openrouter::MAX_DETALLE_CHARS,
+    );
+
+    // Fragmentos que la anonimización no garantiza limpios (FR-026).
+    let fragmentos = ia::barrer_texto_residual(&user);
+    match origen.revision {
+        ia::RevisionEnvio::Ninguna if !fragmentos.is_empty() => {
+            return Ok(ia::ResultadoExplicacion::Revision(
+                ia::RevisionAnonimizacionWire {
+                    texto_completo: user,
+                    fragmentos,
+                },
+            ));
+        }
+        ia::RevisionEnvio::QuitarFragmentos => {
+            for f in &fragmentos {
+                user = user.replace(&f.texto, "<OMITIDO>");
+            }
+        }
+        _ => {}
+    }
+
+    // Vista previa la primera vez (FR-010).
+    if !datos.preview_ack && !origen.preview_confirmada {
+        return Ok(ia::ResultadoExplicacion::Revision(
+            ia::RevisionAnonimizacionWire {
+                texto_completo: user,
+                fragmentos: Vec::new(),
+            },
+        ));
+    }
+    if origen.preview_confirmada && !datos.preview_ack {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        guardar_ajuste(
+            &conn,
+            "settings.ai.preview_acknowledged",
+            &true,
+            &ahora_rfc3339(),
+        )?;
+    }
+
+    let t0 = std::time::Instant::now();
+    let respuesta = crate::platform::ia_openrouter::chat_completions(
+        &clave,
+        &datos.modelo,
+        &datos.system,
+        &user,
+    )
+    .await;
+    let ms = t0.elapsed().as_millis();
+
+    match respuesta {
+        Ok(cuerpo) => {
+            let expl = ia::analizar_respuesta(cuerpo, recortado)?;
+            tracing::debug!(
+                modelo_solicitado = %datos.modelo,
+                modelo_usado = %expl.modelo_usado,
+                resultado = "ok",
+                ms,
+                "consulta de explicación con IA"
+            );
+            Ok(ia::ResultadoExplicacion::Ok(expl))
+        }
+        Err(err) => {
+            let app = ia::analizar_error(err);
+            tracing::debug!(
+                modelo_solicitado = %datos.modelo,
+                resultado = "error",
+                codigo = %app.code,
+                ms,
+                "consulta de explicación con IA"
+            );
+            Err(app)
+        }
+    }
 }
 
 fn set_setting_impl(
@@ -1097,6 +1515,14 @@ fn set_setting_impl(
             let b = valor_bool(value)?;
             guardar_ajuste(conn, key, &b, &ahora)?;
         }
+        // Ayuda con IA (spec `005-explicacion-ia`). Solo el modelo se edita por esta vía genérica;
+        // `settings.ai.enabled` y `settings.ai.preview_acknowledged` los escriben los comandos de
+        // IA (`guardar_clave_ia`, `borrar_clave_ia`, `explicar_detalle_tecnico`), no la interfaz.
+        "settings.ai.model" => {
+            let modelo = valor_string(value)?;
+            let modelo = aj::validar_modelo_ia(&modelo).map_err(error_ajuste_a_app_error)?;
+            guardar_ajuste(conn, key, &modelo, &ahora)?;
+        }
         // `logging.verbose` se cambia solo con `set_log_level` (T098): ese comando persiste la
         // clave **y** recarga el filtro en caliente a la vez; permitirlo también aquí abriría una
         // segunda vía que podría dejar el filtro activo desincronizado de lo guardado.
@@ -1190,11 +1616,20 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
         "window.y",
         "window.maximized",
     ];
+    // Ayuda con IA (spec `005-explicacion-ia`). Resetear este ámbito borra además la credencial
+    // (lo hace `reset_settings`, no `claves_por_ambito`): dejar el modelo y el ack sin la clave
+    // dejaría la función medio configurada.
+    const AI: &[&str] = &[
+        "settings.ai.model",
+        "settings.ai.preview_acknowledged",
+        "settings.ai.enabled",
+    ];
     match scope {
         "schedule" => SCHEDULE.to_vec(),
         "alerts" => ALERTS.to_vec(),
         "retention" => RETENTION.to_vec(),
-        _ => [SCHEDULE, ALERTS, RETENTION, RESTO].concat(),
+        "ai" => AI.to_vec(),
+        _ => [SCHEDULE, ALERTS, RETENTION, RESTO, AI].concat(),
     }
 }
 
@@ -1202,6 +1637,7 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
 pub fn reset_settings(state: State<AppState>, scope: String) -> AppResult<SettingsWire> {
     let claves = claves_por_ambito(&scope);
     let toca_autoarranque = claves.contains(&"lifecycle.start_with_system");
+    let toca_ia = claves.contains(&"settings.ai.enabled");
     {
         let conn = state
             .conn
@@ -1215,6 +1651,15 @@ pub fn reset_settings(state: State<AppState>, scope: String) -> AppResult<Settin
     // programada no debe quedar huérfana (ADR-038).
     if toca_autoarranque {
         crate::platform::autoarranque::aplicar(false)?;
+    }
+    // Resetear la ayuda con IA borra también la clave del Administrador de credenciales (FR-004):
+    // el estado de fábrica es «sin credencial».
+    if toca_ia {
+        crate::platform::credenciales::borrar()?;
+        *state
+            .ia_clave_valida
+            .lock()
+            .expect("el mutex no se envenena: sin pánicos dentro") = None;
     }
     let conn = state
         .conn

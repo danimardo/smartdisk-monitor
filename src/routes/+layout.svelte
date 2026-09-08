@@ -28,6 +28,7 @@
   } from "$lib/api";
   import { createLogger, setLogLevel as setLoggerLevel } from "$lib/logger";
   import { app } from "$lib/stores/app.svelte";
+  import { ia } from "$lib/stores/ia.svelte";
   import type { AppError } from "$lib/design/types";
 
   let { children } = $props();
@@ -194,6 +195,10 @@
           app.pausedSince = inv.pausedSince;
           app.loadedAt = new Date().toISOString();
         }
+
+        // Estado de la ayuda con IA (spec 005): igual que el inventario, tiene que ser correcto en
+        // cualquier ruta de entrada, no solo si se pasa antes por Ajustes. No toca la red.
+        if (ia.estado === null) await ia.refrescar().catch(() => {});
 
         // 3. A partir de aquí solo se escucha.
         unsubscribe = await subscribe({

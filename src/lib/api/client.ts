@@ -10,7 +10,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { z, type ZodType } from "zod";
 import * as S from "./schemas";
 import type { AppError, DiskSummary } from "$lib/design/types";
-import type { AlertStatusFilter } from "./types";
+import type { AlertStatusFilter, OrigenExplicacion } from "./types";
 
 /** Convierte cualquier rechazo en un `AppError` con forma completa.
  *
@@ -95,8 +95,9 @@ export const setSetting = (key: string, value: unknown) => callVoid("set_setting
 export const getSettings = () => call("get_settings", S.settings);
 
 /** Vuelve a los valores de fábrica de un ámbito. `"all"` incluye ciclo de vida, notificaciones y
- *  registro, que no tienen ámbito propio; nunca toca la apariencia. */
-export const resetSettings = (scope: "all" | "alerts" | "schedule" | "retention") =>
+ *  registro, que no tienen ámbito propio; nunca toca la apariencia. `"ai"` borra además la clave
+ *  del Administrador de credenciales (spec 005). */
+export const resetSettings = (scope: "all" | "alerts" | "schedule" | "retention" | "ai") =>
   call("reset_settings", S.settings, { scope });
 
 /* ---------------------------------------------------------------- inventario */
@@ -245,5 +246,29 @@ export const setLogLevel = (verbose: boolean) => callVoid("set_log_level", { ver
 /** Abre el explorador de archivos en la carpeta de registro. Sin parámetro de ruta: es **una
  *  sola ruta conocida** que decide el backend, nunca una que construya la interfaz (principio IX). */
 export const openLogFolder = () => callVoid("open_log_folder");
+
+/* ---------------------------------------------------------------- ayuda con IA (spec 005) */
+
+/** Estado de la ayuda con IA. No toca la red. */
+export const estadoIa = () => call("estado_ia", S.estadoIa);
+
+/** Guarda y activa la clave de OpenRouter: valida forma + una llamada mínima al proveedor; una
+ *  clave inválida no se guarda (`AppError` `ia.unauthorized` / `ia.invalidKeyFormat`). */
+export const guardarClaveIa = (clave: string) => call("guardar_clave_ia", S.estadoIa, { clave });
+
+/** Comprueba la clave ya guardada sin cambiarla (botón «Probar»). */
+export const probarClaveIa = () => call("probar_clave_ia", S.estadoIa);
+
+/** Desactiva la ayuda: borra la credencial y limpia el estado. Conserva el modelo elegido. */
+export const borrarClaveIa = () => call("borrar_clave_ia", S.estadoIa);
+
+/** Catálogo de modelos de OpenRouter para el selector. El primero es «modelo gratuito automático».
+ *  Si falla, la interfaz deja seguir con «automático». */
+export const listarModelosIa = () => call("listar_modelos_ia", S.modeloIa.array());
+
+/** El gesto «Explícamelo»: devuelve la explicación en Markdown, o una pantalla de revisión/vista
+ *  previa (`estado: "revision"`), o lanza un `AppError` (`ia.*`) que no rompe la pantalla. */
+export const explicarDetalleTecnico = (origen: OrigenExplicacion) =>
+  call("explicar_detalle_tecnico", S.resultadoExplicacion, { origen });
 
 export type { DiskSummary };

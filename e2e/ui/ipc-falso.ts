@@ -58,6 +58,16 @@ export async function instalarIpcFalso(
         }
         if (cmd === "plugin:event|unlisten" || cmd === "plugin:event|emit") return Promise.resolve(null);
         const valor = cmd in tabla ? tabla[cmd] : null;
+        // Un valor `{ __rechazar__: AppError }` hace que el comando **rechace** con ese error, para
+        // probar el manejo de fallos (spec 005: la explicación con IA falla y la pantalla sigue).
+        // Se envuelve en un `Error` con los campos del `AppError` copiados encima: `toAppError` de
+        // `$lib/api` lo reconoce por `code`/`messageKey` igual que reconoce el objeto que devuelve
+        // el `invoke` real de Tauri.
+        if (valor && typeof valor === "object" && "__rechazar__" in valor) {
+          const motivo = (valor as Record<string, unknown>).__rechazar__ as Record<string, unknown>;
+          const codigo = typeof motivo.code === "string" ? motivo.code : "ipc";
+          return Promise.reject(Object.assign(new Error(codigo), motivo));
+        }
         // Retardo opcional por comando: para probar el indicador de navegación, que solo aparece si
         // el `load` de la ruta tarda más de 150 ms (spec 004).
         const ms = retardos[cmd];

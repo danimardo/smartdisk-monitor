@@ -6,6 +6,7 @@
    *  Nada de lo que se elige aquí es irreversible y se dice: todo se cambia luego en Ajustes. */
   import { goto, invalidateAll } from "$app/navigation";
   import {
+    AiModelSelect,
     Button,
     CapacityBar,
     Card,
@@ -19,12 +20,14 @@
   } from "$lib/components";
   import {
     getSettings,
+    guardarClaveIa,
     refreshNow,
     setDeviceAlias,
     setDeviceMonitoring,
     setSetting,
     toAppError
   } from "$lib/api";
+  import { ia } from "$lib/stores/ia.svelte";
   import { busIcon } from "$lib/design/icons";
   import { PERFILES, PERFIL_RECOMENDADO, perfilLabelKey, type PerfilAlerta } from "$lib/design/perfiles";
   import { t } from "$lib/i18n";
@@ -34,7 +37,7 @@
 
   let { data }: { data: PageData } = $props();
 
-  const TOTAL = 4;
+  const TOTAL = 5;
   let paso = $state(1);
   let error = $state<AppError | null>(null);
 
@@ -113,11 +116,45 @@
       : []
   );
 
-  /* --------------------------------------------------------------------------------- paso 4: listo */
+  /* ---------------------------------------------------------------------- paso 4: ayuda con IA (opcional) */
+
+  let claveIa = $state("");
+  let activandoIa = $state(false);
+  let errorIa = $state<AppError | null>(null);
+
+  async function activarIa() {
+    if (claveIa.trim().length === 0) {
+      paso = 5;
+      return;
+    }
+    activandoIa = true;
+    errorIa = null;
+    try {
+      ia.set(await guardarClaveIa(claveIa.trim()));
+      claveIa = "";
+      // No se avanza: se muestra el selector de modelo; el pie pasa a «Continuar».
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      activandoIa = false;
+    }
+  }
+
+  async function cambiarModeloIaAsistente(id: string) {
+    errorIa = null;
+    try {
+      await setSetting("settings.ai.model", id);
+      await ia.refrescar();
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    }
+  }
+
+  /* --------------------------------------------------------------------------------- paso 5: listo */
 
   let primeraLecturaLanzada = $state(false);
   $effect(() => {
-    if (paso === 4 && !primeraLecturaLanzada) {
+    if (paso === 5 && !primeraLecturaLanzada) {
       primeraLecturaLanzada = true;
       refreshNow("all").catch(() => {});
     }
@@ -346,6 +383,43 @@
           onchange={(v: boolean) => cambiarSwitch("lifecycle.start_with_system", v)}
         />
       </div>
+    {:else if paso === 4}
+      <div class="flex items-center gap-6">
+        <h1 class="sdm-display m-0 text-2xl">{t("onboarding.ai.title")}</h1>
+      </div>
+      <p class="m-0 max-w-[560px] text-sm leading-relaxed text-fg-dim" style="text-wrap: pretty">
+        {t("onboarding.ai.body")}
+      </p>
+      <div class="flex flex-col gap-3 rounded-inner bg-glass-3 p-4">
+        <p class="m-0 text-xs font-semibold text-fg-dim">{t("onboarding.ai.exampleTitle")}</p>
+        <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">{t("onboarding.ai.example")}</p>
+      </div>
+      {#if ia.estado?.activa}
+        <p class="m-0 text-sm font-medium text-ok">{t("settings.ai.status.on")}</p>
+        <AiModelSelect modelo={ia.estado.modelo} onchange={(id) => void cambiarModeloIaAsistente(id)} />
+      {:else}
+        <TextField
+          value={claveIa}
+          label={t("settings.ai.key.label")}
+          hint={t("settings.ai.key.hint")}
+          placeholder={t("settings.ai.key.placeholder")}
+          error={errorIa ? t(errorIa.messageKey) : ""}
+          disabled={activandoIa}
+          oninput={(v: string) => {
+            claveIa = v;
+          }}
+        />
+      {/if}
+      {#if errorIa && errorIa.detail}
+        <details>
+          <summary class="cursor-pointer text-xs font-semibold text-fg-dim">
+            {t("common.technicalDetail")}
+          </summary>
+          <pre
+            class="mt-2 overflow-x-auto whitespace-pre-wrap rounded-inner bg-glass-3 p-3 text-xs text-fg-dim">{errorIa.detail}</pre>
+        </details>
+      {/if}
+      <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">{t("onboarding.ai.skipHint")}</p>
     {:else}
       <div class="mx-auto flex max-w-[560px] flex-col items-center gap-4 py-6 text-center">
         <OnboardingArt name="done" />
@@ -387,6 +461,14 @@
       <Button variant="primary" onclick={aplicarPaso2}>{t("onboarding.disks.cta")}</Button>
     {:else if paso === 3}
       <Button variant="primary" onclick={() => (paso = 4)}>{t("common.continue")}</Button>
+    {:else if paso === 4}
+      {#if ia.estado?.activa}
+        <Button variant="primary" onclick={() => (paso = 5)}>{t("common.continue")}</Button>
+      {:else}
+        <Button variant="primary" loading={activandoIa} onclick={activarIa}>
+          {claveIa.trim().length > 0 ? t("onboarding.ai.cta.activate") : t("onboarding.ai.cta.skip")}
+        </Button>
+      {/if}
     {:else}
       <Button variant="primary" onclick={terminar}>{t("onboarding.done.cta")}</Button>
     {/if}

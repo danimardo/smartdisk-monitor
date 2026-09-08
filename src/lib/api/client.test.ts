@@ -198,7 +198,13 @@ describe("la superficie completa del contrato", () => {
     addSmartctlDefenderException: "add_smartctl_defender_exception",
     getLogLevel: "get_log_level",
     setLogLevel: "set_log_level",
-    openLogFolder: "open_log_folder"
+    openLogFolder: "open_log_folder",
+    estadoIa: "estado_ia",
+    guardarClaveIa: "guardar_clave_ia",
+    probarClaveIa: "probar_clave_ia",
+    borrarClaveIa: "borrar_clave_ia",
+    listarModelosIa: "listar_modelos_ia",
+    explicarDetalleTecnico: "explicar_detalle_tecnico"
   };
 
   beforeEach(() => {

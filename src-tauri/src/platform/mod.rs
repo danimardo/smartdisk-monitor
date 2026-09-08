@@ -4,7 +4,9 @@
 pub mod accent;
 pub mod autoarranque;
 pub mod bandeja;
+pub mod credenciales;
 pub mod energia;
+pub mod ia_openrouter;
 pub mod locale;
 pub mod paths;
 pub mod proceso_externo;

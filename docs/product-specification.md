@@ -45,6 +45,11 @@ El producto debe ayudar a responder:
 - Español e inglés, seleccionados inicialmente según el idioma del sistema.
 - Tema claro, oscuro o automático según el sistema.
 - Instalador manual y desinstalador.
+- **Ayuda con IA opcional** (spec `005-explicacion-ia`, principio XVI): si la persona configura una
+  clave de API de OpenRouter, puede pedir que se le traduzca a lenguaje llano el detalle técnico de
+  una alerta o del detalle SMART de un disco, con posibles pasos a seguir. Apagada de fábrica; sin
+  clave, la aplicación no hace ninguna conexión a Internet. El detalle técnico se anonimiza antes
+  de enviarse y la persona ve el texto exacto la primera vez.
 
 ### Fuera del alcance inicial
 

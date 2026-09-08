@@ -28,6 +28,19 @@ export type { Resolution } from "./generated/Resolution";
 export type { MetricSeriesWire as MetricSeries } from "./generated/MetricSeriesWire";
 export type { PuntoSerieWire } from "./generated/PuntoSerieWire";
 
+// Ayuda con IA (spec 005-explicacion-ia). Comandos: estado_ia, guardar_clave_ia, borrar_clave_ia,
+// probar_clave_ia, listar_modelos_ia, explicar_detalle_tecnico.
+export type { EstadoIaWire } from "./generated/EstadoIaWire";
+export type { AiSettingsWire } from "./generated/AiSettingsWire";
+export type { ModeloIaWire } from "./generated/ModeloIaWire";
+export type { ExplicacionIaWire } from "./generated/ExplicacionIaWire";
+export type { RevisionAnonimizacionWire } from "./generated/RevisionAnonimizacionWire";
+export type { FragmentoDudosoWire } from "./generated/FragmentoDudosoWire";
+export type { ResultadoExplicacion } from "./generated/ResultadoExplicacion";
+export type { OrigenExplicacion } from "./generated/OrigenExplicacion";
+export type { TipoOrigen } from "./generated/TipoOrigen";
+export type { RevisionEnvio } from "./generated/RevisionEnvio";
+
 export type MappingConfidence = "exact" | "inferred" | "unknown";
 export type SourceStatus = "ok" | "partial" | "unsupported" | "timeout" | "error";
 

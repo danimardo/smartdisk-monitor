@@ -1,9 +1,9 @@
 //! Clasificación de reglas de alerta por `rule_key`, sin persistencia ni evaluación.
 //!
 //! Hoy solo responde a una pregunta: ¿se puede ignorar una alerta de esta regla? El conjunto
-//! vetado (ADR-044, `docs/alert-rules.md` §1) son las reglas que señalan daño físico o predicción
-//! de fallo del propio disco: ignorarlas para siempre convertiría el monitor en algo que oculta su
-//! motivo de existir (constitución §I).
+//! vetado (ADR-044, enmendado por ADR-045; `docs/alert-rules.md` §1) son las reglas que señalan
+//! daño físico o predicción de fallo del propio disco: ignorarlas para siempre convertiría el
+//! monitor en algo que oculta su motivo de existir (constitución §I).
 
 /// Reglas para las que la acción «Ignorar» está vetada. Lista cerrada y **no** configurable.
 /// Cambiarla exige mover a la vez esta constante, su prueba y `docs/alert-rules.md`.
@@ -13,7 +13,6 @@ pub const REGLAS_NO_IGNORABLES: &[&str] = &[
     "smart.wear_high",
     "smart.spare_below_threshold",
     "smart.media_errors",
-    "smart.error_log",
     "events.disk_predictive",
 ];
 
@@ -58,8 +57,8 @@ mod tests {
     ];
 
     #[test]
-    fn exactamente_siete_reglas_estan_vetadas() {
-        assert_eq!(REGLAS_NO_IGNORABLES.len(), 7);
+    fn exactamente_seis_reglas_estan_vetadas() {
+        assert_eq!(REGLAS_NO_IGNORABLES.len(), 6);
     }
 
     #[test]
@@ -86,6 +85,15 @@ mod tests {
         // Aclaración de 2026-09-08 (spec.md): pueden tener causas ajenas al disco.
         assert!(regla_es_ignorable("events.filesystem_error"));
         assert!(regla_es_ignorable("events.disk_error"));
+    }
+
+    #[test]
+    fn smart_error_log_es_ignorable() {
+        // ADR-045: el contador bruto `num_err_log_entries` en NVMe de consumo lo dominan rechazos
+        // de protocolo benignos («Invalid Field in Command»), no daño de medio. El daño real de
+        // medio lo cubre `smart.media_errors`, que sí sigue vetada.
+        assert!(regla_es_ignorable("smart.error_log"));
+        assert!(!regla_es_ignorable("smart.media_errors"));
     }
 
     #[test]

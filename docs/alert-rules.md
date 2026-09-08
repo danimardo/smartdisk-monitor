@@ -55,18 +55,23 @@ color ni la presencia en la lista. Valores: `null`, una fecha UTC, o `"infinite"
 **Qué cuenta para el color.** Los estados `active` y `acknowledged`. Ni `resolved`, ni `archived`,
 ni `ignored`. El silencio nunca afecta al color. Una sola implementación: `deviceState()`.
 
-**Reglas no ignorables** (ADR-044). Estas señalan daño físico o predicción de fallo del propio
-disco: ignorarlas para siempre convertiría el monitor en algo que oculta su motivo de existir
-(constitución §I). La acción «Ignorar» está vetada para ellas (deshabilitada en la interfaz con su
-motivo; el backend rechaza cualquier intento con `alert.rule_not_ignorable`):
+**Reglas no ignorables** (ADR-044, enmendado por ADR-045). Estas señalan daño físico o predicción
+de fallo del propio disco: ignorarlas para siempre convertiría el monitor en algo que oculta su
+motivo de existir (constitución §I). La acción «Ignorar» está vetada para ellas (deshabilitada en
+la interfaz con su motivo; el backend rechaza cualquier intento con `alert.rule_not_ignorable`):
 
 `smart.health.failed` · `nvme.critical_warning` · `smart.wear_high` · `smart.spare_below_threshold`
-· `smart.media_errors` · `smart.error_log` · `events.disk_predictive`.
+· `smart.media_errors` · `events.disk_predictive`.
 
 Cualquier otra regla (temperatura, capacidad, controladora, `events.filesystem_error`,
-`events.disk_error`, reintentos de E/S, `smart.unreadable`, `collector.stalled`…) sí se puede
-ignorar: la lista canónica vive en `alerts::reglas::REGLAS_NO_IGNORABLES` y una prueba la contrasta
-contra la tabla de §2.
+`events.disk_error`, reintentos de E/S, `smart.unreadable`, `smart.error_log`, `collector.stalled`…)
+sí se puede ignorar: la lista canónica vive en `alerts::reglas::REGLAS_NO_IGNORABLES` y una prueba
+la contrasta contra la tabla de §2.
+
+`smart.error_log` salió del conjunto vetado en ADR-045: el contador `error_log_entries_total`
+(`num_err_log_entries` en NVMe) lo dominan rechazos de protocolo benignos —«Invalid Field in
+Command»— que no son daño de medio. El daño de medio real lo cubre `smart.media_errors`, que sigue
+vetada.
 
 ---
 

@@ -19,6 +19,7 @@ no se hace una excepción local.
 | TypeScript | 5.x, `strict: true` | sin `any` implícito, sin `@ts-ignore` sin justificar |
 | Tailwind | 3.x | solo utilidades mapeadas desde tokens |
 | SQLite | vía `rusqlite` con `bundled` | evita depender de la DLL del sistema |
+| `reqwest` | 0.13, `default-features = false`, features `native-tls` + `json` | **solo** para la ayuda con IA (principio XVI, ADR-046); ya lo arrastra `tauri`. `native-tls` = SChannel del sistema, no `rustls` (que traería `aws-lc-sys`) |
 | Vitest | 5.x | dos configuraciones: Node y navegador (ADR-027) |
 | Playwright | 1.x | solo Chromium: es el motor del WebView2 (ADR-028) |
 | `@axe-core/playwright` | 4.x | accesibilidad automática, ambos temas |

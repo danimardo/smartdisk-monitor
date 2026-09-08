@@ -90,6 +90,11 @@ pub struct AppState {
     /// la E/S externa; esta guardia mantiene «el refresco manual espera al ciclo en curso» sin
     /// bloquear las consultas de la UI.
     pub recoleccion_smart: std::sync::Mutex<()>,
+    /// Resultado de la última comprobación de la clave de API de OpenRouter en esta sesión del
+    /// proceso (spec `005-explicacion-ia`): `None` sin comprobar, `Some(true/false)` válida o
+    /// rechazada. **No se persiste**: es una pista para la interfaz, no un dato de verdad — el
+    /// proveedor es quien decide, y un reinicio simplemente la vuelve a `None`.
+    pub ia_clave_valida: std::sync::Mutex<Option<bool>>,
 }
 
 impl AppState {
@@ -105,6 +110,7 @@ impl AppState {
             detener_planificador: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             aviso_bandeja_mostrado: std::sync::atomic::AtomicBool::new(false),
             recoleccion_smart: std::sync::Mutex::new(()),
+            ia_clave_valida: std::sync::Mutex::new(None),
         })
     }
 }
