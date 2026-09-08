@@ -331,7 +331,11 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    intervalo va **junto a la gráfica**, ya no en la `Toolbar`.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
    rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
-   (Reconocer / Silenciar / Archivar) y cronología de ocurrencias.
+   (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una
+   alerta ya ignorada) y cronología de ocurrencias. El `SegmentedControl` de filtro tiene cinco
+   segmentos: Activas / Resueltas / Archivadas / **Ignoradas** / Todas. «Ignorar» (ADR-044) abre
+   `ConfirmDialog` con su impacto; para las siete reglas no ignorables el botón aparece
+   deshabilitado con `disabledReason` (`alerts.ignore.notIgnorable`).
 4. **Pruebas y diagnóstico** (v3) — **si hay una prueba en curso**, su bloque va arriba y a ancho
    completo: cabecera con píldora «Prueba en curso» + tipo de prueba `.sdm-display` + cifra de progreso
    a `text-display` (58 px, a `text-metric` por debajo de 1100 px) + botón Cancelar; `ProgressBar

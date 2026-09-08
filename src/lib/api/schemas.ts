@@ -17,7 +17,7 @@ const isoUtc = z.string().min(20, "se esperaba una fecha ISO en UTC");
 
 export const healthState = z.enum(["ok", "warn", "crit", "unknown"]);
 export const severity = z.enum(["info", "warn", "crit"]);
-export const alertStatus = z.enum(["active", "acknowledged", "resolved", "archived"]);
+export const alertStatus = z.enum(["active", "acknowledged", "resolved", "archived", "ignored"]);
 export const metricSource = z.enum(["smartctl", "windows-storage", "perf-counter", "filesystem"]);
 export const metricQuality = z.enum(["exact", "inferred", "vendor_specific", "stale"]);
 export const mappingConfidence = z.enum(["exact", "inferred", "unknown"]);
@@ -177,6 +177,9 @@ export const alertGroup = z.object({
 });
 
 export const alertDetail = alertGroup.extend({
+  // false para las reglas de daño físico / predicción de fallo (ADR-044): la acción «Ignorar» se
+  // presenta deshabilitada con su motivo. La lista canónica vive solo en el backend.
+  ruleIgnorable: z.boolean(),
   facts: z.array(z.object({ labelKey: z.string(), value: z.string().nullable() })),
   occurrences: z.array(
     z.object({

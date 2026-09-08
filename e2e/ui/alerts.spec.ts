@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { alertaActiva, RESPUESTAS } from "./fixtures/respuestas";
+import {
+  alertaActiva,
+  alertaIgnorable,
+  alertaIgnorada,
+  detalleAlertaIgnorable,
+  detalleAlertaIgnorada,
+  RESPUESTAS
+} from "./fixtures/respuestas";
 import { instalarIpcFalso, llamadas } from "./ipc-falso";
 import es from "../../src/lib/i18n/es.json" with { type: "json" };
 
@@ -68,6 +75,7 @@ test.describe("alertas", () => {
       get_alert_groups: [alerta],
       get_alert_detail: {
         ...alerta,
+        ruleIgnorable: true,
         facts: [{ labelKey: "alert.fact.ruleKey", value: "events.disk_error" }],
         occurrences: [
           { occurredAt: new Date().toISOString(), cycle: 1, value: null, eventId: "2", context: null }
@@ -131,6 +139,7 @@ test.describe("alertas", () => {
       get_alert_groups: [alerta],
       get_alert_detail: {
         ...alerta,
+        ruleIgnorable: true,
         facts: [{ labelKey: "alert.fact.ruleKey", value: "capacity.low" }],
         occurrences: [],
         relatedEvents: []
@@ -154,5 +163,66 @@ test.describe("alertas", () => {
     await expect(dialogo).not.toBeVisible();
 
     expect((await llamadas(page)).map((l) => l.comando)).not.toContain("archive_alert");
+  });
+
+  test("ignorar una alerta ignorable: confirma el impacto y llama al comando (US1)", async ({ page }) => {
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_alert_groups: [alertaIgnorable],
+      get_alert_detail: detalleAlertaIgnorable
+    });
+    await page.goto("/alerts");
+    await page
+      .getByRole("button", { name: new RegExp(es["alert.rule.temp.above_configured_warn.title"]) })
+      .click();
+
+    await page.getByRole("button", { name: es["alerts.actions.ignore"], exact: true }).click();
+    const dialogo = page.getByRole("dialog", { name: es["alerts.ignore.confirmTitle"] });
+    await expect(dialogo).toBeVisible();
+    await expect(dialogo.getByText(es["alerts.ignore.confirmImpact"])).toBeVisible();
+
+    await dialogo.getByRole("button", { name: es["alerts.actions.ignore"], exact: true }).click();
+    expect((await llamadas(page)).map((l) => l.comando)).toContain("ignore_alert");
+  });
+
+  test("una alerta de regla vetada no se puede ignorar: el botón está deshabilitado con su motivo (US3)", async ({
+    page
+  }) => {
+    await instalarIpcFalso(page, RESPUESTAS); // la alerta por defecto es smart.wear_high (vetada)
+    await page.goto("/alerts");
+    await page.getByRole("button", { name: new RegExp(es["alert.rule.smart.wear_high.title"]) }).click();
+
+    const boton = page.getByRole("button", { name: es["alerts.actions.ignore"], exact: true });
+    await expect(boton).toBeDisabled();
+    await expect(boton).toHaveAttribute("title", es["alerts.ignore.notIgnorable"]);
+  });
+
+  test("la pestaña Ignoradas lista solo las ignoradas y ofrece dejar de ignorar (US2)", async ({ page }) => {
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_alert_groups: [alertaActiva, alertaIgnorada],
+      get_alert_detail: detalleAlertaIgnorada
+    });
+    await page.goto("/alerts");
+
+    // En Activas no aparece la ignorada.
+    const tituloIgnorada = es["alert.rule.temp.above_configured_warn.title"];
+    await expect(page.getByRole("button", { name: new RegExp(tituloIgnorada) })).toHaveCount(0);
+
+    await page.getByRole("radio", { name: es["alerts.filter.ignored"] }).click();
+    const tarjeta = page.getByRole("button", { name: new RegExp(tituloIgnorada) });
+    await expect(tarjeta).toBeVisible();
+    await tarjeta.click();
+
+    await page.getByRole("button", { name: es["alerts.actions.unignore"] }).click();
+    expect((await llamadas(page)).map((l) => l.comando)).toContain("unignore_alert");
+  });
+
+  test("la pestaña Ignoradas vacía muestra el estado vacío", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/alerts");
+
+    await page.getByRole("radio", { name: es["alerts.filter.ignored"] }).click();
+    await expect(page.getByText(es["alerts.empty.title"])).toBeVisible();
   });
 });

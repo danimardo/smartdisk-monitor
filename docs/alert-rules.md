@@ -40,12 +40,33 @@ en el mismo grupo, aunque hayan pasado meses.
 | `resolved` | vuelve a cumplirse | `active`, `cycle + 1` |
 | cualquiera | el usuario archiva | `archived` |
 | `archived` | vuelve a cumplirse | `active`, `cycle + 1` |
+| cualquiera, **salvo las reglas no ignorables** | el usuario ignora | `ignored` |
+| `ignored` | vuelve a cumplirse | `ignored` (sin cambio): se registra la ocurrencia, la severidad sube al peor valor visto, `cycle` **no** avanza, **no** notifica |
+| `ignored` | la condición deja de cumplirse | `ignored` (sin cambio): no pasa a `resolved` solo |
+| `ignored` | el usuario deja de ignorar | `resolved` (y el motor lo sube a `active`, `cycle + 1`, en el ciclo siguiente si la condición se cumple) |
+
+`archived` e `ignored` se parecen pero no son lo mismo: **`archived` se reactiva solo** cuando la
+condición vuelve, `ignored` **no** — es terminal hasta que el usuario lo deshace desde la pestaña
+«Ignoradas». Solo `resolved` y `archived` reabren como ciclo nuevo.
 
 El **silencio** (`muted_until`) no es un estado: es ortogonal. Suprime la notificación, nunca el
 color ni la presencia en la lista. Valores: `null`, una fecha UTC, o `"infinite"`.
 
-**Qué cuenta para el color.** Los estados `active` y `acknowledged`. Ni `resolved` ni `archived`.
-El silencio nunca afecta al color. Una sola implementación: `deviceState()`.
+**Qué cuenta para el color.** Los estados `active` y `acknowledged`. Ni `resolved`, ni `archived`,
+ni `ignored`. El silencio nunca afecta al color. Una sola implementación: `deviceState()`.
+
+**Reglas no ignorables** (ADR-044). Estas señalan daño físico o predicción de fallo del propio
+disco: ignorarlas para siempre convertiría el monitor en algo que oculta su motivo de existir
+(constitución §I). La acción «Ignorar» está vetada para ellas (deshabilitada en la interfaz con su
+motivo; el backend rechaza cualquier intento con `alert.rule_not_ignorable`):
+
+`smart.health.failed` · `nvme.critical_warning` · `smart.wear_high` · `smart.spare_below_threshold`
+· `smart.media_errors` · `smart.error_log` · `events.disk_predictive`.
+
+Cualquier otra regla (temperatura, capacidad, controladora, `events.filesystem_error`,
+`events.disk_error`, reintentos de E/S, `smart.unreadable`, `collector.stalled`…) sí se puede
+ignorar: la lista canónica vive en `alerts::reglas::REGLAS_NO_IGNORABLES` y una prueba la contrasta
+contra la tabla de §2.
 
 ---
 

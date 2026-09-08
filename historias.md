@@ -1526,14 +1526,18 @@ Fichero de origen: `docs/data-model.md`
 
 - `id`, `deduplication_key`, `rule_key`.
 - Objeto afectado.
-- Severidad y estado (`active`, `acknowledged`, `resolved`, `archived`).
+- Severidad y estado (`active`, `acknowledged`, `resolved`, `archived`, `ignored`). `ignored`
+  (ADR-044) es terminal por decisión del usuario: no notifica, no cuenta para el color y **no** se
+  reactiva solo; se sale con «dejar de ignorar» (→ `resolved`).
 - `muted_until`: fecha UTC, `null` o el valor especial de silencio indefinido. **No es un estado**:
   es ortogonal y convive con cualquiera de ellos.
-- `cycle`: número de episodio. Un grupo resuelto que recae lo incrementa en vez de crear un grupo
-  nuevo, para no perder el contador histórico.
+- `cycle`: número de episodio. Un grupo resuelto o archivado que recae lo incrementa en vez de crear
+  un grupo nuevo, para no perder el contador histórico. Un grupo `ignored` que recae **no** lo
+  incrementa: no hay frontera de episodio sin transición de estado.
 - Primera y última ocurrencia.
 - Contador.
-- Fechas de reconocimiento, resolución y archivo.
+- Fechas de reconocimiento, resolución, archivo e ignorado (`ignored_at_utc`; se limpia al dejar de
+  ignorar).
 - Último valor y contexto.
 
 #### `alert_occurrences`
@@ -1668,7 +1672,9 @@ Los campos no disponibles se omiten; no se almacenan como cero.
   se purgan. Valores de partida, no medidos.
 - Antes de una migración se crea una copia consistente de SQLite.
 - Se conservan las tres copias de migración más recientes.
-- Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas no se borran automáticamente.
+- Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas no se borran
+  automáticamente. La compactación solo toca `metric_samples`: una alerta `ignored` y su cronología
+  quedan intactas mientras siga ignorada (FR-016, feature `004-ignorar-alertas`).
 
 ### 5. Tiempo y unidades
 
@@ -1726,12 +1732,33 @@ en el mismo grupo, aunque hayan pasado meses.
 | `resolved` | vuelve a cumplirse | `active`, `cycle + 1` |
 | cualquiera | el usuario archiva | `archived` |
 | `archived` | vuelve a cumplirse | `active`, `cycle + 1` |
+| cualquiera, **salvo las reglas no ignorables** | el usuario ignora | `ignored` |
+| `ignored` | vuelve a cumplirse | `ignored` (sin cambio): se registra la ocurrencia, la severidad sube al peor valor visto, `cycle` **no** avanza, **no** notifica |
+| `ignored` | la condición deja de cumplirse | `ignored` (sin cambio): no pasa a `resolved` solo |
+| `ignored` | el usuario deja de ignorar | `resolved` (y el motor lo sube a `active`, `cycle + 1`, en el ciclo siguiente si la condición se cumple) |
+
+`archived` e `ignored` se parecen pero no son lo mismo: **`archived` se reactiva solo** cuando la
+condición vuelve, `ignored` **no** — es terminal hasta que el usuario lo deshace desde la pestaña
+«Ignoradas». Solo `resolved` y `archived` reabren como ciclo nuevo.
 
 El **silencio** (`muted_until`) no es un estado: es ortogonal. Suprime la notificación, nunca el
 color ni la presencia en la lista. Valores: `null`, una fecha UTC, o `"infinite"`.
 
-**Qué cuenta para el color.** Los estados `active` y `acknowledged`. Ni `resolved` ni `archived`.
-El silencio nunca afecta al color. Una sola implementación: `deviceState()`.
+**Qué cuenta para el color.** Los estados `active` y `acknowledged`. Ni `resolved`, ni `archived`,
+ni `ignored`. El silencio nunca afecta al color. Una sola implementación: `deviceState()`.
+
+**Reglas no ignorables** (ADR-044). Estas señalan daño físico o predicción de fallo del propio
+disco: ignorarlas para siempre convertiría el monitor en algo que oculta su motivo de existir
+(constitución §I). La acción «Ignorar» está vetada para ellas (deshabilitada en la interfaz con su
+motivo; el backend rechaza cualquier intento con `alert.rule_not_ignorable`):
+
+`smart.health.failed` · `nvme.critical_warning` · `smart.wear_high` · `smart.spare_below_threshold`
+· `smart.media_errors` · `smart.error_log` · `events.disk_predictive`.
+
+Cualquier otra regla (temperatura, capacidad, controladora, `events.filesystem_error`,
+`events.disk_error`, reintentos de E/S, `smart.unreadable`, `collector.stalled`…) sí se puede
+ignorar: la lista canónica vive en `alerts::reglas::REGLAS_NO_IGNORABLES` y una prueba la contrasta
+contra la tabla de §2.
 
 ---
 
@@ -2234,6 +2261,8 @@ invoke<AlertGroup[]>("get_alert_groups", { status?: AlertStatus[], deviceId?: st
 invoke<AlertDetail>("get_alert_detail", { alertGroupId: string })
 
 interface AlertDetail extends AlertGroup {
+  ruleIgnorable: boolean;                 // false para las 7 reglas no ignorables (ADR-044): la
+                                          // acción «Ignorar» se muestra deshabilitada con su motivo
   facts: { labelKey: string; value: string | null }[];
   occurrences: {
     occurredAt: string;
@@ -2250,13 +2279,22 @@ invoke<void>("mute_alert", { alertGroupId: string, minutes: 15 | 60 | 480 | null
 invoke<void>("unmute_alert", { alertGroupId: string })
 invoke<void>("archive_alert", { alertGroupId: string })
 
+// Ignorar de forma permanente (ADR-044): estado terminal `ignored` — no notifica, no cuenta para
+// el color, no se reactiva solo. Sigue registrando ocurrencias. Falla con
+// `alert.rule_not_ignorable` (i18n `error.alertRuleNotIgnorable`) para las siete reglas de daño
+// físico / predicción de fallo. `unignore_alert` deja el grupo en `resolved`; el motor lo sube a
+// `active` en el ciclo siguiente si la condición se cumple.
+invoke<void>("ignore_alert", { alertGroupId: string })
+invoke<void>("unignore_alert", { alertGroupId: string })
+
 // J.58: solo para alertas de reglas smartctl (`smart.*`/`temp.*`/`nvme.*`) — las demás fallan con
 // `alert.no_smart_data`. Consulta smartctl al momento, no hay histórico que leer.
 invoke<string>("get_alert_smart_raw_json", { alertGroupId: string })
 ```
 
 Reconocer **no** cambia el color de nada: el color lo decide `deviceState()` sobre las alertas
-`active` y `acknowledged` (`alert-rules.md` §1).
+`active` y `acknowledged` (`alert-rules.md` §1). Ignorar sí lo cambia (deja de contar, como
+`archived`), pero a diferencia de archivar **no** se reactiva solo cuando la condición vuelve.
 
 #### 3.5 Eventos
 
@@ -4963,6 +5001,76 @@ llamada real a PowerShell no, por la misma razón que el resto de `platform/` no
   que la excepción aparece sin tocar nada a mano) queda pendiente, igual que T115 — no se puede
   automatizar sin una máquina así.
 
+---
+
+### ADR-044 — Un conjunto cerrado de reglas de alerta que nunca se pueden ignorar
+
+Estado: aceptada. Fecha: 2026-09-08. Feature: `specs/004-ignorar-alertas`.
+
+#### El problema
+
+La feature «Ignorar una alerta de forma permanente» añade un estado `ignored`: una alerta ignorada
+deja de notificar y de contar para el color del disco, y —a diferencia de `archived`— **no se
+reactiva sola** cuando la condición se vuelve a cumplir. Es la acción que un usuario quiere para un
+falso positivo recurrente o para una incidencia que ya ha evaluado y acepta (una carcasa USB que
+resetea la controladora al conectarla en caliente, por ejemplo).
+
+Aplicada sin límites, esa misma acción permitiría silenciar para siempre la señal de que **el disco
+se está muriendo**: un `smart.health.failed`, un desgaste de SSD al 95 %, la reserva de bloques
+agotándose. Un monitor de discos que deja ocultar justo eso deja de cumplir su función. La
+constitución §I («la veracidad del dato está por encima de todo») y el principio de que el estado
+refleja la peor alerta no resuelta lo hacen inaceptable.
+
+#### La decisión
+
+Un conjunto **cerrado y no configurable** de `rule_key` para las que la acción «Ignorar» está
+vetada. La versión inicial son siete reglas, todas de daño físico o predicción de fallo del propio
+disco:
+
+| `rule_key` | Por qué no se puede ignorar |
+|---|---|
+| `smart.health.failed` | el disco declara FALLO de salud |
+| `nvme.critical_warning` | el disco enciende su propia bandera crítica |
+| `smart.wear_high` | desgaste del SSD: irreversible, no baja |
+| `smart.spare_below_threshold` | bloques de reserva agotándose |
+| `smart.media_errors` | errores de medio acumulados |
+| `smart.error_log` | errores en el registro SMART acumulados |
+| `events.disk_predictive` | `disk` 52: Windows predice fallo próximo |
+
+Vive en `src-tauri/src/alerts/reglas.rs` (`REGLAS_NO_IGNORABLES` + `regla_es_ignorable`), única
+fuente de verdad, con una prueba que la contrasta contra la tabla de `docs/alert-rules.md`. El
+frontend no replica la lista: recibe `ruleIgnorable: bool` en `AlertDetail` y presenta el botón
+deshabilitado con su motivo (`Button.disabledReason`). El backend rechaza además cualquier intento
+directo con `AppError` `alert.rule_not_ignorable`, así que no hay ninguna secuencia de acciones que
+deje una de estas siete en estado `ignored`.
+
+#### Alternativas descartadas
+
+- **Sin veto: dejar ignorar cualquier alerta.** Es la petición original del usuario («en todas»),
+  matizada por él mismo en la misma conversación («un desgaste SSD alto no debería dejar
+  ignorarlo»). Descartada: convierte el producto en algo que puede ocultar su propio motivo de
+  existir.
+- **Conjunto configurable por el usuario.** Descartada: es una regla de negocio de seguridad del
+  producto, no una preferencia. Un ajuste para «permíteme ignorar los fallos de salud» es un pie
+  de bala con un envoltorio de opción.
+- **Incluir también `events.filesystem_error` (NTFS 55/131) y `events.disk_error` (disk 7, …).**
+  Considerada y descartada (aclaración de 2026-09-08 en `spec.md`): un error de E/S o de estructura
+  NTFS puede venir del cable, de la carcasa o del controlador, no solo del disco, y las señales de
+  muerte real del disco ya están cubiertas por las siete reglas SMART/NVMe. Es el punto más
+  revisable de la lista si la experiencia real lo desaconseja.
+- **Ocultar el botón en lugar de deshabilitarlo.** Descartada por coherencia: el resto de acciones
+  no disponibles de la aplicación se muestran deshabilitadas con su motivo (`disabledReason`), no
+  desaparecen.
+
+#### Consecuencias
+
+- Sin permiso nuevo de Tauri, sin dependencia nueva. El contrato de comandos gana `ignore_alert` /
+  `unignore_alert` y `AlertDetail.ruleIgnorable` (documentado en `docs/ui-contract.md` §3.4).
+- Añadir o quitar una regla del conjunto es un cambio de una línea en `reglas.rs` **y** de la
+  prueba **y** de `docs/alert-rules.md`: los tres tienen que moverse juntos, que es lo que se
+  quiere para una lista de esta importancia.
+- `docs/alert-rules.md` §1 pasa a describir el estado `ignored`, sus transiciones y este veto.
+
 
 ---
 
@@ -6562,7 +6670,11 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    intervalo va **junto a la gráfica**, ya no en la `Toolbar`.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
    rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
-   (Reconocer / Silenciar / Archivar) y cronología de ocurrencias.
+   (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una
+   alerta ya ignorada) y cronología de ocurrencias. El `SegmentedControl` de filtro tiene cinco
+   segmentos: Activas / Resueltas / Archivadas / **Ignoradas** / Todas. «Ignorar» (ADR-044) abre
+   `ConfirmDialog` con su impacto; para las siete reglas no ignorables el botón aparece
+   deshabilitado con `disabledReason` (`alerts.ignore.notIgnorable`).
 4. **Pruebas y diagnóstico** (v3) — **si hay una prueba en curso**, su bloque va arriba y a ancho
    completo: cabecera con píldora «Prueba en curso» + tipo de prueba `.sdm-display` + cifra de progreso
    a `text-display` (58 px, a `text-metric` por debajo de 1100 px) + botón Cancelar; `ProgressBar
@@ -7547,7 +7659,7 @@ export type Severity = "info" | "warn" | "crit";
 
 /** Ciclo de vida de un grupo de alertas (spec §5). El silencio **no** es un estado: es ortogonal
  *  y vive en `mutedUntil`. Una alerta puede estar activa y silenciada a la vez. */
-export type AlertStatus = "active" | "acknowledged" | "resolved" | "archived";
+export type AlertStatus = "active" | "acknowledged" | "resolved" | "archived" | "ignored";
 
 /** Por qué un dato es desconocido. Distingue lo normal de lo averiado: un USB que no expone SMART
  *  es `unsupported` y no ensucia el estado global; un disco que debería responder y no responde es
@@ -7681,7 +7793,7 @@ export const severityToHealth: Record<Severity, HealthState> = {
 /** Estados de alerta que siguen pesando sobre el color de salud.
  *  Decisión de producto: **reconocer no cambia el color**. Reconocer saca la alerta de la lista de
  *  pendientes y le pone un distintivo, pero la condición sigue siendo real y el color no debe mentir
- *  sobre el estado del hardware. Solo `resolved` y `archived` dejan de contar.
+ *  sobre el estado del hardware. `resolved`, `archived` e `ignored` (ADR-044) no cuentan.
  *  El silencio es ortogonal al estado: silencia la notificación, nunca el color. */
 const COUNTS_TOWARD_HEALTH: readonly AlertStatus[] = ["active", "acknowledged"];
 
@@ -8471,6 +8583,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alerts.status.acknowledged": "reconocida",
   "alerts.status.resolved": "resuelta",
   "alerts.status.archived": "archivada",
+  "alerts.status.ignored": "ignorada",
   "alerts.acknowledge": "Reconocer",
   "alerts.archive": "Archivar",
   "alerts.mute": "Silenciar {duration}",
@@ -8518,6 +8631,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "startup.failed": "No se pudo iniciar la supervisión",
   "error.deviceNotFound": "Este disco ya no existe en el inventario.",
   "error.alertNoSmartData": "Esta alerta no tiene un disco SMART asociado del que mostrar detalle técnico.",
+  "error.alertRuleNotIgnorable": "No se puede ignorar esta alerta.",
   "error.storageCollectorFailed": "No se pudo leer el inventario de almacenamiento de Windows.",
   "error.smartctlQueryFailed": "No se pudo consultar smartctl.",
   "error.perfCountersFailed": "No se pudieron leer los contadores de rendimiento.",
@@ -8607,6 +8721,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alert.status.acknowledged": "reconocida",
   "alert.status.resolved": "resuelta",
   "alert.status.archived": "archivada",
+  "alert.status.ignored": "ignorada",
   "alert.rule.smart.health.failed.title": "Autoevaluación SMART fallida",
   "alert.rule.smart.health.failed.summary": "El disco ha fallado su propia autoevaluación de salud.",
   "alert.rule.nvme.critical_warning.title": "Aviso crítico del propio disco NVMe",
@@ -8668,6 +8783,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alerts.filter.resolved": "Resueltas",
   "alerts.filter.archived": "Archivadas",
   "alerts.filter.all": "Todas",
+  "alerts.filter.ignored": "Ignoradas",
   "alerts.empty.title": "Sin alertas",
   "alerts.empty.body": "No hay alertas que coincidan con este filtro.",
   "alerts.detail.empty": "Selecciona una alerta de la lista para ver su detalle.",
@@ -8679,6 +8795,10 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alerts.actions.unmute.hint": "Cancela el silencio y vuelve a permitir notificaciones de esta alerta.",
   "alerts.actions.archive": "Archivar",
   "alerts.actions.archive.hint": "La retira de las pestañas Activas y Resueltas y deja de contar para el color del disco. Se conserva el historial y reaparecerá si la condición vuelve a darse.",
+  "alerts.actions.ignore": "Ignorar",
+  "alerts.actions.ignore.hint": "Deja de avisarte y de contar para el color del disco de forma permanente, y no se reactiva sola. Se sigue registrando en segundo plano y es reversible desde la pestaña Ignoradas.",
+  "alerts.actions.unignore": "Dejar de ignorar",
+  "alerts.actions.unignore.hint": "Devuelve la alerta a la vigilancia normal. Si la condición se sigue cumpliendo, volverá a Activas en el próximo ciclo.",
   "alerts.viewTechnicalDetail": "Ver detalle técnico",
   "alerts.mute.duration": "Duración del silencio",
   "alerts.mute.15": "15 minutos",
@@ -8693,6 +8813,10 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alerts.archive.confirmTitle": "¿Archivar esta alerta?",
   "alerts.archive.confirmBody": "Se retira de la vista principal. El historial y la cronología se conservan.",
   "alerts.archive.confirmImpact": "No se puede deshacer desde la interfaz: quedará fuera de las pestañas Activas y Resueltas.",
+  "alerts.ignore.confirmTitle": "¿Ignorar esta alerta?",
+  "alerts.ignore.confirmBody": "Se sigue registrando en segundo plano, pero deja de avisarte, deja de contar para el color del disco y no se reactivará sola.",
+  "alerts.ignore.confirmImpact": "Puedes revertirlo en cualquier momento desde la pestaña Ignoradas.",
+  "alerts.ignore.notIgnorable": "Esta alerta señala un posible fallo del disco y no se puede ignorar.",
   "dateRange.from": "Desde",
   "dateRange.to": "Hasta",
   "disk.counters": "Contadores",
@@ -8959,6 +9083,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alerts.status.acknowledged": "acknowledged",
   "alerts.status.resolved": "resolved",
   "alerts.status.archived": "archived",
+  "alerts.status.ignored": "ignored",
   "alerts.acknowledge": "Acknowledge",
   "alerts.archive": "Archive",
   "alerts.mute": "Mute {duration}",
@@ -9006,6 +9131,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "startup.failed": "Monitoring could not start",
   "error.deviceNotFound": "This disk no longer exists in the inventory.",
   "error.alertNoSmartData": "This alert has no associated SMART disk to show technical detail for.",
+  "error.alertRuleNotIgnorable": "This alert can't be ignored.",
   "error.storageCollectorFailed": "The Windows storage inventory could not be read.",
   "error.smartctlQueryFailed": "smartctl could not be queried.",
   "error.perfCountersFailed": "The performance counters could not be read.",
@@ -9095,6 +9221,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alert.status.acknowledged": "acknowledged",
   "alert.status.resolved": "resolved",
   "alert.status.archived": "archived",
+  "alert.status.ignored": "ignored",
   "alert.rule.smart.health.failed.title": "Failed SMART self-assessment",
   "alert.rule.smart.health.failed.summary": "The disk has failed its own health self-assessment.",
   "alert.rule.nvme.critical_warning.title": "Critical warning from the NVMe disk itself",
@@ -9156,6 +9283,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alerts.filter.resolved": "Resolved",
   "alerts.filter.archived": "Archived",
   "alerts.filter.all": "All",
+  "alerts.filter.ignored": "Ignored",
   "alerts.empty.title": "No alerts",
   "alerts.empty.body": "No alerts match this filter.",
   "alerts.detail.empty": "Select an alert from the list to see its detail.",
@@ -9167,6 +9295,10 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alerts.actions.unmute.hint": "Cancels the silence and allows notifications for this alert again.",
   "alerts.actions.archive": "Archive",
   "alerts.actions.archive.hint": "Removes it from the Active and Resolved tabs and stops it counting towards the disk colour. History is kept and it returns if the condition recurs.",
+  "alerts.actions.ignore": "Ignore",
+  "alerts.actions.ignore.hint": "Permanently stops it notifying and counting towards the disk colour, and it never reactivates on its own. It keeps being recorded in the background and is reversible from the Ignored tab.",
+  "alerts.actions.unignore": "Stop ignoring",
+  "alerts.actions.unignore.hint": "Returns the alert to normal monitoring. If the condition still holds, it will reappear under Active on the next cycle.",
   "alerts.viewTechnicalDetail": "View technical detail",
   "alerts.mute.duration": "Mute duration",
   "alerts.mute.15": "15 minutes",
@@ -9181,6 +9313,10 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alerts.archive.confirmTitle": "Archive this alert?",
   "alerts.archive.confirmBody": "It's removed from the main view. History and timeline are kept.",
   "alerts.archive.confirmImpact": "Can't be undone from the interface: it will drop out of the Active and Resolved tabs.",
+  "alerts.ignore.confirmTitle": "Ignore this alert?",
+  "alerts.ignore.confirmBody": "It keeps being recorded in the background, but stops notifying, stops counting towards the disk colour and won't reactivate on its own.",
+  "alerts.ignore.confirmImpact": "You can reverse it at any time from the Ignored tab.",
+  "alerts.ignore.notIgnorable": "This alert points to a possible disk failure and can't be ignored.",
   "dateRange.from": "From",
   "dateRange.to": "To",
   "disk.counters": "Counters",

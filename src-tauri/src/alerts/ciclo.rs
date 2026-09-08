@@ -8,6 +8,7 @@
 
 use time::{Duration, OffsetDateTime};
 
+use crate::alerts::reglas;
 use crate::domain::tipos::AlertStatus;
 use crate::persistence::repo_alertas;
 
@@ -61,6 +62,44 @@ pub fn archivar(conn: &rusqlite::Connection, id: &str, ahora_utc: &str) -> rusql
     repo_alertas::set_status(conn, id, AlertStatus::Archived, ahora_utc)
 }
 
+/// Por qué no se pudo ignorar un grupo.
+#[derive(Debug)]
+pub enum IgnorarError {
+    /// El grupo no existe.
+    NoExiste,
+    /// La regla del grupo está en `alerts::reglas::REGLAS_NO_IGNORABLES` (ADR-044).
+    ReglaNoIgnorable,
+    /// Fallo de base de datos.
+    Sqlite(rusqlite::Error),
+}
+
+impl From<rusqlite::Error> for IgnorarError {
+    fn from(e: rusqlite::Error) -> Self {
+        IgnorarError::Sqlite(e)
+    }
+}
+
+/// «Ignorar» un grupo (ADR-044): estado terminal `ignored`, salvo que su regla esté vetada. Desde
+/// cualquier estado (`active`, `acknowledged`, `resolved`, `archived`) — spec FR-008.
+pub fn ignorar(conn: &rusqlite::Connection, id: &str, ahora_utc: &str) -> Result<(), IgnorarError> {
+    let grupo = repo_alertas::get_group(conn, id)?.ok_or(IgnorarError::NoExiste)?;
+    if !reglas::regla_es_ignorable(&grupo.rule_key) {
+        return Err(IgnorarError::ReglaNoIgnorable);
+    }
+    repo_alertas::set_status(conn, id, AlertStatus::Ignored, ahora_utc)?;
+    Ok(())
+}
+
+/// «Dejar de ignorar»: el grupo sale de `ignored` y queda `resolved`. Si su condición se sigue
+/// cumpliendo, el motor lo sube a `active` (`cycle + 1`) en el siguiente ciclo (spec FR-011).
+pub fn dejar_de_ignorar(
+    conn: &rusqlite::Connection,
+    id: &str,
+    ahora_utc: &str,
+) -> rusqlite::Result<()> {
+    repo_alertas::dejar_de_ignorar(conn, id, ahora_utc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,6 +135,7 @@ mod tests {
             acknowledged_at_utc: None,
             resolved_at_utc: None,
             archived_at_utc: None,
+            ignored_at_utc: None,
             last_value_real: Some(85.0),
             context_json: None,
         }
@@ -204,5 +244,184 @@ mod tests {
             AlertStatus::Active,
             "quitar el silencio no toca el estado"
         );
+    }
+
+    // ---- Ignorar / dejar de ignorar (ADR-044, feature 004) ----
+
+    fn grupo_con_regla(id: &str, rule_key: &str, status: AlertStatus) -> AlertGroup {
+        AlertGroup {
+            rule_key: rule_key.to_string(),
+            status,
+            ..grupo_activo(id)
+        }
+    }
+
+    #[test]
+    fn ignorar_deja_el_grupo_en_ignored_con_fecha_desde_cualquier_estado() {
+        for estado in [
+            AlertStatus::Active,
+            AlertStatus::Acknowledged,
+            AlertStatus::Resolved,
+            AlertStatus::Archived,
+        ] {
+            let conn = conn_de_prueba();
+            repo_alertas::create_group(
+                &conn,
+                &grupo_con_regla("g1", "temp.above_configured_warn", estado),
+            )
+            .unwrap();
+
+            ignorar(&conn, "g1", "2026-09-04T11:00:00Z").unwrap();
+
+            let grupo = repo_alertas::get_group(&conn, "g1").unwrap().unwrap();
+            assert_eq!(grupo.status, AlertStatus::Ignored, "desde {estado:?}");
+            assert_eq!(
+                grupo.ignored_at_utc.as_deref(),
+                Some("2026-09-04T11:00:00Z")
+            );
+        }
+    }
+
+    #[test]
+    fn un_grupo_ignorado_no_cuenta_para_la_salud() {
+        let conn = conn_de_prueba();
+        repo_alertas::create_group(
+            &conn,
+            &grupo_con_regla("g1", "temp.above_configured_warn", AlertStatus::Active),
+        )
+        .unwrap();
+
+        ignorar(&conn, "g1", "2026-09-04T11:00:00Z").unwrap();
+
+        assert!(repo_alertas::list_groups_counting_toward_health(&conn)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn ignorar_conserva_la_cronologia_y_el_contador() {
+        let conn = conn_de_prueba();
+        let mut g = grupo_con_regla("g1", "temp.above_configured_warn", AlertStatus::Active);
+        g.occurrence_count = 4;
+        g.first_occurrence_at_utc = "2026-09-01T00:00:00Z".to_string();
+        repo_alertas::create_group(&conn, &g).unwrap();
+        repo_alertas::record_occurrence(&conn, "g1", 1, "2026-09-02T00:00:00Z", Some(1.0), None)
+            .unwrap();
+
+        ignorar(&conn, "g1", "2026-09-04T11:00:00Z").unwrap();
+
+        let grupo = repo_alertas::get_group(&conn, "g1").unwrap().unwrap();
+        assert_eq!(grupo.occurrence_count, 5);
+        assert_eq!(grupo.first_occurrence_at_utc, "2026-09-01T00:00:00Z");
+        assert_eq!(
+            repo_alertas::list_occurrences(&conn, "g1").unwrap().len(),
+            2
+        );
+    }
+
+    #[test]
+    fn ignorar_una_regla_vetada_falla_y_no_cambia_el_estado() {
+        let conn = conn_de_prueba();
+        repo_alertas::create_group(
+            &conn,
+            &grupo_con_regla("g1", "smart.wear_high", AlertStatus::Active),
+        )
+        .unwrap();
+
+        let r = ignorar(&conn, "g1", "2026-09-04T11:00:00Z");
+        assert!(matches!(r, Err(IgnorarError::ReglaNoIgnorable)));
+
+        let grupo = repo_alertas::get_group(&conn, "g1").unwrap().unwrap();
+        assert_eq!(grupo.status, AlertStatus::Active, "no debe haber cambiado");
+    }
+
+    #[test]
+    fn ignorar_un_grupo_inexistente_falla_con_no_existe() {
+        let conn = conn_de_prueba();
+        assert!(matches!(
+            ignorar(&conn, "fantasma", "2026-09-04T11:00:00Z"),
+            Err(IgnorarError::NoExiste)
+        ));
+    }
+
+    #[test]
+    fn dejar_de_ignorar_deja_resolved_limpiando_ignored_at_utc() {
+        let conn = conn_de_prueba();
+        repo_alertas::create_group(
+            &conn,
+            &grupo_con_regla("g1", "temp.above_configured_warn", AlertStatus::Active),
+        )
+        .unwrap();
+        ignorar(&conn, "g1", "2026-09-04T11:00:00Z").unwrap();
+
+        dejar_de_ignorar(&conn, "g1", "2026-09-05T09:00:00Z").unwrap();
+
+        let grupo = repo_alertas::get_group(&conn, "g1").unwrap().unwrap();
+        assert_eq!(grupo.status, AlertStatus::Resolved);
+        assert_eq!(grupo.ignored_at_utc, None);
+        assert_eq!(
+            grupo.resolved_at_utc.as_deref(),
+            Some("2026-09-05T09:00:00Z")
+        );
+    }
+
+    #[test]
+    fn un_grupo_archivado_luego_ignorado_al_dejar_de_ignorar_queda_resolved_no_archived() {
+        let conn = conn_de_prueba();
+        repo_alertas::create_group(
+            &conn,
+            &grupo_con_regla("g1", "temp.above_configured_warn", AlertStatus::Archived),
+        )
+        .unwrap();
+        ignorar(&conn, "g1", "2026-09-04T11:00:00Z").unwrap();
+
+        dejar_de_ignorar(&conn, "g1", "2026-09-05T09:00:00Z").unwrap();
+
+        let grupo = repo_alertas::get_group(&conn, "g1").unwrap().unwrap();
+        assert_eq!(
+            grupo.status,
+            AlertStatus::Resolved,
+            "nunca de vuelta a archived"
+        );
+    }
+
+    #[test]
+    fn tras_dejar_de_ignorar_el_motor_reactiva_si_la_condicion_se_cumple() {
+        use crate::alerts::agrupacion::{procesar, EvaluacionAlerta, Transicion};
+        let conn = conn_de_prueba();
+        let ev = |sev, cuando: &str| EvaluacionAlerta {
+            rule_key: "temp.above_configured_warn".to_string(),
+            target_device_id: Some("d1".to_string()),
+            target_volume_id: None,
+            context: None,
+            severity_si_activa: sev,
+            resuelto: false,
+            value: Some(65.0),
+            occurred_at_utc: cuando.to_string(),
+            triggering_event_id: None,
+        };
+
+        // Grupo creado por el propio motor: así `id`/`deduplication_key` casan.
+        procesar(
+            &conn,
+            &ev(Some(AlertSeverity::Warning), "2026-09-04T10:00:00Z"),
+        )
+        .unwrap();
+        let id = repo_alertas::list_groups(&conn).unwrap()[0].id.clone();
+        ignorar(&conn, &id, "2026-09-04T11:00:00Z").unwrap();
+        dejar_de_ignorar(&conn, &id, "2026-09-05T09:00:00Z").unwrap();
+
+        assert_eq!(
+            procesar(
+                &conn,
+                &ev(Some(AlertSeverity::Warning), "2026-09-05T10:00:00Z")
+            )
+            .unwrap(),
+            Transicion::Reactivada
+        );
+
+        let grupo = repo_alertas::get_group(&conn, &id).unwrap().unwrap();
+        assert_eq!(grupo.status, AlertStatus::Active);
+        assert_eq!(grupo.cycle, 2);
     }
 }

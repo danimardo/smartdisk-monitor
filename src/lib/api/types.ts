@@ -52,6 +52,9 @@ export interface SystemEventPage {
 }
 
 export interface AlertDetail extends AlertGroup {
+  /** `false` para las reglas de daño físico / predicción de fallo (ADR-044): la acción «Ignorar»
+   *  se presenta deshabilitada con su motivo. La lista canónica vive solo en el backend. */
+  ruleIgnorable: boolean;
   facts: { labelKey: string; value: string | null }[];
   occurrences: {
     occurredAt: string;

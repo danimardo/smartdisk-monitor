@@ -256,6 +256,9 @@ pub struct AlertOccurrenceWire {
 pub struct AlertDetail {
     #[serde(flatten)]
     pub group: AlertGroupWire,
+    /// `false` para las reglas de `alerts::reglas::REGLAS_NO_IGNORABLES` (ADR-044): la interfaz
+    /// presenta la acción «Ignorar» deshabilitada con su motivo, sin replicar la lista en TS.
+    pub rule_ignorable: bool,
     pub facts: Vec<AlertFact>,
     pub occurrences: Vec<AlertOccurrenceWire>,
     pub related_events: Vec<serde_json::Value>,
@@ -3788,6 +3791,7 @@ fn get_alert_detail_impl(
         .collect();
 
     Ok(AlertDetail {
+        rule_ignorable: crate::alerts::reglas::regla_es_ignorable(&grupo.rule_key),
         group: alert_group_to_wire(conn, &grupo),
         facts,
         occurrences,
@@ -3968,6 +3972,75 @@ pub fn archive_alert(
         resultado
     };
     // Archivar sí puede cambiar el color: era la peor alerta activa y deja de contar.
+    crate::platform::bandeja::actualizar(&app);
+    resultado
+}
+
+/// «Ignorar» una alerta (ADR-044): estado terminal `ignored`. Falla con `alert.rule_not_ignorable`
+/// si la regla del grupo señala daño físico o predicción de fallo del disco.
+#[tauri::command]
+pub fn ignore_alert(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    alert_group_id: String,
+) -> AppResult<()> {
+    let resultado = {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        existe_grupo(&conn, &alert_group_id)?;
+        let ahora = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        let resultado =
+            crate::alerts::ciclo::ignorar(&conn, &alert_group_id, &ahora).map_err(|e| {
+                use crate::alerts::ciclo::IgnorarError;
+                match e {
+                    IgnorarError::ReglaNoIgnorable => Box::new(AppError::new(
+                        "alert.rule_not_ignorable",
+                        "error.alertRuleNotIgnorable",
+                    )),
+                    IgnorarError::NoExiste => {
+                        Box::new(AppError::new("device.not_found", "error.deviceNotFound"))
+                    }
+                    IgnorarError::Sqlite(err) => rusqlite_err_to_app_error(err),
+                }
+            });
+        if resultado.is_ok() {
+            emitir_alerts_changed(&app, &conn, std::slice::from_ref(&alert_group_id));
+        }
+        resultado
+    };
+    // Ignorar puede cambiar el color: era la peor alerta activa y deja de contar.
+    crate::platform::bandeja::actualizar(&app);
+    resultado
+}
+
+/// «Dejar de ignorar»: el grupo sale de `ignored` y queda `resolved`; el motor lo sube a `active`
+/// en el siguiente ciclo si la condición se sigue cumpliendo.
+#[tauri::command]
+pub fn unignore_alert(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    alert_group_id: String,
+) -> AppResult<()> {
+    let resultado = {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        existe_grupo(&conn, &alert_group_id)?;
+        let ahora = time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        let resultado = crate::alerts::ciclo::dejar_de_ignorar(&conn, &alert_group_id, &ahora)
+            .map_err(rusqlite_err_to_app_error);
+        if resultado.is_ok() {
+            emitir_alerts_changed(&app, &conn, std::slice::from_ref(&alert_group_id));
+        }
+        resultado
+    };
     crate::platform::bandeja::actualizar(&app);
     resultado
 }
@@ -6388,6 +6461,82 @@ mod tests_comandos_alertas {
             "device.not_found"
         );
     }
+
+    fn crear_grupo_con_regla(conn: &rusqlite::Connection, rule_key: &str) -> String {
+        let ev = EvaluacionAlerta {
+            rule_key: rule_key.to_string(),
+            target_device_id: Some("d1".to_string()),
+            target_volume_id: None,
+            context: None,
+            severity_si_activa: Some(AlertSeverity::Warning),
+            resuelto: false,
+            value: Some(75.0),
+            occurred_at_utc: "2026-09-04T10:00:00Z".to_string(),
+            triggering_event_id: None,
+        };
+        procesar(conn, &ev).unwrap();
+        repo_alertas::list_groups(conn).unwrap()[0].id.clone()
+    }
+
+    #[test]
+    fn get_alert_detail_dice_si_la_regla_es_ignorable() {
+        let conn = conn_de_prueba();
+        let id_ignorable = crear_grupo_con_regla(&conn, "temp.above_configured_warn");
+        assert!(
+            get_alert_detail_impl(&conn, &id_ignorable)
+                .unwrap()
+                .rule_ignorable
+        );
+
+        let conn2 = conn_de_prueba();
+        let id_vetada = crear_grupo_con_regla(&conn2, "smart.wear_high");
+        assert!(
+            !get_alert_detail_impl(&conn2, &id_vetada)
+                .unwrap()
+                .rule_ignorable
+        );
+    }
+
+    #[test]
+    fn ignorar_saca_el_grupo_de_las_activas_y_lo_pone_en_ignoradas() {
+        let conn = conn_de_prueba();
+        let id = crear_grupo_de_prueba(&conn);
+
+        existe_grupo(&conn, &id).unwrap();
+        crate::alerts::ciclo::ignorar(&conn, &id, "2026-09-04T12:00:00Z").unwrap();
+
+        assert!(
+            get_alert_groups_impl(&conn, Some(&[AlertStatus::Active]), None)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            get_alert_groups_impl(&conn, Some(&[AlertStatus::Ignored]), None)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(repo_alertas::list_groups_counting_toward_health(&conn)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn ignore_alert_de_una_regla_vetada_da_el_codigo_de_error_estable() {
+        let conn = conn_de_prueba();
+        let id = crear_grupo_con_regla(&conn, "smart.wear_high");
+
+        // Mismo mapeo de error que hace el comando `ignore_alert`.
+        let err = crate::alerts::ciclo::ignorar(&conn, &id, "2026-09-04T12:00:00Z").unwrap_err();
+        assert!(matches!(
+            err,
+            crate::alerts::ciclo::IgnorarError::ReglaNoIgnorable
+        ));
+        assert_eq!(
+            get_alert_detail_impl(&conn, &id).unwrap().group.status,
+            AlertStatus::Active
+        );
+    }
 }
 
 #[cfg(test)]
@@ -7454,6 +7603,7 @@ mod tests_helpers_varios {
             acknowledged_at_utc: None,
             resolved_at_utc: None,
             archived_at_utc: None,
+            ignored_at_utc: None,
             last_value_real: None,
             context_json: None,
         }

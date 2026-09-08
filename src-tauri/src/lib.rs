@@ -69,6 +69,8 @@ pub fn run() {
             commands::mute_alert,
             commands::unmute_alert,
             commands::archive_alert,
+            commands::ignore_alert,
+            commands::unignore_alert,
             // eventos
             commands::get_system_events,
             commands::get_event_raw_xml,

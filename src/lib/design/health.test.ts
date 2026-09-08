@@ -31,6 +31,10 @@ describe("deviceState — reconocer no apaga el color (ADR-016, §B.1)", () => {
     expect(deviceState([{ severity: "crit", status: "archived" }], true)).toBe("ok");
   });
 
+  it("una alerta ignorada deja de contar (ADR-044)", () => {
+    expect(deviceState([{ severity: "crit", status: "ignored" }], true)).toBe("ok");
+  });
+
   it("manda la peor severidad vigente", () => {
     expect(
       deviceState(

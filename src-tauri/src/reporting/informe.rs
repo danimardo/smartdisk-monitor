@@ -185,6 +185,7 @@ mod tests {
             acknowledged_at_utc: None,
             resolved_at_utc: None,
             archived_at_utc: None,
+            ignored_at_utc: None,
             last_value_real: Some(92.0),
             context_json: None,
         }

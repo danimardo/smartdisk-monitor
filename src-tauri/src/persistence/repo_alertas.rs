@@ -28,6 +28,7 @@ pub fn status_to_str(v: AlertStatus) -> &'static str {
         AlertStatus::Acknowledged => "acknowledged",
         AlertStatus::Resolved => "resolved",
         AlertStatus::Archived => "archived",
+        AlertStatus::Ignored => "ignored",
     }
 }
 
@@ -36,6 +37,7 @@ fn status_from_str(s: &str) -> AlertStatus {
         "acknowledged" => AlertStatus::Acknowledged,
         "resolved" => AlertStatus::Resolved,
         "archived" => AlertStatus::Archived,
+        "ignored" => AlertStatus::Ignored,
         _ => AlertStatus::Active,
     }
 }
@@ -57,6 +59,7 @@ fn row_to_group(row: &rusqlite::Row) -> rusqlite::Result<AlertGroup> {
         acknowledged_at_utc: row.get("acknowledged_at_utc")?,
         resolved_at_utc: row.get("resolved_at_utc")?,
         archived_at_utc: row.get("archived_at_utc")?,
+        ignored_at_utc: row.get("ignored_at_utc")?,
         last_value_real: row.get("last_value_real")?,
         context_json: row.get("context_json")?,
     })
@@ -110,8 +113,9 @@ pub fn create_group(conn: &Connection, g: &AlertGroup) -> rusqlite::Result<()> {
         "INSERT INTO alert_groups (
             id, deduplication_key, rule_key, target_device_id, target_volume_id, severity, status,
             muted_until, cycle, first_occurrence_at_utc, last_occurrence_at_utc, occurrence_count,
-            acknowledged_at_utc, resolved_at_utc, archived_at_utc, last_value_real, context_json
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            acknowledged_at_utc, resolved_at_utc, archived_at_utc, ignored_at_utc, last_value_real,
+            context_json
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         params![
             g.id,
             g.deduplication_key,
@@ -128,6 +132,7 @@ pub fn create_group(conn: &Connection, g: &AlertGroup) -> rusqlite::Result<()> {
             g.acknowledged_at_utc,
             g.resolved_at_utc,
             g.archived_at_utc,
+            g.ignored_at_utc,
             g.last_value_real,
             g.context_json,
         ],
@@ -210,14 +215,34 @@ pub fn set_status(
             "UPDATE alert_groups SET status = ?2, archived_at_utc = ?3 WHERE id = ?1",
             params![id, status_to_str(status), when_utc],
         ),
-        // Reactivar (recaída desde `acknowledged` por subida de severidad) no toca ninguna fecha
-        // propia: solo `resolved_at_utc`/`archived_at_utc` se limpian, porque una alerta activa
-        // de nuevo ya no está resuelta ni archivada. `when_utc` no aplica a esta transición.
+        // Ignorar (ADR-044): terminal por decisión del usuario. Solo `status` e `ignored_at_utc`.
+        AlertStatus::Ignored => conn.execute(
+            "UPDATE alert_groups SET status = ?2, ignored_at_utc = ?3 WHERE id = ?1",
+            params![id, status_to_str(status), when_utc],
+        ),
+        // Reactivar (recaída desde `acknowledged` por subida de severidad, o desde el motor tras
+        // «dejar de ignorar») no toca ninguna fecha propia: se limpian
+        // `resolved_at_utc`/`archived_at_utc`/`ignored_at_utc`, porque una alerta activa de nuevo
+        // ya no está resuelta, archivada ni ignorada. `when_utc` no aplica a esta transición.
         AlertStatus::Active => conn.execute(
-            "UPDATE alert_groups SET status = ?2, resolved_at_utc = NULL, archived_at_utc = NULL WHERE id = ?1",
+            "UPDATE alert_groups SET status = ?2, resolved_at_utc = NULL, archived_at_utc = NULL,
+                ignored_at_utc = NULL WHERE id = ?1",
             params![id, status_to_str(status)],
         ),
     }?;
+    Ok(())
+}
+
+/// «Dejar de ignorar» (feature `004-ignorar-alertas`): el grupo sale de `ignored` y queda
+/// `resolved`. Si su condición se sigue cumpliendo, el motor lo sube a `active` (`cycle + 1`) en el
+/// siguiente ciclo por la rama de reactivación de `alerts::agrupacion::procesar`. No se fuerza una
+/// re-evaluación inmediata aquí (spec FR-011).
+pub fn dejar_de_ignorar(conn: &Connection, id: &str, when_utc: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE alert_groups SET status = 'resolved', resolved_at_utc = ?2, ignored_at_utc = NULL
+         WHERE id = ?1",
+        params![id, when_utc],
+    )?;
     Ok(())
 }
 
@@ -338,6 +363,7 @@ mod tests {
             acknowledged_at_utc: None,
             resolved_at_utc: None,
             archived_at_utc: None,
+            ignored_at_utc: None,
             last_value_real: Some(70.0),
             context_json: None,
         }

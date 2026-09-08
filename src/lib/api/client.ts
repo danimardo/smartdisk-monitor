@@ -138,6 +138,13 @@ export const muteAlert = (alertGroupId: string, minutes: 15 | 60 | 480 | null) =
   callVoid("mute_alert", { alertGroupId, minutes });
 export const unmuteAlert = (alertGroupId: string) => callVoid("unmute_alert", { alertGroupId });
 export const archiveAlert = (alertGroupId: string) => callVoid("archive_alert", { alertGroupId });
+/** Ignorar de forma permanente (ADR-044). Falla con `alert.rule_not_ignorable` para las reglas de
+ *  daño físico / predicción de fallo. Sigue registrando ocurrencias, pero nunca avisa ni cuenta
+ *  para el color, y no se reactiva sola. */
+export const ignoreAlert = (alertGroupId: string) => callVoid("ignore_alert", { alertGroupId });
+/** Dejar de ignorar: el grupo vuelve a `resolved` y el motor lo reactiva en el ciclo siguiente si
+ *  su condición se sigue cumpliendo. */
+export const unignoreAlert = (alertGroupId: string) => callVoid("unignore_alert", { alertGroupId });
 
 /* ------------------------------------------------------------------ eventos */
 

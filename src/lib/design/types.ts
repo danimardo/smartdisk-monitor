@@ -8,7 +8,7 @@ export type Severity = "info" | "warn" | "crit";
 
 /** Ciclo de vida de un grupo de alertas (spec §5). El silencio **no** es un estado: es ortogonal
  *  y vive en `mutedUntil`. Una alerta puede estar activa y silenciada a la vez. */
-export type AlertStatus = "active" | "acknowledged" | "resolved" | "archived";
+export type AlertStatus = "active" | "acknowledged" | "resolved" | "archived" | "ignored";
 
 /** Por qué un dato es desconocido. Distingue lo normal de lo averiado: un USB que no expone SMART
  *  es `unsupported` y no ensucia el estado global; un disco que debería responder y no responde es

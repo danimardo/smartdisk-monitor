@@ -77,6 +77,10 @@ pub enum Transicion {
     Reactivada,
     /// Pasó a `resolved`.
     Resuelta,
+    /// Grupo `ignored` cuya condición se vuelve a cumplir: se registra la ocurrencia y sube la
+    /// severidad si procede, pero **nunca** notifica, no avanza `cycle` y no cambia de estado
+    /// (ADR-044, spec FR-003/FR-004/FR-006).
+    OcurrenciaIgnorada,
 }
 
 /// Aplica una evaluación al estado persistido. Cubre las cinco combinaciones reales de la tabla de
@@ -112,6 +116,7 @@ pub fn procesar(conn: &Connection, ev: &EvaluacionAlerta) -> rusqlite::Result<Tr
                 acknowledged_at_utc: None,
                 resolved_at_utc: None,
                 archived_at_utc: None,
+                ignored_at_utc: None,
                 last_value_real: ev.value,
                 context_json: None,
             };
@@ -148,9 +153,30 @@ pub fn procesar(conn: &Connection, ev: &EvaluacionAlerta) -> rusqlite::Result<Tr
             })
         }
 
+        // Ignorado que se vuelve a cumplir: se registra la ocurrencia y sube la severidad al peor
+        // valor visto, pero `cycle` **no** avanza (no hay frontera de episodio sin transición de
+        // estado) y **nunca** se reactiva (ADR-044). T053 no notifica `OcurrenciaIgnorada`.
+        (Some(g), Some(severidad)) if g.status == AlertStatus::Ignored => {
+            repo_alertas::record_occurrence(
+                conn,
+                &g.id,
+                g.cycle,
+                &ev.occurred_at_utc,
+                ev.value,
+                None,
+            )?;
+            if severidad_sube(severidad, g.severity) {
+                repo_alertas::set_severity(conn, &g.id, severidad)?;
+            }
+            Ok(Transicion::OcurrenciaIgnorada)
+        }
+
         // Resuelto o archivado que vuelve a activarse: nuevo ciclo, no un grupo nuevo — se
-        // conserva el contador histórico (`alert_groups.cycle`).
-        (Some(g), Some(severidad)) => {
+        // conserva el contador histórico (`alert_groups.cycle`). `ignored` queda fuera a propósito:
+        // solo sale de ese estado una acción explícita del usuario.
+        (Some(g), Some(severidad))
+            if matches!(g.status, AlertStatus::Resolved | AlertStatus::Archived) =>
+        {
             repo_alertas::reopen_as_new_cycle(conn, &g.id, &ev.occurred_at_utc, ev.value)?;
             repo_alertas::set_severity(conn, &g.id, severidad)?;
             Ok(Transicion::Reactivada)
@@ -179,6 +205,7 @@ pub fn procesar(conn: &Connection, ev: &EvaluacionAlerta) -> rusqlite::Result<Tr
                 | Transicion::OcurrenciaRepetida
                 | Transicion::Escalada
                 | Transicion::Reactivada
+                | Transicion::OcurrenciaIgnorada
         ) {
             repo_alertas::set_triggering_event_ultima_ocurrencia(conn, &clave, evento_id)?;
         }
@@ -471,5 +498,94 @@ mod tests {
             "bajar de severidad no reactiva la alerta"
         );
         assert_eq!(grupo.severity, AlertSeverity::Warning);
+    }
+
+    // ---- Estado `ignored` (ADR-044, feature 004) ----
+
+    fn ignorar_el_unico_grupo(conn: &Connection) -> String {
+        let id = repo_alertas::list_groups(conn).unwrap()[0].id.clone();
+        repo_alertas::set_status(conn, &id, AlertStatus::Ignored, "2026-09-04T10:30:00Z").unwrap();
+        id
+    }
+
+    #[test]
+    fn un_grupo_ignorado_que_recae_registra_la_ocurrencia_sin_avanzar_el_ciclo_ni_notificar() {
+        let conn = conn_de_prueba();
+        procesar(
+            &conn,
+            &evaluacion(Some(AlertSeverity::Warning), false, "2026-09-04T10:00:00Z"),
+        )
+        .unwrap();
+        let id = ignorar_el_unico_grupo(&conn);
+        let ciclo_antes = repo_alertas::get_group(&conn, &id).unwrap().unwrap().cycle;
+
+        let transicion = procesar(
+            &conn,
+            &evaluacion(Some(AlertSeverity::Warning), false, "2026-09-04T12:00:00Z"),
+        )
+        .unwrap();
+        assert_eq!(transicion, Transicion::OcurrenciaIgnorada);
+
+        let grupo = repo_alertas::get_group(&conn, &id).unwrap().unwrap();
+        assert_eq!(grupo.status, AlertStatus::Ignored, "sigue ignorada");
+        assert_eq!(
+            grupo.cycle, ciclo_antes,
+            "el ciclo no avanza sin transición de estado"
+        );
+        assert_eq!(grupo.occurrence_count, 2, "pero la ocurrencia se registra");
+        assert_eq!(repo_alertas::list_occurrences(&conn, &id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn un_grupo_ignorado_sube_la_severidad_al_peor_valor_visto_pero_sigue_ignorado() {
+        let conn = conn_de_prueba();
+        procesar(
+            &conn,
+            &evaluacion(Some(AlertSeverity::Warning), false, "2026-09-04T10:00:00Z"),
+        )
+        .unwrap();
+        let id = ignorar_el_unico_grupo(&conn);
+
+        procesar(
+            &conn,
+            &evaluacion(Some(AlertSeverity::Critical), false, "2026-09-04T12:00:00Z"),
+        )
+        .unwrap();
+
+        let grupo = repo_alertas::get_group(&conn, &id).unwrap().unwrap();
+        assert_eq!(grupo.severity, AlertSeverity::Critical);
+        assert_eq!(
+            grupo.status,
+            AlertStatus::Ignored,
+            "subir de severidad no la reactiva"
+        );
+    }
+
+    #[test]
+    fn un_grupo_ignorado_no_se_reabre_como_ciclo_nuevo_aunque_la_condicion_se_cumpla() {
+        let conn = conn_de_prueba();
+        procesar(
+            &conn,
+            &evaluacion(Some(AlertSeverity::Warning), false, "2026-09-04T10:00:00Z"),
+        )
+        .unwrap();
+        let id = ignorar_el_unico_grupo(&conn);
+
+        for i in 0..3 {
+            let t = procesar(
+                &conn,
+                &evaluacion(
+                    Some(AlertSeverity::Critical),
+                    false,
+                    &format!("2026-09-0{}T12:00:00Z", 5 + i),
+                ),
+            )
+            .unwrap();
+            assert_eq!(t, Transicion::OcurrenciaIgnorada);
+        }
+
+        let grupo = repo_alertas::get_group(&conn, &id).unwrap().unwrap();
+        assert_eq!(grupo.cycle, 1, "nunca pasa por reopen_as_new_cycle");
+        assert_eq!(grupo.status, AlertStatus::Ignored);
     }
 }

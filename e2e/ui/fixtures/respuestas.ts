@@ -93,6 +93,8 @@ export const alertas = [alertaActiva];
 
 export const detalleAlertaActiva = {
   ...alertaActiva,
+  // `smart.wear_high` está en el conjunto vetado de ADR-044: no se puede ignorar.
+  ruleIgnorable: false,
   facts: [
     { labelKey: "alert.fact.ruleKey", value: "smart.wear_high" },
     { labelKey: "alert.fact.lastValue", value: "92" }
@@ -100,6 +102,29 @@ export const detalleAlertaActiva = {
   occurrences: [{ occurredAt: AHORA, cycle: 1, value: 92, eventId: null, context: null }],
   relatedEvents: []
 };
+
+/** Una alerta de regla **ignorable** (`temp.above_configured_warn`), para probar la acción
+ *  «Ignorar» y su diálogo. */
+export const alertaIgnorable = {
+  ...alertaActiva,
+  id: "alert-temp",
+  ruleKey: "temp.above_configured_warn",
+  deduplicationKey: "temp.above_configured_warn|device:disk-0"
+};
+
+export const detalleAlertaIgnorable = {
+  ...alertaIgnorable,
+  ruleIgnorable: true,
+  facts: [{ labelKey: "alert.fact.ruleKey", value: "temp.above_configured_warn" }],
+  occurrences: [{ occurredAt: AHORA, cycle: 1, value: 63, eventId: null, context: null }],
+  relatedEvents: []
+};
+
+/** La misma alerta ya en estado `ignored`, para probar la pestaña «Ignoradas» y «Dejar de
+ *  ignorar». */
+export const alertaIgnorada = { ...alertaIgnorable, id: "alert-ign", status: "ignored" };
+
+export const detalleAlertaIgnorada = { ...detalleAlertaIgnorable, ...alertaIgnorada };
 
 /** Detalle del primer disco del inventario, con un par de contadores reales — cubre las dos
  *  unidades más comunes (temperatura y porcentaje) sin listar los treinta y tantos posibles. */
@@ -321,6 +346,9 @@ export function validar(): void {
   S.metricSeries.parse(serieTemperatura);
   S.alertGroup.array().parse(alertas);
   S.alertDetail.parse(detalleAlertaActiva);
+  S.alertGroup.array().parse([alertaIgnorable, alertaIgnorada]);
+  S.alertDetail.parse(detalleAlertaIgnorable);
+  S.alertDetail.parse(detalleAlertaIgnorada);
   S.systemEventPage.parse(paginaEventos);
   S.testRun.array().parse(testRunsVacio);
   S.testRun.parse(testRunActivo);

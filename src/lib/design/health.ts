@@ -17,7 +17,7 @@ export const severityToHealth: Record<Severity, HealthState> = {
 /** Estados de alerta que siguen pesando sobre el color de salud.
  *  Decisión de producto: **reconocer no cambia el color**. Reconocer saca la alerta de la lista de
  *  pendientes y le pone un distintivo, pero la condición sigue siendo real y el color no debe mentir
- *  sobre el estado del hardware. Solo `resolved` y `archived` dejan de contar.
+ *  sobre el estado del hardware. `resolved`, `archived` e `ignored` (ADR-044) no cuentan.
  *  El silencio es ortogonal al estado: silencia la notificación, nunca el color. */
 const COUNTS_TOWARD_HEALTH: readonly AlertStatus[] = ["active", "acknowledged"];
 

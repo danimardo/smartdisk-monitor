@@ -79,14 +79,18 @@
 
 - `id`, `deduplication_key`, `rule_key`.
 - Objeto afectado.
-- Severidad y estado (`active`, `acknowledged`, `resolved`, `archived`).
+- Severidad y estado (`active`, `acknowledged`, `resolved`, `archived`, `ignored`). `ignored`
+  (ADR-044) es terminal por decisión del usuario: no notifica, no cuenta para el color y **no** se
+  reactiva solo; se sale con «dejar de ignorar» (→ `resolved`).
 - `muted_until`: fecha UTC, `null` o el valor especial de silencio indefinido. **No es un estado**:
   es ortogonal y convive con cualquiera de ellos.
-- `cycle`: número de episodio. Un grupo resuelto que recae lo incrementa en vez de crear un grupo
-  nuevo, para no perder el contador histórico.
+- `cycle`: número de episodio. Un grupo resuelto o archivado que recae lo incrementa en vez de crear
+  un grupo nuevo, para no perder el contador histórico. Un grupo `ignored` que recae **no** lo
+  incrementa: no hay frontera de episodio sin transición de estado.
 - Primera y última ocurrencia.
 - Contador.
-- Fechas de reconocimiento, resolución y archivo.
+- Fechas de reconocimiento, resolución, archivo e ignorado (`ignored_at_utc`; se limpia al dejar de
+  ignorar).
 - Último valor y contexto.
 
 ### `alert_occurrences`
@@ -221,7 +225,9 @@ Los campos no disponibles se omiten; no se almacenan como cero.
   se purgan. Valores de partida, no medidos.
 - Antes de una migración se crea una copia consistente de SQLite.
 - Se conservan las tres copias de migración más recientes.
-- Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas no se borran automáticamente.
+- Alertas, ocurrencias críticas, eventos vinculados y ejecuciones de pruebas no se borran
+  automáticamente. La compactación solo toca `metric_samples`: una alerta `ignored` y su cronología
+  quedan intactas mientras siga ignorada (FR-016, feature `004-ignorar-alertas`).
 
 ## 5. Tiempo y unidades
 

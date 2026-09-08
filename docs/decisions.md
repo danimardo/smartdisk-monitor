@@ -1391,3 +1391,73 @@ llamada real a PowerShell no, por la misma razón que el resto de `platform/` no
 - Verificación real (instalar en una máquina con Control de acceso a carpetas activo y confirmar
   que la excepción aparece sin tocar nada a mano) queda pendiente, igual que T115 — no se puede
   automatizar sin una máquina así.
+
+---
+
+## ADR-044 — Un conjunto cerrado de reglas de alerta que nunca se pueden ignorar
+
+Estado: aceptada. Fecha: 2026-09-08. Feature: `specs/004-ignorar-alertas`.
+
+### El problema
+
+La feature «Ignorar una alerta de forma permanente» añade un estado `ignored`: una alerta ignorada
+deja de notificar y de contar para el color del disco, y —a diferencia de `archived`— **no se
+reactiva sola** cuando la condición se vuelve a cumplir. Es la acción que un usuario quiere para un
+falso positivo recurrente o para una incidencia que ya ha evaluado y acepta (una carcasa USB que
+resetea la controladora al conectarla en caliente, por ejemplo).
+
+Aplicada sin límites, esa misma acción permitiría silenciar para siempre la señal de que **el disco
+se está muriendo**: un `smart.health.failed`, un desgaste de SSD al 95 %, la reserva de bloques
+agotándose. Un monitor de discos que deja ocultar justo eso deja de cumplir su función. La
+constitución §I («la veracidad del dato está por encima de todo») y el principio de que el estado
+refleja la peor alerta no resuelta lo hacen inaceptable.
+
+### La decisión
+
+Un conjunto **cerrado y no configurable** de `rule_key` para las que la acción «Ignorar» está
+vetada. La versión inicial son siete reglas, todas de daño físico o predicción de fallo del propio
+disco:
+
+| `rule_key` | Por qué no se puede ignorar |
+|---|---|
+| `smart.health.failed` | el disco declara FALLO de salud |
+| `nvme.critical_warning` | el disco enciende su propia bandera crítica |
+| `smart.wear_high` | desgaste del SSD: irreversible, no baja |
+| `smart.spare_below_threshold` | bloques de reserva agotándose |
+| `smart.media_errors` | errores de medio acumulados |
+| `smart.error_log` | errores en el registro SMART acumulados |
+| `events.disk_predictive` | `disk` 52: Windows predice fallo próximo |
+
+Vive en `src-tauri/src/alerts/reglas.rs` (`REGLAS_NO_IGNORABLES` + `regla_es_ignorable`), única
+fuente de verdad, con una prueba que la contrasta contra la tabla de `docs/alert-rules.md`. El
+frontend no replica la lista: recibe `ruleIgnorable: bool` en `AlertDetail` y presenta el botón
+deshabilitado con su motivo (`Button.disabledReason`). El backend rechaza además cualquier intento
+directo con `AppError` `alert.rule_not_ignorable`, así que no hay ninguna secuencia de acciones que
+deje una de estas siete en estado `ignored`.
+
+### Alternativas descartadas
+
+- **Sin veto: dejar ignorar cualquier alerta.** Es la petición original del usuario («en todas»),
+  matizada por él mismo en la misma conversación («un desgaste SSD alto no debería dejar
+  ignorarlo»). Descartada: convierte el producto en algo que puede ocultar su propio motivo de
+  existir.
+- **Conjunto configurable por el usuario.** Descartada: es una regla de negocio de seguridad del
+  producto, no una preferencia. Un ajuste para «permíteme ignorar los fallos de salud» es un pie
+  de bala con un envoltorio de opción.
+- **Incluir también `events.filesystem_error` (NTFS 55/131) y `events.disk_error` (disk 7, …).**
+  Considerada y descartada (aclaración de 2026-09-08 en `spec.md`): un error de E/S o de estructura
+  NTFS puede venir del cable, de la carcasa o del controlador, no solo del disco, y las señales de
+  muerte real del disco ya están cubiertas por las siete reglas SMART/NVMe. Es el punto más
+  revisable de la lista si la experiencia real lo desaconseja.
+- **Ocultar el botón en lugar de deshabilitarlo.** Descartada por coherencia: el resto de acciones
+  no disponibles de la aplicación se muestran deshabilitadas con su motivo (`disabledReason`), no
+  desaparecen.
+
+### Consecuencias
+
+- Sin permiso nuevo de Tauri, sin dependencia nueva. El contrato de comandos gana `ignore_alert` /
+  `unignore_alert` y `AlertDetail.ruleIgnorable` (documentado en `docs/ui-contract.md` §3.4).
+- Añadir o quitar una regla del conjunto es un cambio de una línea en `reglas.rs` **y** de la
+  prueba **y** de `docs/alert-rules.md`: los tres tienen que moverse juntos, que es lo que se
+  quiere para una lista de esta importancia.
+- `docs/alert-rules.md` §1 pasa a describir el estado `ignored`, sus transiciones y este veto.

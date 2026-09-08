@@ -146,7 +146,9 @@ fn debe_enviar(
             Notificacion::TrasCooldown(cd) => desde_ultima.map_or(true, |d| d >= cd),
             Notificacion::SoloAlCambiarDeNivel => false,
         },
-        Transicion::SinCambio | Transicion::Resuelta => false,
+        // Una alerta ignorada nunca notifica, ni siquiera si la ocurrencia sube de severidad
+        // (ADR-044, spec FR-004).
+        Transicion::SinCambio | Transicion::Resuelta | Transicion::OcurrenciaIgnorada => false,
     }
 }
 
@@ -354,6 +356,32 @@ mod tests {
     fn sin_cambio_o_resuelta_nunca_notifican() {
         for t in [Transicion::SinCambio, Transicion::Resuelta] {
             assert!(!debe_enviar(true, false, t, Notificacion::Siempre, None));
+        }
+    }
+
+    #[test]
+    fn una_ocurrencia_ignorada_nunca_notifica_pase_lo_que_pase() {
+        for politica in [
+            Notificacion::Siempre,
+            Notificacion::TrasCooldown(Duration::hours(1)),
+            Notificacion::SoloAlCambiarDeNivel,
+        ] {
+            for silenciada in [true, false] {
+                assert!(!debe_enviar(
+                    true,
+                    silenciada,
+                    Transicion::OcurrenciaIgnorada,
+                    politica,
+                    None
+                ));
+                assert!(!debe_enviar(
+                    true,
+                    silenciada,
+                    Transicion::OcurrenciaIgnorada,
+                    politica,
+                    Some(Duration::days(30))
+                ));
+            }
         }
     }
 

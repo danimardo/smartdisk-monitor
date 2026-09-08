@@ -178,6 +178,8 @@ describe("la superficie completa del contrato", () => {
     muteAlert: "mute_alert",
     unmuteAlert: "unmute_alert",
     archiveAlert: "archive_alert",
+    ignoreAlert: "ignore_alert",
+    unignoreAlert: "unignore_alert",
     getSystemEvents: "get_system_events",
     getEventRawXml: "get_event_raw_xml",
     startBenchmark: "start_benchmark",

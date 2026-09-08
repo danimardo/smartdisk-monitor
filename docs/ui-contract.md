@@ -270,6 +270,8 @@ invoke<AlertGroup[]>("get_alert_groups", { status?: AlertStatus[], deviceId?: st
 invoke<AlertDetail>("get_alert_detail", { alertGroupId: string })
 
 interface AlertDetail extends AlertGroup {
+  ruleIgnorable: boolean;                 // false para las 7 reglas no ignorables (ADR-044): la
+                                          // acción «Ignorar» se muestra deshabilitada con su motivo
   facts: { labelKey: string; value: string | null }[];
   occurrences: {
     occurredAt: string;
@@ -286,13 +288,22 @@ invoke<void>("mute_alert", { alertGroupId: string, minutes: 15 | 60 | 480 | null
 invoke<void>("unmute_alert", { alertGroupId: string })
 invoke<void>("archive_alert", { alertGroupId: string })
 
+// Ignorar de forma permanente (ADR-044): estado terminal `ignored` — no notifica, no cuenta para
+// el color, no se reactiva solo. Sigue registrando ocurrencias. Falla con
+// `alert.rule_not_ignorable` (i18n `error.alertRuleNotIgnorable`) para las siete reglas de daño
+// físico / predicción de fallo. `unignore_alert` deja el grupo en `resolved`; el motor lo sube a
+// `active` en el ciclo siguiente si la condición se cumple.
+invoke<void>("ignore_alert", { alertGroupId: string })
+invoke<void>("unignore_alert", { alertGroupId: string })
+
 // J.58: solo para alertas de reglas smartctl (`smart.*`/`temp.*`/`nvme.*`) — las demás fallan con
 // `alert.no_smart_data`. Consulta smartctl al momento, no hay histórico que leer.
 invoke<string>("get_alert_smart_raw_json", { alertGroupId: string })
 ```
 
 Reconocer **no** cambia el color de nada: el color lo decide `deviceState()` sobre las alertas
-`active` y `acknowledged` (`alert-rules.md` §1).
+`active` y `acknowledged` (`alert-rules.md` §1). Ignorar sí lo cambia (deja de contar, como
+`archived`), pero a diferencia de archivar **no** se reactiva solo cuando la condición vuelve.
 
 ### 3.5 Eventos
 

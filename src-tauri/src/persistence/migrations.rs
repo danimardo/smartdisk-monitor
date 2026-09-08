@@ -29,6 +29,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "agregados_metricas",
         sql: include_str!("../../migrations/0002_agregados_metricas.sql"),
     },
+    Migration {
+        version: 3,
+        name: "alerta_ignored",
+        sql: include_str!("../../migrations/0003_alerta_ignored.sql"),
+    },
 ];
 
 #[derive(Debug)]
@@ -175,12 +180,12 @@ mod tests {
         let mut conn = Connection::open(&db_path).unwrap();
 
         let aplicadas = apply_pending(&mut conn, &db_path).unwrap();
-        assert_eq!(aplicadas, vec![1, 2]);
+        assert_eq!(aplicadas, vec![1, 2, 3]);
 
         let cuenta: i64 = conn
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(cuenta, 2);
+        assert_eq!(cuenta, 3);
 
         // Las doce tablas del modelo existen.
         for tabla in [
@@ -301,11 +306,11 @@ mod tests {
         )
         .unwrap();
 
-        // "Actualizar" con el binario actual: debe ver la 1 ya aplicada y aplicar solo la 2.
+        // "Actualizar" con el binario actual: debe ver la 1 ya aplicada y aplicar lo pendiente.
         let aplicadas = apply_pending(&mut conn, &db_path).unwrap();
         assert_eq!(
             aplicadas,
-            vec![2],
+            vec![2, 3],
             "solo debe aplicar lo pendiente, nunca reaplicar la 1"
         );
 
@@ -314,7 +319,7 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(version_final, 2);
+        assert_eq!(version_final, 3);
 
         let existe_agregados: i64 = conn
             .query_row(
@@ -334,6 +339,102 @@ mod tests {
         assert!(
             backups_dir.is_dir() && fs::read_dir(&backups_dir).unwrap().next().is_some(),
             "una actualización con datos previos debe dejar una copia de seguridad"
+        );
+    }
+
+    /// Migración 0003 (feature `004-ignorar-alertas`): reconstruye `alert_groups` para ampliar el
+    /// `CHECK` de `status` y añadir `ignored_at_utc`. Lo crítico es que **no se pierda ni una
+    /// ocurrencia** al hacerlo (el `DROP TABLE` de la tabla vieja no debe cascadear sobre
+    /// `alert_occurrences`).
+    #[test]
+    fn la_0003_amplia_alert_groups_sin_perder_la_cronologia() {
+        let db_path = temp_db_path("0003_cronologia.sqlite");
+        let mut conn = Connection::open(&db_path).unwrap();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+
+        // Base en versión 2, como una instalación anterior a esta feature.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY, applied_at_utc TEXT NOT NULL, checksum TEXT NOT NULL
+            )",
+        )
+        .unwrap();
+        for m in &MIGRATIONS[..2] {
+            conn.execute_batch(m.sql).unwrap();
+            conn.execute(
+                "INSERT INTO schema_migrations (version, applied_at_utc, checksum) VALUES (?1, ?2, ?3)",
+                rusqlite::params![m.version, now_utc_iso(), checksum(m.sql)],
+            )
+            .unwrap();
+        }
+
+        conn.execute(
+            "INSERT INTO devices (id, fingerprint, identity_confidence, model, device_type, monitoring_enabled, first_seen_at, last_seen_at)
+             VALUES ('d1', 'huella', 'fingerprint', 'Modelo', 'nvme', 1, '2026-09-04T00:00:00Z', '2026-09-04T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO alert_groups (id, deduplication_key, rule_key, target_device_id, severity, status,
+                cycle, first_occurrence_at_utc, last_occurrence_at_utc, occurrence_count)
+             VALUES ('g1', 'k1', 'temp.above_configured_warn', 'd1', 'warning', 'archived',
+                2, '2026-09-04T10:00:00Z', '2026-09-05T10:00:00Z', 3)",
+            [],
+        )
+        .unwrap();
+        for (i, cuando) in [
+            "2026-09-04T10:00:00Z",
+            "2026-09-04T11:00:00Z",
+            "2026-09-05T10:00:00Z",
+        ]
+        .iter()
+        .enumerate()
+        {
+            conn.execute(
+                "INSERT INTO alert_occurrences (alert_group_id, cycle, occurred_at_utc, value_real)
+                 VALUES ('g1', ?1, ?2, ?3)",
+                rusqlite::params![if i < 2 { 1 } else { 2 }, cuando, 70.0 + i as f64],
+            )
+            .unwrap();
+        }
+
+        let aplicadas = apply_pending(&mut conn, &db_path).unwrap();
+        assert_eq!(aplicadas, vec![3]);
+
+        // (a) el grupo y sus tres ocurrencias siguen ahí.
+        let grupos: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM alert_groups WHERE id = 'g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(grupos, 1, "el grupo debe sobrevivir a la reconstrucción");
+        let ocurrencias: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM alert_occurrences WHERE alert_group_id = 'g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            ocurrencias, 3,
+            "ni una ocurrencia perdida (constitución §V)"
+        );
+
+        // (b) el estado 'ignored' ahora se acepta y antes no.
+        conn.execute(
+            "UPDATE alert_groups SET status = 'ignored', ignored_at_utc = '2026-09-06T00:00:00Z' WHERE id = 'g1'",
+            [],
+        )
+        .unwrap();
+
+        // (c) integridad referencial intacta.
+        let mut stmt = conn.prepare("PRAGMA foreign_key_check").unwrap();
+        let violaciones = stmt.query_map([], |_| Ok(())).unwrap().count();
+        assert_eq!(
+            violaciones, 0,
+            "sin violaciones de clave ajena tras la 0003"
         );
     }
 }

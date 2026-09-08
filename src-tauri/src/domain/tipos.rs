@@ -153,6 +153,10 @@ pub enum AlertStatus {
     Acknowledged,
     Resolved,
     Archived,
+    /// Terminal por decisión del usuario: no notifica, no cuenta para el color y **no** se reactiva
+    /// sola (a diferencia de `Archived`). Se sale solo con «dejar de ignorar». Vetado para las
+    /// reglas de `alerts::reglas::REGLAS_NO_IGNORABLES` (ADR-044).
+    Ignored,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -173,6 +177,7 @@ pub struct AlertGroup {
     pub acknowledged_at_utc: Option<String>,
     pub resolved_at_utc: Option<String>,
     pub archived_at_utc: Option<String>,
+    pub ignored_at_utc: Option<String>,
     pub last_value_real: Option<f64>,
     pub context_json: Option<String>,
 }

@@ -313,4 +313,63 @@ mod tests {
             "10:00 y 10:07 caen en buckets de 5 minutos distintos"
         );
     }
+
+    /// FR-016 (feature `004-ignorar-alertas`): la compactación de retención solo toca
+    /// `metric_samples`. Un grupo de alerta `ignored` y su cronología no se tocan nunca — igual que
+    /// no se toca ninguna alerta (constitución §V: la retención nunca borra alertas). La prueba fija
+    /// esa garantía por si `compact_samples` cambiara de alcance.
+    #[test]
+    fn compactar_no_toca_las_alertas_ignoradas_ni_su_cronologia() {
+        let mut conn = conn_de_prueba();
+        conn.execute(
+            "INSERT INTO alert_groups (id, deduplication_key, rule_key, target_device_id, severity, status,
+                cycle, first_occurrence_at_utc, last_occurrence_at_utc, occurrence_count, ignored_at_utc)
+             VALUES ('g1', 'k1', 'temp.above_configured_warn', 'd1', 'warning', 'ignored',
+                1, '2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z', 3, '2026-08-03T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        for cuando in [
+            "2026-08-01T00:00:00Z",
+            "2026-08-01T12:00:00Z",
+            "2026-08-02T00:00:00Z",
+        ] {
+            conn.execute(
+                "INSERT INTO alert_occurrences (alert_group_id, cycle, occurred_at_utc, value_real)
+                 VALUES ('g1', 1, ?1, 62.0)",
+                [cuando],
+            )
+            .unwrap();
+        }
+        repo_metricas::insert_sample(&conn, &muestra(40.0, "2026-08-01T10:00:00Z")).unwrap();
+
+        compact_samples(
+            &mut conn,
+            &MetricTarget::Device("d1".to_string()),
+            "temperature_celsius",
+            "2026-09-02T00:00:00Z",
+            AggregateResolution::Hourly,
+        )
+        .unwrap();
+
+        let grupos: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM alert_groups WHERE id = 'g1' AND status = 'ignored'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(grupos, 1);
+        let ocurrencias: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM alert_occurrences WHERE alert_group_id = 'g1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            ocurrencias, 3,
+            "la cronología de una alerta ignorada no se compacta"
+        );
+    }
 }

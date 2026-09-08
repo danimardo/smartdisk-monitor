@@ -19,8 +19,10 @@
     archiveAlert,
     getAlertDetail,
     getAlertSmartRawJson,
+    ignoreAlert,
     muteAlert,
     toAppError,
+    unignoreAlert,
     unmuteAlert
   } from "$lib/api";
   import { formatDateTime } from "$lib/design/format";
@@ -43,17 +45,19 @@
 
   const alerts = $derived(app.alertsLoadedAt ? app.alerts : data.alerts);
 
-  type Filtro = "active" | "resolved" | "archived" | "all";
+  type Filtro = "active" | "resolved" | "archived" | "ignored" | "all";
   const ESTADOS_POR_FILTRO: Record<Filtro, AlertStatus[] | null> = {
     active: ["active", "acknowledged"],
     resolved: ["resolved"],
     archived: ["archived"],
+    ignored: ["ignored"],
     all: null
   };
   const opcionesFiltro = [
     { id: "active", label: t("alerts.filter.active") },
     { id: "resolved", label: t("alerts.filter.resolved") },
     { id: "archived", label: t("alerts.filter.archived") },
+    { id: "ignored", label: t("alerts.filter.ignored") },
     { id: "all", label: t("alerts.filter.all") }
   ];
 
@@ -82,6 +86,7 @@
   let actionPending = $state(false);
   let muteMinutes = $state<"15" | "60" | "480" | "indefinite">("60");
   let archiveDialogOpen = $state(false);
+  let ignoreDialogOpen = $state(false);
 
   /** Detalle técnico de smartctl bajo demanda (US-030): las reglas `smart.*`/`temp.*`/`nvme.*`
    *  solo guardan el contador o la cifra que disparó la alerta, nunca la tabla de errores completa
@@ -171,9 +176,17 @@
   };
 
   const estaSilenciada = $derived(detail?.mutedUntil != null);
+  const estaIgnorada = $derived(detail?.status === "ignored");
   const puedeReconocer = $derived(detail?.status === "active");
-  const puedeArchivar = $derived(detail !== null && detail.status !== "archived");
-  const puedeSilenciar = $derived(detail !== null && detail.status !== "archived" && !estaSilenciada);
+  const puedeArchivar = $derived(
+    detail !== null && detail.status !== "archived" && detail.status !== "ignored"
+  );
+  const puedeSilenciar = $derived(
+    detail !== null && detail.status !== "archived" && detail.status !== "ignored" && !estaSilenciada
+  );
+  const puedeIgnorar = $derived(
+    detail !== null && detail.status !== "archived" && detail.status !== "ignored"
+  );
 
   const tituloDetalle = $derived(detail ? t(`alert.rule.${detail.ruleKey}.title`) : "");
   const resumenDetalle = $derived(detail ? t(`alert.rule.${detail.ruleKey}.summary`) : "");
@@ -312,6 +325,27 @@
               {t("alerts.actions.archive")}
             </Button>
           {/if}
+          {#if puedeIgnorar}
+            <Button
+              size="sm"
+              disabled={actionPending || !detail.ruleIgnorable}
+              disabledReason={detail.ruleIgnorable ? "" : t("alerts.ignore.notIgnorable")}
+              hint={t("alerts.actions.ignore.hint")}
+              onclick={() => (ignoreDialogOpen = true)}
+            >
+              {t("alerts.actions.ignore")}
+            </Button>
+          {/if}
+          {#if estaIgnorada}
+            <Button
+              size="sm"
+              disabled={actionPending}
+              hint={t("alerts.actions.unignore.hint")}
+              onclick={() => ejecutar(() => unignoreAlert(detail!.id))}
+            >
+              {t("alerts.actions.unignore")}
+            </Button>
+          {/if}
         </div>
 
         <div class="flex flex-col gap-2">
@@ -351,4 +385,18 @@
     if (detail) void ejecutar(() => archiveAlert(detail!.id));
   }}
   oncancel={() => (archiveDialogOpen = false)}
+/>
+
+<ConfirmDialog
+  open={ignoreDialogOpen}
+  title={t("alerts.ignore.confirmTitle")}
+  body={t("alerts.ignore.confirmBody")}
+  impact={t("alerts.ignore.confirmImpact")}
+  confirmLabel={t("alerts.actions.ignore")}
+  destructive
+  onconfirm={() => {
+    ignoreDialogOpen = false;
+    if (detail) void ejecutar(() => ignoreAlert(detail!.id));
+  }}
+  oncancel={() => (ignoreDialogOpen = false)}
 />

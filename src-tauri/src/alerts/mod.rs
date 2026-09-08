@@ -18,6 +18,7 @@ pub mod correlacion_rafaga;
 pub mod eventos;
 pub mod motor;
 pub mod notificaciones;
+pub mod reglas;
 pub mod reglas_eventos;
 
 /// Muestras que se piden por métrica: la histéresis más larga en alcance pide 3 ciclos; una de
