@@ -140,21 +140,29 @@ pub fn parse_physical_disks_json(json: &str) -> Result<Vec<DiscoFisico>, ErrorPa
         .collect())
 }
 
+/// Límite de espera de una consulta de inventario por PowerShell (J.57): sin él, un WMI lento a
+/// arrancar (típico justo después de instalar o de arrancar Windows) bloquea el hilo que llama para
+/// siempre en vez de devolver simplemente "sin discos todavía", que es lo que ya hace cualquier
+/// otro fallo de esta consulta.
+#[cfg(windows)]
+const TIEMPO_MAXIMO_INVENTARIO: std::time::Duration = std::time::Duration::from_secs(20);
+
 #[cfg(windows)]
 pub fn list_physical_disks() -> Result<Vec<DiscoFisico>, ErrorParseo> {
     use std::process::Command;
 
-    let salida = Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Get-PhysicalDisk | Select-Object FriendlyName,Manufacturer,Model,SerialNumber,Size,BusType,MediaType,DeviceId,UniqueId,FirmwareVersion | ConvertTo-Json",
-        ])
-        .output();
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-PhysicalDisk | Select-Object FriendlyName,Manufacturer,Model,SerialNumber,Size,BusType,MediaType,DeviceId,UniqueId,FirmwareVersion | ConvertTo-Json",
+    ]);
+    let salida =
+        crate::platform::proceso_externo::ejecutar_con_limite(cmd, TIEMPO_MAXIMO_INVENTARIO);
 
     let json = match salida {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        Ok(Some(o)) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
         _ => "null".to_string(),
     };
 

@@ -82,13 +82,29 @@ Están documentadas porque volver a descubrirlas cuesta horas:
   mientras el proceso sigue vivo** (J.55): el búfer del pipe que da el sistema operativo es
   limitado, y en cuanto el hijo lo llena se bloquea en su propio `write()` esperando a que alguien
   lea — si el padre solo llama a `try_wait()` en bucle y deja `read_to_end()` para después de que
-  la salida se confirme, ese "después" no llega nunca. `collectors::smartctl::ejecutar_con_limite`
-  lo tenía así desde el principio, y solo se disparaba con discos SATA cuya tabla de atributos
-  completa (10-13 KB medidos en esta máquina) superaba el búfer; un NVMe con salida más corta
-  (7 KB) nunca lo mostraba, lo que lo hizo parecer un problema específico de SATA hasta medirlo
-  contra hardware real. Reproducido sin necesidad de `smartctl.exe`: cualquier proceso hijo que
-  escriba lo bastante (`cmd /c "for /L %i in (…) do @echo …"` en la prueba) se cuelga igual con el
-  patrón viejo. La solución es vaciar los pipes en hilos aparte mientras el hilo principal solo
-  vigila si el proceso ha terminado, nunca leerlos "cuando termine".
+  la salida se confirme, ese "después" no llega nunca. Se disparaba con discos SATA cuya tabla de
+  atributos completa (10-13 KB medidos en esta máquina) superaba el búfer; un NVMe con salida más
+  corta (7 KB) nunca lo mostraba, lo que lo hizo parecer un problema específico de SATA hasta
+  medirlo contra hardware real. Reproducido sin necesidad de `smartctl.exe`: cualquier proceso
+  hijo que escriba lo bastante (`cmd /c "for /L %i in (…) do @echo …"` en la prueba) se cuelga
+  igual con el patrón viejo. Resuelto de una vez para todo el backend en
+  `platform::proceso_externo::ejecutar_con_limite`: vacía los pipes en hilos aparte mientras el
+  hilo principal solo vigila si el proceso ha terminado, nunca los lee "cuando termine". Cualquier
+  proceso externo nuevo debe pasar por esta función, no reinventar `Command::output()` a mano.
+- **`Command::output()` no tiene límite de tiempo** (J.57): si el proceso se cuelga o tarda mucho
+  (un WMI lento a inicializar, típico justo tras instalar o nada más arrancar Windows), el hilo que
+  llama espera para siempre. `windows_storage::list_physical_disks` y `capacidad::list_volumes` lo
+  sufrían así desde el principio — nunca se había medido contra una instalación recién hecha, que
+  es justo cuando WMI está más frío. Mismo arreglo que el punto anterior:
+  `platform::proceso_externo::ejecutar_con_limite` con un límite explícito (20 s para las consultas
+  de inventario) en vez de `Command::output()`.
+- **Un `Command::new(...)` sin `CREATE_NO_WINDOW` hace parpadear una ventana de consola visible**
+  (J.57), aunque el proceso termine en milisegundos y aunque se le pida `-WindowStyle Hidden`
+  (PowerShell): Windows le asigna una consola nueva al lanzar el proceso, antes de que el propio
+  proceso decida nada sobre su estilo — ese modificador llega demasiado tarde para evitar la
+  ventana en sí, solo evita que *PowerShell* muestre la suya si fuera a crear una. `platform::proceso_externo::ejecutar_con_limite`
+  lo aplica siempre (`std::os::windows::process::CommandExt::creation_flags(0x0800_0000)`); si
+  algún día hace falta lanzar un proceso sin pasar por esa función, hay que poner el flag a mano
+  (ya lo hacía `platform::autoarranque` para `schtasks`, antes de que existiera un sitio común).
 
 Al terminar: `cargo clippy --all-targets -- -D warnings` y `cargo fmt --check` en verde.

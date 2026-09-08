@@ -14,6 +14,13 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
+
+use super::proceso_externo::ejecutar_con_limite;
+
+/// Mismo criterio que el resto de consultas externas de este backend (J.55/J.57): nunca esperar
+/// para siempre a PowerShell, y nunca dejar que su ventana de consola parpadee.
+const TIEMPO_MAXIMO: Duration = Duration::from_secs(15);
 
 /// `true` si `ruta` aparece, línea a línea, entre las aplicaciones permitidas. Comparación
 /// insensible a mayúsculas: PowerShell y NSIS pueden diferir en el uso de mayúsculas de la unidad.
@@ -25,21 +32,18 @@ fn contiene_ruta(lista: &str, ruta: &str) -> bool {
 }
 
 /// Comprueba si `ruta` ya está en la lista de aplicaciones permitidas de Control de acceso a
-/// carpetas. `None` si no se pudo determinar (cmdlet no disponible, PowerShell falló, salida
-/// irreconocible) — un dato ausente, nunca un "no" engañoso.
+/// carpetas. `None` si no se pudo determinar (cmdlet no disponible, PowerShell falló o se agotó el
+/// tiempo, salida irreconocible) — un dato ausente, nunca un "no" engañoso.
 #[cfg(windows)]
 pub fn esta_permitido(ruta: &Path) -> Option<bool> {
-    let salida = Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            "(Get-MpPreference).ControlledFolderAccessAllowedApplications -join \"`n\"",
-        ])
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "(Get-MpPreference).ControlledFolderAccessAllowedApplications -join \"`n\"",
+    ]);
+    let salida = ejecutar_con_limite(cmd, TIEMPO_MAXIMO).ok()??;
     if !salida.status.success() {
         return None;
     }
@@ -62,17 +66,11 @@ pub fn intentar_permitir(ruta: &Path) -> Result<(), String> {
         "Add-MpPreference -ControlledFolderAccessAllowedApplications '{}'",
         ruta_str.replace('\'', "''")
     );
-    let salida = Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            &comando,
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &comando]);
+    let salida = ejecutar_con_limite(cmd, TIEMPO_MAXIMO)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Windows Defender no respondió a tiempo".to_string())?;
     if !salida.status.success() {
         let stderr = String::from_utf8_lossy(&salida.stderr).into_owned();
         return Err(if stderr.trim().is_empty() {

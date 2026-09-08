@@ -90,28 +90,34 @@ pub fn parse_volumes_json(json: &str) -> Result<Vec<VolumenLeido>, ErrorParseo> 
         .collect())
 }
 
+/// Mismo límite y misma razón que `windows_storage::TIEMPO_MAXIMO_INVENTARIO` (J.57): un WMI lento
+/// a arrancar no debe bloquear el hilo que llama para siempre.
+#[cfg(windows)]
+const TIEMPO_MAXIMO_INVENTARIO: std::time::Duration = std::time::Duration::from_secs(20);
+
 #[cfg(windows)]
 pub fn list_volumes() -> Result<Vec<VolumenLeido>, ErrorParseo> {
     use std::process::Command;
 
-    let salida = Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Get-Partition | Where-Object DriveLetter | ForEach-Object { \
-             $vol = $_ | Get-Volume; \
-             [PSCustomObject]@{ \
-               DiskNumber = $_.DiskNumber; DriveLetter = $_.DriveLetter; \
-               FileSystemLabel = $vol.FileSystemLabel; FileSystem = $vol.FileSystem; \
-               Size = $vol.Size; SizeRemaining = $vol.SizeRemaining; UniqueId = $vol.UniqueId \
-             } \
-             } | ConvertTo-Json",
-        ])
-        .output();
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-Partition | Where-Object DriveLetter | ForEach-Object { \
+         $vol = $_ | Get-Volume; \
+         [PSCustomObject]@{ \
+           DiskNumber = $_.DiskNumber; DriveLetter = $_.DriveLetter; \
+           FileSystemLabel = $vol.FileSystemLabel; FileSystem = $vol.FileSystem; \
+           Size = $vol.Size; SizeRemaining = $vol.SizeRemaining; UniqueId = $vol.UniqueId \
+         } \
+         } | ConvertTo-Json",
+    ]);
+    let salida =
+        crate::platform::proceso_externo::ejecutar_con_limite(cmd, TIEMPO_MAXIMO_INVENTARIO);
 
     let json = match salida {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        Ok(Some(o)) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
         _ => "null".to_string(),
     };
 
