@@ -152,7 +152,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | Componente | Para qué | Notas de uso obligatorias |
 |---|---|---|
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
-| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
+| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
@@ -195,7 +195,8 @@ catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
 
 `Tooltip` **ya está construido** (ver la tabla del catálogo). El uso pendiente es migrar
-`Button.disabledReason` del `title` nativo a `<Tooltip>`.
+`Button.disabledReason` y `Button.hint` del `title` nativo a `<Tooltip>`: hoy `Tooltip` aporta su
+propio disparador `<button>` y no puede envolver otro control interactivo sin anidar botones.
 
 ### Cuándo crear un componente nuevo
 

@@ -6383,7 +6383,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | Componente | Para qué | Notas de uso obligatorias |
 |---|---|---|
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
-| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
+| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
@@ -6426,7 +6426,8 @@ catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
 
 `Tooltip` **ya está construido** (ver la tabla del catálogo). El uso pendiente es migrar
-`Button.disabledReason` del `title` nativo a `<Tooltip>`.
+`Button.disabledReason` y `Button.hint` del `title` nativo a `<Tooltip>`: hoy `Tooltip` aporta su
+propio disparador `<button>` y no puede envolver otro control interactivo sin anidar botones.
 
 #### Cuándo crear un componente nuevo
 
@@ -8671,9 +8672,13 @@ Fichero de origen: `src/lib/i18n/es.json`
   "alerts.empty.body": "No hay alertas que coincidan con este filtro.",
   "alerts.detail.empty": "Selecciona una alerta de la lista para ver su detalle.",
   "alerts.actions.acknowledge": "Reconocer",
+  "alerts.actions.acknowledge.hint": "Confirma que ya la has visto. Sigue activa y el disco no cambia de color, pero deja de notificar mientras la gravedad no suba.",
   "alerts.actions.mute": "Silenciar",
+  "alerts.actions.mute.hint": "Silencia las notificaciones durante el periodo elegido. La alerta permanece en la lista y el disco mantiene su color.",
   "alerts.actions.unmute": "Reanudar notificaciones",
+  "alerts.actions.unmute.hint": "Cancela el silencio y vuelve a permitir notificaciones de esta alerta.",
   "alerts.actions.archive": "Archivar",
+  "alerts.actions.archive.hint": "La retira de las pestañas Activas y Resueltas y deja de contar para el color del disco. Se conserva el historial y reaparecerá si la condición vuelve a darse.",
   "alerts.viewTechnicalDetail": "Ver detalle técnico",
   "alerts.mute.duration": "Duración del silencio",
   "alerts.mute.15": "15 minutos",
@@ -9155,9 +9160,13 @@ Fichero de origen: `src/lib/i18n/en.json`
   "alerts.empty.body": "No alerts match this filter.",
   "alerts.detail.empty": "Select an alert from the list to see its detail.",
   "alerts.actions.acknowledge": "Acknowledge",
+  "alerts.actions.acknowledge.hint": "Confirms you have seen it. It stays active and the disk keeps its colour, but notifications stop unless the severity rises.",
   "alerts.actions.mute": "Mute",
+  "alerts.actions.mute.hint": "Silences notifications for the chosen period. The alert stays in the list and the disk keeps its colour.",
   "alerts.actions.unmute": "Resume notifications",
+  "alerts.actions.unmute.hint": "Cancels the silence and allows notifications for this alert again.",
   "alerts.actions.archive": "Archive",
+  "alerts.actions.archive.hint": "Removes it from the Active and Resolved tabs and stops it counting towards the disk colour. History is kept and it returns if the condition recurs.",
   "alerts.viewTechnicalDetail": "View technical detail",
   "alerts.mute.duration": "Mute duration",
   "alerts.mute.15": "15 minutes",

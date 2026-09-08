@@ -38,6 +38,22 @@ describe("Button", () => {
     await expect.element(boton).toHaveAttribute("title", "Requiere privilegios de administrador");
   });
 
+  it("activo, expone `hint` como ayuda `title`; deshabilitado, manda el motivo", async () => {
+    const { rerender } = await render(Button, {
+      props: { hint: "Deja de contar para el color del disco", children: contenido("Archivar") }
+    });
+    const boton = page.getByRole("button", { name: "Archivar" });
+    await expect.element(boton).toHaveAttribute("title", "Deja de contar para el color del disco");
+
+    await rerender({
+      disabled: true,
+      disabledReason: "Ya está archivada",
+      hint: "Deja de contar para el color del disco",
+      children: contenido("Archivar")
+    });
+    await expect.element(boton).toHaveAttribute("title", "Ya está archivada");
+  });
+
   it("mientras carga, sigue anunciándose como deshabilitado", async () => {
     await render(Button, { props: { loading: true, children: contenido("Exportando") } });
     await expect.element(page.getByRole("button", { name: "Exportando" })).toBeDisabled();

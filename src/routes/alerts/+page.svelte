@@ -260,6 +260,7 @@
             <Button
               size="sm"
               disabled={actionPending}
+              hint={t("alerts.actions.acknowledge.hint")}
               onclick={() => ejecutar(() => acknowledgeAlert(detail!.id))}
             >
               {t("alerts.actions.acknowledge")}
@@ -280,6 +281,7 @@
             <Button
               size="sm"
               disabled={actionPending}
+              hint={t("alerts.actions.mute.hint")}
               onclick={() => ejecutar(() => muteAlert(detail!.id, minutosPorOpcion[muteMinutes]))}
             >
               {t("alerts.actions.mute")}
@@ -294,13 +296,19 @@
             <Button
               size="sm"
               disabled={actionPending}
+              hint={t("alerts.actions.unmute.hint")}
               onclick={() => ejecutar(() => unmuteAlert(detail!.id))}
             >
               {t("alerts.actions.unmute")}
             </Button>
           {/if}
           {#if puedeArchivar}
-            <Button size="sm" disabled={actionPending} onclick={() => (archiveDialogOpen = true)}>
+            <Button
+              size="sm"
+              disabled={actionPending}
+              hint={t("alerts.actions.archive.hint")}
+              onclick={() => (archiveDialogOpen = true)}
+            >
               {t("alerts.actions.archive")}
             </Button>
           {/if}

@@ -1,7 +1,9 @@
 <script lang="ts">
   /** Botón cápsula. Primary lleva degradado vertical del acento del sistema y brillo interior de 1px;
    *  secondary y ghost son material translúcido. Una sola primary por pantalla.
-   *  Toda acción que escriba datos o genere carga abre ConfirmDialog antes (spec §12). */
+   *  Toda acción que escriba datos o genere carga abre ConfirmDialog antes (spec §12).
+   *  `hint`: ayuda breve como `title` nativo cuando el botón está activo; si está desactivado,
+   *  manda `disabledReason`. */
   type Variant = "primary" | "secondary" | "ghost" | "danger";
   type Size = "sm" | "md" | "lg";
 
@@ -10,6 +12,7 @@
     size = "md" as Size,
     disabled = false,
     disabledReason = "",
+    hint = "",
     loading = false,
     full = false,
     type = "button" as "button" | "submit" | "reset",
@@ -42,7 +45,7 @@
   {type}
   class="{base} {variants[variant]} {sizes[size]} {full ? 'w-full' : ''}"
   disabled={disabled || loading}
-  title={disabled && disabledReason ? disabledReason : undefined}
+  title={disabled && disabledReason ? disabledReason : hint || undefined}
   aria-disabled={disabled || loading}
   {onclick}
 >
