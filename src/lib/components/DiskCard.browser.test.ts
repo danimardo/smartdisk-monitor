@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
 import DiskCard from "./DiskCard.svelte";
@@ -91,16 +91,28 @@ describe("DiskCard", () => {
     await expect.element(page.getByText("—").first()).toBeInTheDocument();
   });
 
-  it("un dato ausente se muestra como «—» discreto con «No disponible» en el title, nunca como 0 ni vacío", async () => {
-    const { container } = await render(DiskCard, {
+  it("un dato ausente se muestra como «—» discreto, nunca como 0 ni vacío", async () => {
+    await render(DiskCard, {
       props: {
         disk: discoBase({ temperatureC: null, percentageUsed: null, activityPercent: null }),
         href: "/disks/d1"
       }
     });
-    const ausentes = page.getByText("—");
-    await expect.element(ausentes.first()).toBeInTheDocument();
-    expect(container.querySelector('[title="No disponible"]')).not.toBeNull();
+    await expect.element(page.getByText("—").first()).toBeInTheDocument();
+    expect(page.getByText("0", { exact: true }).query()).toBeNull();
+  });
+
+  it("al pasar el ratón por una métrica sale un tooltip que la explica y da un veredicto; no añade foco", async () => {
+    const { container } = await render(DiskCard, {
+      props: { disk: discoBase({ percentageUsed: 5 }), href: "/disks/d1" }
+    });
+    // El panel: tooltip solo con el ratón, la tarjeta sigue siendo un enlace limpio.
+    expect(container.querySelector("button")).toBeNull();
+
+    await userEvent.hover(page.getByText("Desg."));
+    const texto = container.querySelector('[role="tooltip"]')?.textContent ?? "";
+    expect(texto).toContain("Percentage Used"); // la explicación
+    expect(texto).toContain("95"); // el veredicto: queda ~95 %
   });
 
   it("sin volumen asociado lo dice explícitamente, no deja el hueco en blanco", async () => {

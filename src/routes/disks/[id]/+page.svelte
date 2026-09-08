@@ -34,6 +34,7 @@
     maskSerial
   } from "$lib/design/format";
   import { classifyAgainstThresholds, temperatureThresholds } from "$lib/design/health";
+  import { ayudaMetrica } from "$lib/design/metricHelp";
   import { i18n, t } from "$lib/i18n";
   import { goto } from "$app/navigation";
   import type { AppError } from "$lib/design/types";
@@ -57,6 +58,20 @@
   const tempState = $derived(
     classifyAgainstThresholds(disk.temperatureC, tempThresholds.warn, tempThresholds.crit)
   );
+
+  /** Ayuda contextual de las cuatro métricas: qué es cada una y si el valor actual preocupa. Los
+   *  umbrales salen de `settings.alerts`, así el veredicto nunca contradice al color ni a una alerta. */
+  const ctxAyuda = $derived({
+    tempWarnC: settings.alerts.tempConfiguredWarnC,
+    tempCritC: settings.alerts.tempConfiguredCritC,
+    vendorLimitC: disk.vendorTempLimitC,
+    wearWarnPct: settings.alerts.wearWarnPercent,
+    wearCritPct: settings.alerts.wearCritPercent
+  });
+  const ayudaTemp = $derived(ayudaMetrica("temperature", disk.temperatureC, ctxAyuda));
+  const ayudaActividad = $derived(ayudaMetrica("activity", disk.activityPercent, ctxAyuda));
+  const ayudaDesgaste = $derived(ayudaMetrica("wear", disk.percentageUsed, ctxAyuda));
+  const ayudaHoras = $derived(ayudaMetrica("powerOnHours", disk.powerOnHours, ctxAyuda));
 
   /** Un disco "unreadable" que no sea NVMe puede deberse a que Windows Defender bloquea el comando
    *  de bajo nivel que `smartctl` necesita (J.56/ADR-043) — se comprueba solo en ese caso, nunca en
@@ -269,6 +284,7 @@
       state={tempState}
       series={mini["temperature_celsius"] ?? []}
       unidad="°C"
+      ayuda={ayudaTemp}
       provenance={disk.provenance?.source ?? ""}
     />
     <MetricCard
@@ -277,6 +293,7 @@
       value={disk.activityPercent !== null ? formatPercent(disk.activityPercent) : null}
       series={mini["activity_percent"] ?? []}
       unidad="%"
+      ayuda={ayudaActividad}
     />
     <MetricCard
       label={t("disk.wear")}
@@ -284,6 +301,7 @@
       value={disk.percentageUsed !== null ? formatPercent(disk.percentageUsed) : null}
       series={mini["percentage_used"] ?? []}
       unidad="%"
+      ayuda={ayudaDesgaste}
     />
     <MetricCard
       label={t("disk.powerOnHours")}
@@ -291,6 +309,7 @@
       value={disk.powerOnHours !== null ? formatHours(disk.powerOnHours) : null}
       series={mini["power_on_hours"] ?? []}
       unidad="h"
+      ayuda={ayudaHoras}
     />
   </div>
 

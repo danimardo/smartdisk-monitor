@@ -5420,6 +5420,7 @@ asunción del programador.
 | J.56 | El arreglo de J.55 no resolvió el síntoma: el mismo disco Toshiba seguía "sin datos SMART" tras recompilar y relanzar varias veces. Registro enriquecido temporalmente en `query_device_json` reveló que el fallo era instantáneo (no un agotamiento de los 15 s), con `exit_status: 2` ("apertura fallida") en los cinco modos y sin ningún mensaje de error — el disco se identificaba (`"device": {"type": "ata"}`) pero no llegaba a leerse nada más | **Windows Defender, Control de acceso a carpetas**, confirmado sin ambigüedad en el registro de eventos de Windows (`Microsoft-Windows-Windows Defender/Operational`, id 1127, exactamente a la hora del fallo): "El acceso controlado a carpetas impidió que smartctl.exe realizara cambios en la memoria" contra `\Device\Harddisk0\DR0` (WDC) y `\Device\Harddisk1\DR19` (Toshiba). Esta protección anti-ransomware bloquea el comando ATA PASS THROUGH que `smartctl` necesita para SATA, aunque solo lea — el Explorador de Windows nunca lo dispara (E/S de archivos, camino distinto) y NVMe tampoco (otro camino de E/S), lo que explica por qué solo fallaban los dos discos SATA de la máquina. Resuelto con ADR-043: el instalador añade la excepción con `Add-MpPreference` (`src-tauri/windows/hooks.nsh` + `defender-exception.ps1`), con `Remove-MpPreference` simétrico al desinstalar; la aplicación ofrece reintentarlo desde la pantalla de detalle de disco (`check_smartctl_defender_exception`/`add_smartctl_defender_exception`) para cuando la Protección contra alteraciones de Defender bloquea el cambio del instalador en silencio, o para quien activa la protección después de instalar. `HeroPanel.svelte` (panel general) queda deliberadamente sin este detalle específico — ver ADR-043, "Consecuencias" |
 | J.57 | Probando el instalador real (no `pnpm app:dev`), el usuario reportó dos síntomas juntos: (a) varias ventanas de PowerShell parpadeando al arrancar, y (b) la aplicación quedándose "(No responde)" justo después — una vez en el asistente inicial con "Hemos encontrado 0 discos" (paso 2), otra en "Primera lectura en marcha" (paso 4) con la barra de progreso congelada a media carrera. Reiniciando la aplicación varias veces, acabó funcionando y mostrando los cuatro discos con SMART correcto | **Dos causas independientes, ambas en cómo se lanzan los procesos externos, ninguna nueva de esta sesión pero nunca antes ejercitadas contra una instalación real recién hecha**. (1) Ningún `Command::new("powershell.exe")` llevaba `CREATE_NO_WINDOW`: Windows asigna una consola nueva al lanzar un proceso de este tipo desde una aplicación sin terminal propia, y la ventana parpadea aunque el proceso termine en milisegundos — `-WindowStyle Hidden` no lo evita, porque la ventana ya existe antes de que PowerShell decida nada sobre su estilo. `platform::autoarranque` ya lo sabía y lo aplicaba a mano para `schtasks`; los demás puntos no. (2) `windows_storage::list_physical_disks` y `capacidad::list_volumes` usaban `Command::output()`, que espera **sin límite de tiempo**: un WMI lento a inicializar (más probable justo después de instalar, o nada más arrancar Windows, que es exactamente cuando el asistente hace su primer barrido) bloquea el hilo que llama para siempre en vez de devolver "sin discos todavía", que es lo que ya hace cualquier otro fallo de esta consulta. La barra de progreso "congelada a medio camino" del paso 4 no es un tercer bug: es `<ProgressBar indeterminate>` (deliberadamente no ligada a un porcentaje real, `onboarding/+page.svelte`), fotografiada a media animación en el instante exacto en que toda la aplicación dejó de repintarse por (2) — se resuelve solo en cuanto (2) deja de bloquear. Corregido extrayendo `ejecutar_con_limite` (ya escrita para J.55) a `platform::proceso_externo`, compartida por los cuatro puntos que lanzan PowerShell (`windows_storage`, `capacidad`, `proteccion_carpetas` ×2) y por `smartctl.rs`, con `CREATE_NO_WINDOW` aplicado siempre y un límite de 20 s en las dos consultas de inventario. Quedan sin tocar, a propósito, los dos `Command::output()` de `ejecutar_autotest_corto` (`commands/mod.rs`, iniciar/cancelar el autotest SMART manual): son acciones iniciadas por el usuario, no parte del barrido automático de arranque, y su alcance no lo pidió esta tarea — mismo criterio de no ampliar sin que haga falta |
 | J.58 | Usando la aplicación real ya instalada, el usuario señaló cuatro cosas sueltas: (1) el icono del fondo del riel lateral no explica nada al pasar el ratón ni hace nada al pulsarlo; (2) el detalle de una alerta no dice a qué disco corresponde, aunque la lista de la izquierda sí lo hace; (3) la alerta `smart.error_log` ("el registro de errores del disco ha aumentado") solo enseña un contador que sube, sin ninguna pista de qué error es; (4) la leyenda "Duración del silencio" queda descuadrada respecto a los botones de al lado | Cuatro causas independientes, todas ya resueltas. **(1)** El icono es un indicador de estado pasivo (`role="status"`, misma fuente que la píldora de la `Toolbar`, que tampoco es clicable — coherente con el resto de la app) al que le faltaba el `title` que sí llevan los demás iconos del riel: añadido, sin hacerlo interactivo. **(2)** `detail.target` ya llegaba al frontend (`AlertDetail` hereda `target` de `AlertGroupWire`) pero nunca se pintaba en el panel de detalle: añadida una línea bajo el título, igual que ya se ve en la tarjeta de la lista. **(3)** SMART no da una descripción legible de cada error — el contador (`error_log_entries_total`) es el dato real; lo más parecido a "más información" es la tabla de errores completa que trae el JSON entero de `smartctl`, que **ya se genera hoy** dentro del paquete de diagnóstico pero no estaba enlazada desde la alerta. Nuevo comando `get_alert_smart_raw_json` (mismo patrón que `get_event_raw_xml` para las alertas de sucesos: se resuelve el `target_device_id` internamente en el backend, la ruta de `smartctl` nunca viaja al frontend) que consulta smartctl al momento y lo muestra con el mismo `CodeOutput` que ya usan `chkdsk` y el XML de eventos; solo se ofrece en alertas `smart.*`/`temp.*`/`nvme.*` (`docs/alert-rules.md`, columna "Fuente"), nunca en `capacity.*`/`events.*`/`device.*`, que no tienen ningún JSON de smartctl que mostrar. **(4)** Maquetación: `Select` es el único control de esa fila con su propia etiqueta encima, y centrar verticalmente toda la fila la descuadraba frente a los botones sin etiqueta — la fila pasa de `items-center` a `items-end` |
+| J.59 | **DECIDIDO** e implementado. El usuario ve «Desgaste 5 %» en una tarjeta de disco y no sabe qué significa ni si es preocupante; quiere un tooltip que lo explique al pasar el ratón, en el panel general y en el detalle de disco, con un veredicto sobre el valor actual | Se construye el componente **`Tooltip`** (que `ui-design.md` §3 ya tenía autorizado y pendiente) y un módulo `src/lib/design/metricHelp.ts` con `veredictoMetrica` (puro) + `ayudaMetrica` (texto traducido). El veredicto («normal» / «alto» / «demasiado alto») usa `classifyAgainstThresholds` y los umbrales de `settings.alerts`, así **nunca contradice** al color de la tarjeta ni a una alerta; actividad y horas de encendido son informativas (siempre `ok`), y un disco SATA sin desgaste lo explica. **Alcance**: 3 métricas de `DiskCard` (panel) + las 4 `MetricCard` (detalle); **no** la tabla «Contadores». **Panel: tooltip solo con el ratón**, porque la `DiskCard` es un `<a>` entero y no puede contener un elemento tabulable — con teclado, la versión completa (`Tooltip focusable`, `Escape`, `aria-describedby`, WCAG 1.4.13) está en el detalle. En la `DiskCard` el tooltip es **local y ligero** (no el componente `Tooltip`): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006, `e2e/ui/rendimiento.spec.ts`); el silencio `a11y_no_static_element_interactions` está en `known-issues.md` #4. El panel pide `settings` una vez sin bloquear el pintado; hasta que llega, `metricHelp` usa los umbrales de fábrica. Textos en `metric.help.{temperature,wear,activity,powerOnHours}.*` |
 
 ---
 
@@ -6401,6 +6402,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
 | `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
+| `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |
@@ -6413,21 +6415,23 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 
 #### Autorizados y pendientes de construir
 
-Estos cuatro patrones son necesarios para pantallas ya especificadas y **no requieren una decisión
-nueva**: la regla de las ≥3 pantallas no les aplica. Siguen todos los requisitos de un componente
-del catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export en el barrel).
+Estos patrones son necesarios para pantallas ya especificadas y **no requieren una decisión nueva**:
+la regla de las ≥3 pantallas no les aplica. Siguen todos los requisitos de un componente del
+catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export en el barrel).
 
 | Componente | Lo exige | Por qué no se puede componer |
 |---|---|---|
 | `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo |
 | `FilterBar` | US-021 (filtrar eventos por disco, volumen, nivel y proveedor) | requiere selección múltiple, que `Select` no ofrece |
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
-| `Tooltip` | `Button.disabledReason`, procedencia de métricas | hoy la norma exige el dato pero no hay dónde mostrarlo. Sigue pendiente: `ChartTip` (ya en el catálogo) es solo el globo de lectura de una gráfica, otro patrón — este es «pasar el ratón por un elemento → texto de ayuda» |
+
+`Tooltip` **ya está construido** (ver la tabla del catálogo). El uso pendiente es migrar
+`Button.disabledReason` del `title` nativo a `<Tooltip>`.
 
 #### Cuándo crear un componente nuevo
 
 Solo si (a) el patrón aparece en ≥3 pantallas y (b) no se puede expresar componiendo el catálogo.
-Excepción ya autorizada: los cuatro componentes de la tabla "Autorizados y pendientes de construir"
+Excepción ya autorizada: los componentes de la tabla "Autorizados y pendientes de construir"
 no requieren nueva decisión, solo revisión visual antes de darlos por terminados.
 Un componente nuevo debe: consumir solo tokens, funcionar en ambos temas, aceptar `null` en todo dato
 opcional, tener etiqueta accesible y exportarse en `src/lib/components/index.ts`.
@@ -7511,6 +7515,7 @@ export { default as HealthDonut } from "./HealthDonut.svelte";
 export { default as Sparkline } from "./Sparkline.svelte";
 export { default as TimeSeriesChart } from "./TimeSeriesChart.svelte";
 export { default as ChartTip } from "./ChartTip.svelte";
+export { default as Tooltip } from "./Tooltip.svelte";
 
 export { default as DiskCard } from "./DiskCard.svelte";
 export { default as HeroPanel } from "./HeroPanel.svelte";
@@ -8442,6 +8447,22 @@ Fichero de origen: `src/lib/i18n/es.json`
   "disk.freeSpace": "{value} libres",
   "disk.advancedDetails": "Detalles avanzados",
   "disk.testThisDisk": "Probar disco",
+  "metric.help.temperature.body": "Temperatura actual del disco, leída de sus sensores SMART. Un SSD suele funcionar entre 30 y 55 °C. Por encima de unos 70 °C sostenidos puede bajar su velocidad para protegerse (limitación térmica); muy caliente durante mucho tiempo, acorta su vida.",
+  "metric.help.temperature.verdict.ok": "Ahora: {value}. En rango normal.",
+  "metric.help.temperature.verdict.warn": "Ahora: {value}. Es alta: revisa la ventilación del equipo y que el disco tenga disipador.",
+  "metric.help.temperature.verdict.crit": "Ahora: {value}. Demasiado alta. El disco puede estar limitándose; mejora la refrigeración cuanto antes.",
+  "metric.help.temperature.verdict.unknown": "Ahora mismo no hay lectura de temperatura.",
+  "metric.help.wear.body": "Estimación del fabricante de cuánta vida de escritura ha consumido el disco (el campo «Percentage Used» de un SSD NVMe). 0 % es nuevo; 100 % significa que ha alcanzado la resistencia de escritura garantizada, y el disco sigue funcionando después de ese punto. Solo sube, nunca baja. Mide el desgaste de la memoria; no anticipa fallos del controlador ni del firmware.",
+  "metric.help.wear.verdict.ok": "Ahora: {value}. Queda en torno al {remaining} % de vida de escritura estimada. Sin preocupación.",
+  "metric.help.wear.verdict.warn": "Ahora: {value}. Desgaste alto (la aplicación avisa a partir del {warn} %). Ve planificando el reemplazo y mantén las copias de seguridad al día.",
+  "metric.help.wear.verdict.crit": "Ahora: {value}. El disco está en el fin de su resistencia de escritura garantizada, o la ha superado. Sustitúyelo pronto y asegúrate de tener copias.",
+  "metric.help.wear.verdict.unknown": "Este disco no informa del desgaste. Es lo normal en los discos SATA; solo los NVMe exponen este dato.",
+  "metric.help.activity.body": "Cuánto está trabajando el disco en este momento, medido por Windows (porcentaje de tiempo ocupado en lecturas o escrituras). Es un indicador de rendimiento, no de salud.",
+  "metric.help.activity.verdict.info": "Ahora mismo al {value}. Un valor alto solo indica que hay trabajo en curso; no es un problema.",
+  "metric.help.activity.verdict.unknown": "Ahora mismo no hay lectura de actividad.",
+  "metric.help.powerOnHours.body": "Tiempo total que el disco ha estado encendido, contado por SMART. Es un dato informativo.",
+  "metric.help.powerOnHours.verdict.info": "Ahora: {value} (unos {years} años en marcha). No hay un límite que deba preocuparte: un SSD no se gasta por el tiempo encendido, sino por lo que se escribe en él (mira «Desgaste»).",
+  "metric.help.powerOnHours.verdict.unknown": "Este disco no informa de las horas de encendido.",
   "alerts.severity.info": "Informativa",
   "alerts.severity.warn": "Advertencia",
   "alerts.severity.crit": "Crítica",
@@ -8910,6 +8931,22 @@ Fichero de origen: `src/lib/i18n/en.json`
   "disk.freeSpace": "{value} free",
   "disk.advancedDetails": "Advanced details",
   "disk.testThisDisk": "Test this disk",
+  "metric.help.temperature.body": "The drive's current temperature, read from its SMART sensors. An SSD usually runs between 30 and 55 °C. Above roughly 70 °C for a sustained period it may slow itself down to protect itself (thermal throttling); very hot for a long time shortens its life.",
+  "metric.help.temperature.verdict.ok": "Now: {value}. Within the normal range.",
+  "metric.help.temperature.verdict.warn": "Now: {value}. This is high: check the case airflow and that the drive has a heatsink.",
+  "metric.help.temperature.verdict.crit": "Now: {value}. Too hot. The drive may be throttling; improve cooling as soon as you can.",
+  "metric.help.temperature.verdict.unknown": "There is no temperature reading right now.",
+  "metric.help.wear.body": "The manufacturer's estimate of how much of the drive's write endurance has been used (the \"Percentage Used\" field on an NVMe SSD). 0 % is new; 100 % means it has reached its warranted write endurance, and the drive keeps working past that point. It only goes up, never down. It measures flash wear; it does not anticipate controller or firmware failures.",
+  "metric.help.wear.verdict.ok": "Now: {value}. About {remaining} % of the estimated write endurance remains. No cause for concern.",
+  "metric.help.wear.verdict.warn": "Now: {value}. Wear is high (the app warns from {warn} %). Start planning a replacement and keep your backups up to date.",
+  "metric.help.wear.verdict.crit": "Now: {value}. The drive is at or past the end of its warranted write endurance. Replace it soon and make sure you have backups.",
+  "metric.help.wear.verdict.unknown": "This drive does not report wear. That is normal for SATA drives; only NVMe drives expose this figure.",
+  "metric.help.activity.body": "How hard the drive is working right now, measured by Windows (the percentage of time busy with reads or writes). It is a performance indicator, not a health one.",
+  "metric.help.activity.verdict.info": "Currently at {value}. A high figure only means there is work in progress; it is not a problem.",
+  "metric.help.activity.verdict.unknown": "There is no activity reading right now.",
+  "metric.help.powerOnHours.body": "The total time the drive has been powered on, counted by SMART. It is informational.",
+  "metric.help.powerOnHours.verdict.info": "Now: {value} (about {years} years running). There is no threshold to worry about: an SSD does not wear from time powered on, but from what is written to it (see \"Wear\").",
+  "metric.help.powerOnHours.verdict.unknown": "This drive does not report power-on hours.",
   "alerts.severity.info": "Informational",
   "alerts.severity.warn": "Warning",
   "alerts.severity.crit": "Critical",

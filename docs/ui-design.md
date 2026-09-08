@@ -171,6 +171,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
 | `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
+| `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
 | `EmptyState` | vacío / no compatible / error de fuente | distingue los tres casos |
 | `AppShell` | raíz de la aplicación | se monta una sola vez; contiene el lienzo con degradado y la región de scroll |
@@ -183,21 +184,23 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 
 ### Autorizados y pendientes de construir
 
-Estos cuatro patrones son necesarios para pantallas ya especificadas y **no requieren una decisión
-nueva**: la regla de las ≥3 pantallas no les aplica. Siguen todos los requisitos de un componente
-del catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export en el barrel).
+Estos patrones son necesarios para pantallas ya especificadas y **no requieren una decisión nueva**:
+la regla de las ≥3 pantallas no les aplica. Siguen todos los requisitos de un componente del
+catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export en el barrel).
 
 | Componente | Lo exige | Por qué no se puede componer |
 |---|---|---|
 | `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo |
 | `FilterBar` | US-021 (filtrar eventos por disco, volumen, nivel y proveedor) | requiere selección múltiple, que `Select` no ofrece |
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
-| `Tooltip` | `Button.disabledReason`, procedencia de métricas | hoy la norma exige el dato pero no hay dónde mostrarlo. Sigue pendiente: `ChartTip` (ya en el catálogo) es solo el globo de lectura de una gráfica, otro patrón — este es «pasar el ratón por un elemento → texto de ayuda» |
+
+`Tooltip` **ya está construido** (ver la tabla del catálogo). El uso pendiente es migrar
+`Button.disabledReason` del `title` nativo a `<Tooltip>`.
 
 ### Cuándo crear un componente nuevo
 
 Solo si (a) el patrón aparece en ≥3 pantallas y (b) no se puede expresar componiendo el catálogo.
-Excepción ya autorizada: los cuatro componentes de la tabla "Autorizados y pendientes de construir"
+Excepción ya autorizada: los componentes de la tabla "Autorizados y pendientes de construir"
 no requieren nueva decisión, solo revisión visual antes de darlos por terminados.
 Un componente nuevo debe: consumir solo tokens, funcionar en ambos temas, aceptar `null` en todo dato
 opcional, tener etiqueta accesible y exportarse en `src/lib/components/index.ts`.

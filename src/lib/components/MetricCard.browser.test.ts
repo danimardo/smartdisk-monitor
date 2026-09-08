@@ -74,4 +74,24 @@ describe("MetricCard", () => {
     expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain("40");
     expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain("°C");
   });
+
+  it("con `ayuda`, la cabecera es un disparador enfocable: al enfocar sale el tooltip, Escape lo cierra", async () => {
+    const { container } = await render(MetricCard, {
+      props: {
+        label: "Temperatura",
+        value: "42 °C",
+        ayuda: {
+          titulo: "Temperatura",
+          texto: "Qué es\n\nAhora: 42 °C. En rango normal.",
+          estado: "ok"
+        }
+      }
+    });
+    container.querySelector("button")!.focus();
+    await expect.element(page.getByRole("tooltip")).toBeInTheDocument();
+    expect(container.querySelector('[role="tooltip"]')?.textContent).toContain("En rango normal");
+
+    await userEvent.keyboard("{Escape}");
+    await expect.element(page.getByRole("tooltip")).not.toBeInTheDocument();
+  });
 });

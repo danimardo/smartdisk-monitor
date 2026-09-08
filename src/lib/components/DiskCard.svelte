@@ -13,6 +13,7 @@
   import StatusPill from "./StatusPill.svelte";
   import { healthToken } from "$lib/design/health";
   import { busIcon } from "$lib/design/icons";
+  import { ayudaMetrica, type AyudaMetrica, type MetricaAyudable } from "$lib/design/metricHelp";
   import { formatTemperature, formatPercent, formatBytes } from "$lib/design/format";
   import { t } from "$lib/i18n";
   import type { DiskSummary, HealthState } from "$lib/design/types";
@@ -22,11 +23,15 @@
     disk = null as DiskSummary | null,
     href = undefined as string | undefined,
     /** Serie de temperatura de 24 h para el fondo de la cabecera. Sin ella, cabecera plana. */
-    temperatureSeries = [] as Punto[]
+    temperatureSeries = [] as Punto[],
+    /** Umbrales de `settings.alerts` para el veredicto del tooltip de cada métrica. A falta de
+     *  ellos, `metricHelp` usa los de fábrica (una ayuda, no una alerta). */
+    umbrales = undefined as
+      { tempWarnC: number; tempCritC: number; wearWarnPct: number; wearCritPct: number } | undefined
   } = $props();
 
-  const state = $derived<HealthState>(disk?.state ?? "unknown");
-  const tone = $derived(healthToken[state]);
+  const estado = $derived<HealthState>(disk?.state ?? "unknown");
+  const tone = $derived(healthToken[estado]);
   /** No hay lectura SMART reciente: el bus no la expone, dejó de responder, o aún no ha llegado la
    *  primera. El backend lo marca poniendo `unknownReason` (lo deja en `null` en cuanto la lectura
    *  es fresca). Se usa para vaciar magnitudes y quitar la curva; **no** para la píldora. */
@@ -34,7 +39,7 @@
   /** La píldora sigue al `state` (ya fundido por `estadoConAlertas`): un disco que dejó de
    *  responder es `warn` → «Advertencia», y así concuerda con «Reparto de estados». «Sin datos
    *  SMART» queda solo para el que de verdad no lo soporta, que sigue en `unknown`. */
-  const label = $derived(state === "unknown" ? t("disk.noSmartData") : t(`health.${state}`));
+  const label = $derived(estado === "unknown" ? t("disk.noSmartData") : t(`health.${estado}`));
   const overTempLimit = $derived(
     !!disk?.temperatureC && !!disk?.vendorTempLimitC && disk.temperatureC >= disk.vendorTempLimitC
   );
@@ -45,6 +50,7 @@
    *  (`DiskCard.md`): así el disco sin SMART deja de pesar más que el que tiene datos. */
   const magnitudes = $derived([
     {
+      metrica: "temperature" as MetricaAyudable,
       icon: "temp" as const,
       label: t("disk.temperatureShort"),
       value: disk?.temperatureC ?? null,
@@ -52,6 +58,7 @@
       color: overTempLimit ? "var(--sdm-warn)" : "var(--sdm-text)"
     },
     {
+      metrica: "wear" as MetricaAyudable,
       icon: "wear" as const,
       label: t("disk.wearShort"),
       value: disk?.percentageUsed ?? null,
@@ -59,6 +66,7 @@
       color: "var(--sdm-text)"
     },
     {
+      metrica: "activity" as MetricaAyudable,
       icon: "pulse" as const,
       label: t("disk.activityShort"),
       value: disk?.activityPercent ?? null,
@@ -66,6 +74,34 @@
       color: "var(--sdm-text)"
     }
   ]);
+
+  const ctxAyuda = $derived({ ...umbrales, vendorLimitC: disk?.vendorTempLimitC });
+
+  /** Tooltip de ayuda de la métrica, **solo con el ratón** (la tarjeta es un `<a>` entero: no puede
+   *  contener un elemento tabulable; la versión con teclado está en el detalle). Uno local y ligero
+   *  en vez del componente `Tooltip`: con 20 discos serían 60 instancias y el panel debe pintarse
+   *  rápido (`open-questions.md` J.59, SC-006). El texto se calcula al pasar el ratón, no antes. */
+  type TipDisco = AyudaMetrica & {
+    x: number;
+    y: number;
+    debajo: boolean;
+    ali: "centro" | "izq" | "der";
+  };
+  let tip = $state<TipDisco | null>(null);
+  function mostrarTip(m: (typeof magnitudes)[number], e: MouseEvent) {
+    const cel = e.currentTarget as HTMLElement;
+    const r = cel.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const ali = cx < 170 ? "izq" : cx > window.innerWidth - 170 ? "der" : "centro";
+    tip = {
+      ...ayudaMetrica(m.metrica, sinSmartFresco ? null : m.value, ctxAyuda),
+      x: cel.offsetLeft + (ali === "izq" ? 0 : ali === "der" ? cel.offsetWidth : cel.offsetWidth / 2),
+      y: cel.offsetTop,
+      debajo: r.top < 180,
+      ali
+    };
+  }
+  const desplazamientoX = { centro: "-50%", izq: "0", der: "-100%" };
 </script>
 
 {#if disk}
@@ -93,7 +129,7 @@
         </span>
         <div class="relative flex-1"></div>
         <span class="relative sdm-material rounded-pill">
-          <StatusPill {state} {label} icon="auto" />
+          <StatusPill state={estado} {label} icon="auto" />
         </span>
       </div>
 
@@ -106,9 +142,19 @@
           <span class="sdm-selectable truncate text-2xs text-fg-dim">{disk.model} · {disk.deviceType}</span>
         </div>
 
-        <div class="grid grid-cols-3 gap-2">
+        <!-- El tooltip de ayuda de cada métrica es **solo con el ratón** (`mouseenter`/`leave`); la
+             vía con teclado y su `aria` viven en el detalle de disco (la tarjeta es un `<a>` entero
+             y no puede contener un objetivo tabulable). -->
+        <div class="relative grid grid-cols-3 gap-2">
           {#each magnitudes as m}
-            <div class="flex min-w-0 flex-col gap-0.5">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- Ver docs/known-issues.md #4: el tooltip de ayuda es un extra de ratón; la misma
+                 información, accesible por teclado, está en el detalle de disco. -->
+            <div
+              class="flex min-w-0 flex-col gap-0.5"
+              onmouseenter={(e) => mostrarTip(m, e)}
+              onmouseleave={() => (tip = null)}
+            >
               <span class="flex items-center gap-1 text-2xs font-medium text-fg-faint">
                 <Icon name={m.icon} size={12} />
                 <span class="truncate">{m.label}</span>
@@ -118,13 +164,27 @@
                    o un contador en vivo (boceto §4): un dato caduco presentado como actual engaña. -->
               <span class="flex h-[26px] items-end">
                 {#if m.value === null || sinSmartFresco}
-                  <span class="text-xs text-fg-dim" title={t("common.notAvailable")}>—</span>
+                  <span class="text-xs text-fg-dim">—</span>
                 {:else}
                   <span class="sdm-num sdm-display text-xl" style="color: {m.color}">{m.text}</span>
                 {/if}
               </span>
             </div>
           {/each}
+          {#if tip}
+            <div
+              role="tooltip"
+              class="sdm-material-overlay pointer-events-none absolute z-50 w-max max-w-xs whitespace-pre-line rounded-inner p-3 text-2xs leading-normal"
+              style="left: {tip.x}px; top: {tip.y}px; transform: translate({desplazamientoX[
+                tip.ali
+              ]}, {tip.debajo ? 'calc(46px)' : 'calc(-100% - 6px)'}); border-left: 3px solid {healthToken[
+                tip.estado
+              ].fg}"
+            >
+              <span class="mb-1 block font-semibold text-fg">{tip.titulo}</span>
+              <span class="block text-fg-dim">{tip.texto}</span>
+            </div>
+          {/if}
         </div>
 
         <div class="mt-auto">

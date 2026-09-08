@@ -9,7 +9,7 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { Card, DiskCard, EmptyState, EventRow, HeroPanel, Icon } from "$lib/components";
-  import { getMetricSeries, getSystemEvents, refreshNow } from "$lib/api";
+  import { getMetricSeries, getSettings, getSystemEvents, refreshNow } from "$lib/api";
   import { estadoConAlertas, healthToken, selectHeroDisk } from "$lib/design/health";
   import { healthIcon } from "$lib/design/icons";
   import { formatHours, formatPercent, formatSpanShort } from "$lib/design/format";
@@ -123,6 +123,25 @@
     return conSparklines ? ultimoTramoVisible(app.temperatureSeries[deviceId] ?? []).points : [];
   }
 
+  /** Umbrales para el veredicto del tooltip de cada métrica de la tarjeta. Se piden una vez, sin
+   *  bloquear el pintado: hasta que llegan, `metricHelp` usa los de fábrica (que son los que casi
+   *  todo el mundo tiene), y como el tooltip solo aparece al pasar el ratón, no se ve el cambio. */
+  let umbrales = $state<
+    { tempWarnC: number; tempCritC: number; wearWarnPct: number; wearCritPct: number } | undefined
+  >();
+  onMount(() => {
+    void getSettings()
+      .then((s) => {
+        umbrales = {
+          tempWarnC: s.alerts.tempConfiguredWarnC,
+          tempCritC: s.alerts.tempConfiguredCritC,
+          wearWarnPct: s.alerts.wearWarnPercent,
+          wearCritPct: s.alerts.wearCritPercent
+        };
+      })
+      .catch(() => {});
+  });
+
   /* ---------------------------------------------------------------- sucesos y reparto */
 
   let sucesos = $state<SystemEventShape[]>([]);
@@ -182,7 +201,12 @@
 
     <div class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(272px, 1fr))">
       {#each devices as disk (disk.id)}
-        <DiskCard {disk} href={`/disks/${disk.id}`} temperatureSeries={serieVisibleTarjeta(disk.id)} />
+        <DiskCard
+          {disk}
+          {umbrales}
+          href={`/disks/${disk.id}`}
+          temperatureSeries={serieVisibleTarjeta(disk.id)}
+        />
       {/each}
     </div>
 

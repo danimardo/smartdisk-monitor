@@ -26,6 +26,7 @@ export { default as HealthDonut } from "./HealthDonut.svelte";
 export { default as Sparkline } from "./Sparkline.svelte";
 export { default as TimeSeriesChart } from "./TimeSeriesChart.svelte";
 export { default as ChartTip } from "./ChartTip.svelte";
+export { default as Tooltip } from "./Tooltip.svelte";
 
 export { default as DiskCard } from "./DiskCard.svelte";
 export { default as HeroPanel } from "./HeroPanel.svelte";
