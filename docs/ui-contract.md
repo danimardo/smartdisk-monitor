@@ -285,6 +285,10 @@ invoke<void>("acknowledge_alert", { alertGroupId: string })
 invoke<void>("mute_alert", { alertGroupId: string, minutes: 15 | 60 | 480 | null })  // null = indefinido
 invoke<void>("unmute_alert", { alertGroupId: string })
 invoke<void>("archive_alert", { alertGroupId: string })
+
+// J.58: solo para alertas de reglas smartctl (`smart.*`/`temp.*`/`nvme.*`) — las demás fallan con
+// `alert.no_smart_data`. Consulta smartctl al momento, no hay histórico que leer.
+invoke<string>("get_alert_smart_raw_json", { alertGroupId: string })
 ```
 
 Reconocer **no** cambia el color de nada: el color lo decide `deviceState()` sobre las alertas

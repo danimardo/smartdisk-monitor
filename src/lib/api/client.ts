@@ -128,6 +128,10 @@ export const getAlertGroups = (filter?: { status?: AlertStatusFilter; deviceId?:
   call("get_alert_groups", S.alertGroup.array(), filter ?? {});
 export const getAlertDetail = (alertGroupId: string) =>
   call("get_alert_detail", S.alertDetail, { alertGroupId });
+/** JSON crudo de `smartctl` para el disco de la alerta — el detalle técnico que las reglas
+ *  `smart.*`/`temp.*`/`nvme.*` no traen (solo el contador o la cifra que disparó la alerta). */
+export const getAlertSmartRawJson = (alertGroupId: string) =>
+  call("get_alert_smart_raw_json", z.string(), { alertGroupId });
 export const acknowledgeAlert = (alertGroupId: string) => callVoid("acknowledge_alert", { alertGroupId });
 /** `minutes` null = silencio indefinido hasta reactivación manual. Nunca afecta al color. */
 export const muteAlert = (alertGroupId: string, minutes: 15 | 60 | 480 | null) =>

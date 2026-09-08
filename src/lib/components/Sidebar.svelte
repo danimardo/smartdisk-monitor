@@ -89,6 +89,7 @@
     style="background: {tone.soft}; color: {tone.fg}"
     role="status"
     aria-label={globalLabel}
+    title={globalLabel}
   >
     {#if globalCount}
       <Icon name={globalIcon} size={15} />

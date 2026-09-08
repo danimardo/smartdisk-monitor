@@ -100,6 +100,48 @@ test.describe("alertas", () => {
     await expect(page.getByText(es["alerts.empty.title"])).not.toBeVisible();
   });
 
+  test("el detalle muestra el disco afectado y permite ver el JSON técnico de smartctl", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/alerts");
+
+    const titulo = es[`alert.rule.${alertaActiva.ruleKey}.title` as keyof typeof es];
+    await page.getByRole("button", { name: new RegExp(titulo) }).click();
+    await expect(page.getByRole("heading", { name: titulo })).toBeVisible();
+
+    // El disco afectado se ve en el propio detalle, no solo en la tarjeta de la lista.
+    await expect(page.getByText(alertaActiva.target).nth(1)).toBeVisible();
+
+    const boton = page.getByRole("button", { name: es["alerts.viewTechnicalDetail"] });
+    await expect(boton).toBeVisible();
+    await boton.click();
+    await expect(page.getByText(/model_name/)).toBeVisible();
+
+    expect((await llamadas(page)).map((l) => l.comando)).toContain("get_alert_smart_raw_json");
+  });
+
+  test("una regla que no es de smartctl no ofrece ver detalle técnico de SMART", async ({ page }) => {
+    const alerta = {
+      ...alertaActiva,
+      id: "a-cap",
+      ruleKey: "capacity.low",
+      deduplicationKey: "capacity.low|volume:v1"
+    };
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_alert_groups: [alerta],
+      get_alert_detail: {
+        ...alerta,
+        facts: [{ labelKey: "alert.fact.ruleKey", value: "capacity.low" }],
+        occurrences: [],
+        relatedEvents: []
+      }
+    });
+    await page.goto("/alerts");
+    await page.getByRole("button", { name: new RegExp(es["alert.rule.capacity.low.title"]) }).click();
+
+    await expect(page.getByRole("button", { name: es["alerts.viewTechnicalDetail"] })).toHaveCount(0);
+  });
+
   test("archivar pide confirmación y no llama al comando si se cancela", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/alerts");

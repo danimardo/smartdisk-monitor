@@ -3804,6 +3804,54 @@ pub fn get_alert_detail(state: State<AppState>, alert_group_id: String) -> AppRe
     get_alert_detail_impl(&conn, &alert_group_id)
 }
 
+/// JSON crudo de `smartctl` para el disco de una alerta (US-030, botón "Ver detalle técnico"): las
+/// reglas `smart.*`/`temp.*`/`nvme.*` solo guardan el contador o la cifra que disparó la alerta
+/// (`docs/alert-rules.md`), nunca la tabla de errores completa que sí trae el JSON entero — mismo
+/// motivo por el que `get_event_raw_xml` existe para las alertas de sucesos de Windows, y mismo
+/// patrón: se consulta al momento, no se guarda un histórico que nadie pidió.
+fn get_alert_smart_raw_json_impl(
+    conn: &rusqlite::Connection,
+    alert_group_id: &str,
+) -> AppResult<String> {
+    let grupo = repo_alertas::get_group(conn, alert_group_id)
+        .map_err(rusqlite_err_to_app_error)?
+        .ok_or_else(|| Box::new(AppError::new("device.not_found", "error.deviceNotFound")))?;
+    let device_id = grupo.target_device_id.ok_or_else(|| {
+        Box::new(AppError::new(
+            "alert.no_smart_data",
+            "error.alertNoSmartData",
+        ))
+    })?;
+    let dispositivo = repo_inventario::get_device(conn, &device_id)
+        .map_err(rusqlite_err_to_app_error)?
+        .ok_or_else(|| Box::new(AppError::new("device.not_found", "error.deviceNotFound")))?;
+    let ruta = dispositivo.smartctl_path.ok_or_else(|| {
+        Box::new(AppError::new(
+            "alert.no_smart_data",
+            "error.alertNoSmartData",
+        ))
+    })?;
+    crate::collectors::smartctl::query_device_json(&ruta).map_err(|e| {
+        Box::new(
+            AppError::new("smartctl.query_failed", "error.smartctlQueryFailed")
+                .with_detail(format!("{e:?}"))
+                .retryable(),
+        )
+    })
+}
+
+#[tauri::command]
+pub fn get_alert_smart_raw_json(
+    state: State<AppState>,
+    alert_group_id: String,
+) -> AppResult<String> {
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    get_alert_smart_raw_json_impl(&conn, &alert_group_id)
+}
+
 fn existe_grupo(conn: &rusqlite::Connection, id: &str) -> AppResult<()> {
     if repo_alertas::get_group(conn, id)
         .map_err(rusqlite_err_to_app_error)?
@@ -6294,6 +6342,23 @@ mod tests_comandos_alertas {
         let conn = conn_de_prueba();
         let err = get_alert_detail_impl(&conn, "no-existe").unwrap_err();
         assert_eq!(err.code, "device.not_found");
+    }
+
+    #[test]
+    fn get_alert_smart_raw_json_de_un_grupo_inexistente_falla_con_device_not_found() {
+        let conn = conn_de_prueba();
+        let err = get_alert_smart_raw_json_impl(&conn, "no-existe").unwrap_err();
+        assert_eq!(err.code, "device.not_found");
+    }
+
+    #[test]
+    fn get_alert_smart_raw_json_sin_ruta_smartctl_falla_con_alert_no_smart_data() {
+        // `conn_de_prueba` crea "d1" sin `smartctl_path`: exactamente el disco sin SMART (USB,
+        // RAID, virtual...) para el que no tiene sentido ofrecer un detalle técnico que no existe.
+        let conn = conn_de_prueba();
+        let id = crear_grupo_de_prueba(&conn);
+        let err = get_alert_smart_raw_json_impl(&conn, &id).unwrap_err();
+        assert_eq!(err.code, "alert.no_smart_data");
     }
 
     #[test]

@@ -64,6 +64,7 @@ pub fn run() {
             // alertas
             commands::get_alert_groups,
             commands::get_alert_detail,
+            commands::get_alert_smart_raw_json,
             commands::acknowledge_alert,
             commands::mute_alert,
             commands::unmute_alert,

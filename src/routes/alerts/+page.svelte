@@ -6,6 +6,7 @@
   import {
     AlertCard,
     Button,
+    CodeOutput,
     ConfirmDialog,
     DataRow,
     EmptyState,
@@ -17,6 +18,7 @@
     acknowledgeAlert,
     archiveAlert,
     getAlertDetail,
+    getAlertSmartRawJson,
     muteAlert,
     toAppError,
     unmuteAlert
@@ -81,6 +83,28 @@
   let muteMinutes = $state<"15" | "60" | "480" | "indefinite">("60");
   let archiveDialogOpen = $state(false);
 
+  /** Detalle técnico de smartctl bajo demanda (US-030): las reglas `smart.*`/`temp.*`/`nvme.*`
+   *  solo guardan el contador o la cifra que disparó la alerta, nunca la tabla de errores completa
+   *  — se consulta al momento, no antes, porque es una llamada real a smartctl. */
+  let smartRawJson = $state<string | null>(null);
+  let smartRawError = $state<AppError | null>(null);
+  let smartRawLoading = $state(false);
+  const esAlertaSmart = $derived(detail !== null && /^(smart|temp|nvme)\./.test(detail.ruleKey));
+
+  async function verDetalleTecnico() {
+    if (!detail) return;
+    smartRawLoading = true;
+    smartRawError = null;
+    try {
+      smartRawJson = await getAlertSmartRawJson(detail.id);
+    } catch (cause) {
+      smartRawJson = null;
+      smartRawError = toAppError(cause);
+    } finally {
+      smartRawLoading = false;
+    }
+  }
+
   async function cargarDetalle(id: string) {
     detailLoading = true;
     try {
@@ -96,6 +120,8 @@
 
   $effect(() => {
     const id = selectedId;
+    smartRawJson = null;
+    smartRawError = null;
     if (!id) {
       detail = null;
       detailError = null;
@@ -190,6 +216,7 @@
           <StatusPill state={severityToHealth[detail.severity]} label={etiquetaSeveridadDetalle} />
           <h2 class="m-0 flex-1 text-lg font-semibold">{tituloDetalle}</h2>
         </div>
+        <p class="m-0 text-xs font-medium text-fg-dim">{detail.target}</p>
         <p class="m-0 text-sm text-fg-dim" style="text-wrap: pretty">{resumenDetalle}</p>
 
         {#if actionError}
@@ -204,7 +231,31 @@
           {/each}
         </div>
 
-        <div class="flex flex-wrap items-center gap-3">
+        {#if esAlertaSmart}
+          <div class="flex flex-col gap-2">
+            {#if !smartRawJson}
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={smartRawLoading}
+                onclick={verDetalleTecnico}
+                full={false}
+              >
+                {t("alerts.viewTechnicalDetail")}
+              </Button>
+            {/if}
+            {#if smartRawError}
+              <p class="m-0 text-xs font-medium" style="color: var(--sdm-crit)">
+                {t(smartRawError.messageKey, smartRawError.messageVars)}
+              </p>
+            {/if}
+            {#if smartRawJson}
+              <CodeOutput content={smartRawJson} provenance="smartctl -a -j · {detail.target}" />
+            {/if}
+          </div>
+        {/if}
+
+        <div class="flex flex-wrap items-end gap-3">
           {#if puedeReconocer}
             <Button
               size="sm"

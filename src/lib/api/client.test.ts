@@ -173,6 +173,7 @@ describe("la superficie completa del contrato", () => {
     getMetricSeries: "get_metric_series",
     getAlertGroups: "get_alert_groups",
     getAlertDetail: "get_alert_detail",
+    getAlertSmartRawJson: "get_alert_smart_raw_json",
     acknowledgeAlert: "acknowledge_alert",
     muteAlert: "mute_alert",
     unmuteAlert: "unmute_alert",

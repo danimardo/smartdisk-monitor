@@ -285,6 +285,7 @@ export const RESPUESTAS: Record<string, unknown> = {
   get_metric_series: serieTemperatura,
   get_alert_groups: alertas,
   get_alert_detail: detalleAlertaActiva,
+  get_alert_smart_raw_json: '{"model_name":"Samsung SSD 990 PRO 2TB"}',
   get_system_events: paginaEventos,
   get_event_raw_xml: xmlEjemplo,
   check_smartctl_defender_exception: true,
