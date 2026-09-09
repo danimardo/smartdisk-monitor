@@ -260,42 +260,33 @@
           {/each}
         </div>
 
-        {#if ia.activa}
-          <div>
-            <Button
-              variant="feature"
-              full={false}
-              disabled={detail !== null && ia.estaEnCurso(`alerta:${detail.id}`)}
-              onclick={explicarAlerta}
-            >
-              <Icon name="sparkles" />
-              {t("alerts.explainCta")}
-            </Button>
-          </div>
-        {/if}
-
-        {#if esAlertaSmart}
-          <div class="flex flex-col gap-2">
-            {#if !smartRawJson}
+        {#if ia.activa || esAlertaSmart}
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            {#if ia.activa}
               <Button
-                size="sm"
-                variant="ghost"
-                loading={smartRawLoading}
-                onclick={verDetalleTecnico}
+                variant="feature"
                 full={false}
+                disabled={detail !== null && ia.estaEnCurso(`alerta:${detail.id}`)}
+                onclick={explicarAlerta}
               >
+                <Icon name="sparkles" />
+                {t("alerts.explainCta")}
+              </Button>
+            {/if}
+            {#if esAlertaSmart && !smartRawJson}
+              <Button variant="ghost" loading={smartRawLoading} onclick={verDetalleTecnico} full={false}>
                 {t("alerts.viewTechnicalDetail")}
               </Button>
             {/if}
-            {#if smartRawError}
-              <p class="m-0 text-xs font-medium" style="color: var(--sdm-crit)">
-                {t(smartRawError.messageKey, smartRawError.messageVars)}
-              </p>
-            {/if}
-            {#if smartRawJson}
-              <CodeOutput content={smartRawJson} provenance="smartctl -a -j · {detail.target}" />
-            {/if}
           </div>
+          {#if esAlertaSmart && smartRawError}
+            <p class="m-0 text-xs font-medium" style="color: var(--sdm-crit)">
+              {t(smartRawError.messageKey, smartRawError.messageVars)}
+            </p>
+          {/if}
+          {#if esAlertaSmart && smartRawJson}
+            <CodeOutput content={smartRawJson} provenance="smartctl -a -j · {detail.target}" />
+          {/if}
         {/if}
 
         <div class="flex flex-wrap items-end gap-3">
