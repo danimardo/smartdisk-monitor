@@ -1020,9 +1020,10 @@ Como usuario quiero consultar versión, autor y licencias.
 
 Criterios de aceptación:
 
-- El botón `?` abre “Acerca de”.
+- El botón del riel abre “Acerca de”.
 - Nombre y versión se obtienen dinámicamente.
 - Muestra autor, MIT, licencias de terceros y repositorio.
+- Presenta al autor con su foto y una biografía breve (ADR-052).
 - Permite copiar información diagnóstica no sensible.
 
 ### Épica H. Configuración y mantenimiento
@@ -2791,6 +2792,7 @@ smartdisk-monitor/
       api/                      Envoltorios tipados de invoke y listen. NINGUNA pantalla llama a
                                 invoke directamente: siempre a través de aquí
       stores/                   Estado de aplicación en runes
+      assets/                   Único recurso raster empaquetado: la foto del autor (ADR-052)
     design-system/              tokens.css, tokens.json, fonts/ (del paquete de diseño)
 
   src-tauri/
@@ -5834,6 +5836,70 @@ corrección de la tabla D.1 y de B.9, en `docs/open-questions.md`.
   discos) y `DiskCard.md` se actualizan; el boceto `design/SmartDisk Monitor v2.dc.html` conserva su
   onda de temperatura como ilustración (no se reedita el HTML de canvas a mano).
 
+### ADR-052 — La foto del autor en el «Acerca de»: un raster empaquetado, excepción acotada a ADR-039
+
+Estado: aceptada. Fecha: 2026-09-09. Excepción acotada a ADR-039. Spec: US-061.
+
+#### El problema
+
+El «Acerca de» (US-061) era un `ConfirmDialog` de texto plano. El usuario quiere que presente a la
+persona detrás de la aplicación: su **foto** y una **biografía breve**, sin perder la versión, las
+licencias ni los avisos de terceros.
+
+ADR-039 estableció, para las ilustraciones del asistente inicial, que **no se empaquetan recursos
+raster** (se dibujan con SVG y tokens) y que **no hay figuras humanas** (para no elegir un tono de
+piel que no es un token). Una fotografía no cabe en ninguna de las dos reglas.
+
+#### La decisión
+
+Se empaqueta **una** imagen —`src/lib/assets/daniel-mardomingo.webp`, recorte cuadrado de la cara y
+los hombros, 256×256, WebP (~8 KB)—, usada **solo** por el nuevo `AboutDialog`. Se importa como
+módulo (`import foto from "$lib/assets/…"`); Vite la emite como fichero con hash, igual que la
+tipografía. `build.target: chrome105` (WebView2) renderiza WebP de forma nativa.
+
+El diálogo pasa a ser un componente propio, `AboutDialog`, con el patrón de modal informativo de
+`ExplicacionModal` (`role="dialog"`, foco atrapado y devuelto, `Escape`). Muestra: la foto como
+avatar junto al nombre, dos párrafos de biografía (texto de i18n, no del backend), y al pie los
+créditos —licencia MIT, smartmontools GPLv2, Instrument Sans OFL, autor de `get_app_info`— y los
+enlaces como **texto plano** (hacerlos clicables exigiría un permiso de Tauri para abrir el
+navegador; se descarta). «Copiar información» no cambia: sigue copiando solo lo diagnóstico.
+
+#### Por qué no rompe ADR-039
+
+- Es una **fotografía**, no una ilustración de interfaz: no se puede expresar con SVG ni con
+  tokens, y no tiene sentido intentarlo.
+- **No responde al tema**: una foto es una foto en claro y en oscuro; no hay dos versiones que
+  conmutar, que era medio motivo del veto al raster.
+- Es **obra propia del autor**, sin licencia de terceros que redistribuir y versionar (a diferencia
+  de la OFL de la tipografía). Por eso **no** entra en `verify:assets` / `THIRD_PARTY_NOTICES.md`.
+- **Superficie nula**: 8 KB de recurso estático, ni ejecutable ni dependencia (constitución §III se
+  refiere a ampliar la superficie de ataque, no a los bytes).
+- El veto a «figuras humanas» de ADR-039 era por **el tono de piel sin token en un dibujo**; una
+  foto real del autor en su propio «Acerca de» no plantea esa decisión.
+
+#### Alternativas descartadas
+
+- **«Acerca de» solo con texto, sin foto**: cumple ADR-039 al pie de la letra, pero el usuario pide
+  explícitamente la foto y es su aplicación y su cara.
+- **Incrustar la foto como data URI en el componente**: evita el fichero suelto pero mete ~11 KB de
+  base64 en un `.svelte`, que es peor de leer y de revisar.
+- **Cargar la foto de `mardomingo.com` en tiempo de ejecución**: la aplicación no hace red saliente
+  salvo para la ayuda con IA (ADR-007/046); un «Acerca de» que necesita internet para pintarse es
+  absurdo.
+- **Enlaces clicables**: abrir el navegador desde la aplicación necesita un permiso de Tauri nuevo
+  —límite duro, con su ADR y su hook—; no compensa para tres URLs que se pueden copiar.
+
+#### Consecuencias
+
+- **Primer recurso raster del repositorio** y primera carpeta `src/lib/assets/`. No es un patrón:
+  ninguna otra pantalla empaqueta raster; si alguna lo quiere, se decide entonces (igual que dice
+  ADR-039 de las ilustraciones).
+- El catálogo suma `AboutDialog` (`src/lib/components/index.ts`, `docs/ui-design.md` §3). `ConfirmDialog`
+  deja de usarse para el «Acerca de»; su prop `dismissible` queda sin consumidor (se conserva).
+- La clave i18n `about.body` se sustituye por `about.bio.p1/p2`, `about.credits`, `about.links`,
+  `about.authorName`, `about.authorRole` y `about.photoAlt`.
+- `get_app_info` y los permisos de Tauri **no cambian**.
+
 
 ---
 
@@ -7431,6 +7497,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `CodeOutput` | salida literal de un proceso auxiliar | monoespaciada, `white-space: pre`, scroll propio; **renderiza texto, jamás HTML**; botón de copiar obligatorio |
 | `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
 | `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
+| `AboutDialog` | «Acerca de» del riel (US-061) | mismo patrón de modal informativo que `ExplicacionModal` (`role="dialog" aria-modal`, foco devuelto, `Escape`, cruz); foto del autor como avatar (`src/lib/assets/`, único raster empaquetado — ADR-052) + nombre + biografía breve; pie con créditos (MIT, terceros, autor de `get_app_info`) y enlaces como **texto plano**; «Copiar información» copia solo lo diagnóstico |
 
 #### Autorizados y pendientes de construir
 
@@ -7735,7 +7802,7 @@ que falta es la composición visual, no la definición funcional.
 - **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
 - **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
 - **Asistente inicial** (US-002): detección, exclusión de discos y alias.
-- **Acerca de** (US-061).
+- **Acerca de** (US-061) — `AboutDialog`: foto del autor, biografía breve y créditos (ADR-052).
 
 **Icono de la bandeja del sistema** — primer paso visual hecho (`platform/bandeja.rs`,
 `open-questions.md` J.53); el rediseño fino sigue pendiente. Se genera en memoria, sin fichero
@@ -8558,6 +8625,7 @@ export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 
 export { default as AiModelSelect } from "./AiModelSelect.svelte";
+export { default as AboutDialog } from "./AboutDialog.svelte";
 export { default as ConfirmDialog } from "./ConfirmDialog.svelte";
 export { default as ExplicacionModal } from "./ExplicacionModal.svelte";
 export { default as Markdown } from "./Markdown.svelte";
@@ -10010,7 +10078,13 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.dangerZone.done": "Todos los datos se han eliminado.",
   "nav.about": "Acerca de",
   "about.title": "Acerca de",
-  "about.body": "De {author}. Licencia MIT. Incluye smartmontools (GPLv2) y la tipografía Instrument Sans (SIL OFL 1.1); consulta los avisos de terceros completos en el instalador. Repositorio: https://github.com/danimardo/smartdisk-monitor",
+  "about.authorName": "Daniel Mardomingo",
+  "about.authorRole": "Autor",
+  "about.bio.p1": "Creador técnico con más de 30 años de experiencia en sistemas, desarrollo de aplicaciones e inteligencia artificial aplicada. Su trayectoria empezó en la administración de sistemas y evolucionó hacia el desarrollo de software y las soluciones técnicas asistidas por IA.",
+  "about.bio.p2": "Cree en los perfiles técnicos generalistas, potenciados por IA, para resolver problemas complejos con criterio y claridad, y en poner la especificación en el centro del proceso, con agentes de IA como implementadores. Esta aplicación se construyó así: especificación primero y verificación en cada fase.",
+  "about.credits": "Licencia MIT. Incluye smartmontools (GPLv2) y la tipografía Instrument Sans (SIL OFL 1.1); avisos de terceros completos en el instalador. Autor: {author}.",
+  "about.links": "mardomingo.com · github.com/danimardo · github.com/danimardo/smartdisk-monitor",
+  "about.photoAlt": "Retrato de Daniel Mardomingo",
   "about.cta.copy": "Copiar información"
 }
 ```
@@ -10573,7 +10647,13 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.dangerZone.done": "All data has been deleted.",
   "nav.about": "About",
   "about.title": "About",
-  "about.body": "By {author}. MIT license. Includes smartmontools (GPLv2) and the Instrument Sans typeface (SIL OFL 1.1); see the full third-party notices in the installer. Repository: https://github.com/danimardo/smartdisk-monitor",
+  "about.authorName": "Daniel Mardomingo",
+  "about.authorRole": "Author",
+  "about.bio.p1": "A technical creator with over 30 years of experience across systems, application development and applied artificial intelligence. He started out in systems administration and moved into software development and AI-assisted engineering.",
+  "about.bio.p2": "He believes in generalist technical profiles, amplified by AI, to solve complex problems with judgement and clarity — and in putting the specification at the centre of the process, with AI agents as the implementers. This app was built that way: specification first, verified at every stage.",
+  "about.credits": "MIT license. Includes smartmontools (GPLv2) and the Instrument Sans typeface (SIL OFL 1.1); see the full third-party notices in the installer. Author: {author}.",
+  "about.links": "mardomingo.com · github.com/danimardo · github.com/danimardo/smartdisk-monitor",
+  "about.photoAlt": "Portrait of Daniel Mardomingo",
   "about.cta.copy": "Copy information"
 }
 ```

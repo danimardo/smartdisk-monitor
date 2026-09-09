@@ -68,6 +68,7 @@ smartdisk-monitor/
       api/                      Envoltorios tipados de invoke y listen. NINGUNA pantalla llama a
                                 invoke directamente: siempre a través de aquí
       stores/                   Estado de aplicación en runes
+      assets/                   Único recurso raster empaquetado: la foto del autor (ADR-052)
     design-system/              tokens.css, tokens.json, fonts/ (del paquete de diseño)
 
   src-tauri/

@@ -187,6 +187,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `CodeOutput` | salida literal de un proceso auxiliar | monoespaciada, `white-space: pre`, scroll propio; **renderiza texto, jamás HTML**; botón de copiar obligatorio |
 | `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
 | `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
+| `AboutDialog` | «Acerca de» del riel (US-061) | mismo patrón de modal informativo que `ExplicacionModal` (`role="dialog" aria-modal`, foco devuelto, `Escape`, cruz); foto del autor como avatar (`src/lib/assets/`, único raster empaquetado — ADR-052) + nombre + biografía breve; pie con créditos (MIT, terceros, autor de `get_app_info`) y enlaces como **texto plano**; «Copiar información» copia solo lo diagnóstico |
 
 ### Autorizados y pendientes de construir
 
@@ -491,7 +492,7 @@ que falta es la composición visual, no la definición funcional.
 - **Informes** (US-050): selector de intervalo, resumen de contenido y destino de exportación.
 - **Ajustes**: apariencia, frecuencias, umbrales, retención, comportamiento al cerrar, borrado de datos.
 - **Asistente inicial** (US-002): detección, exclusión de discos y alias.
-- **Acerca de** (US-061).
+- **Acerca de** (US-061) — `AboutDialog`: foto del autor, biografía breve y créditos (ADR-052).
 
 **Icono de la bandeja del sistema** — primer paso visual hecho (`platform/bandeja.rs`,
 `open-questions.md` J.53); el rediseño fino sigue pendiente. Se genera en memoria, sin fichero

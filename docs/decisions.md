@@ -1979,3 +1979,67 @@ corrección de la tabla D.1 y de B.9, en `docs/open-questions.md`.
 - `docs/ui-design.md` (fila de catálogo `DiskCard`, fila de `Sparkline`/`HeroPanel` y regla de > 12
   discos) y `DiskCard.md` se actualizan; el boceto `design/SmartDisk Monitor v2.dc.html` conserva su
   onda de temperatura como ilustración (no se reedita el HTML de canvas a mano).
+
+## ADR-052 — La foto del autor en el «Acerca de»: un raster empaquetado, excepción acotada a ADR-039
+
+Estado: aceptada. Fecha: 2026-09-09. Excepción acotada a ADR-039. Spec: US-061.
+
+### El problema
+
+El «Acerca de» (US-061) era un `ConfirmDialog` de texto plano. El usuario quiere que presente a la
+persona detrás de la aplicación: su **foto** y una **biografía breve**, sin perder la versión, las
+licencias ni los avisos de terceros.
+
+ADR-039 estableció, para las ilustraciones del asistente inicial, que **no se empaquetan recursos
+raster** (se dibujan con SVG y tokens) y que **no hay figuras humanas** (para no elegir un tono de
+piel que no es un token). Una fotografía no cabe en ninguna de las dos reglas.
+
+### La decisión
+
+Se empaqueta **una** imagen —`src/lib/assets/daniel-mardomingo.webp`, recorte cuadrado de la cara y
+los hombros, 256×256, WebP (~8 KB)—, usada **solo** por el nuevo `AboutDialog`. Se importa como
+módulo (`import foto from "$lib/assets/…"`); Vite la emite como fichero con hash, igual que la
+tipografía. `build.target: chrome105` (WebView2) renderiza WebP de forma nativa.
+
+El diálogo pasa a ser un componente propio, `AboutDialog`, con el patrón de modal informativo de
+`ExplicacionModal` (`role="dialog"`, foco atrapado y devuelto, `Escape`). Muestra: la foto como
+avatar junto al nombre, dos párrafos de biografía (texto de i18n, no del backend), y al pie los
+créditos —licencia MIT, smartmontools GPLv2, Instrument Sans OFL, autor de `get_app_info`— y los
+enlaces como **texto plano** (hacerlos clicables exigiría un permiso de Tauri para abrir el
+navegador; se descarta). «Copiar información» no cambia: sigue copiando solo lo diagnóstico.
+
+### Por qué no rompe ADR-039
+
+- Es una **fotografía**, no una ilustración de interfaz: no se puede expresar con SVG ni con
+  tokens, y no tiene sentido intentarlo.
+- **No responde al tema**: una foto es una foto en claro y en oscuro; no hay dos versiones que
+  conmutar, que era medio motivo del veto al raster.
+- Es **obra propia del autor**, sin licencia de terceros que redistribuir y versionar (a diferencia
+  de la OFL de la tipografía). Por eso **no** entra en `verify:assets` / `THIRD_PARTY_NOTICES.md`.
+- **Superficie nula**: 8 KB de recurso estático, ni ejecutable ni dependencia (constitución §III se
+  refiere a ampliar la superficie de ataque, no a los bytes).
+- El veto a «figuras humanas» de ADR-039 era por **el tono de piel sin token en un dibujo**; una
+  foto real del autor en su propio «Acerca de» no plantea esa decisión.
+
+### Alternativas descartadas
+
+- **«Acerca de» solo con texto, sin foto**: cumple ADR-039 al pie de la letra, pero el usuario pide
+  explícitamente la foto y es su aplicación y su cara.
+- **Incrustar la foto como data URI en el componente**: evita el fichero suelto pero mete ~11 KB de
+  base64 en un `.svelte`, que es peor de leer y de revisar.
+- **Cargar la foto de `mardomingo.com` en tiempo de ejecución**: la aplicación no hace red saliente
+  salvo para la ayuda con IA (ADR-007/046); un «Acerca de» que necesita internet para pintarse es
+  absurdo.
+- **Enlaces clicables**: abrir el navegador desde la aplicación necesita un permiso de Tauri nuevo
+  —límite duro, con su ADR y su hook—; no compensa para tres URLs que se pueden copiar.
+
+### Consecuencias
+
+- **Primer recurso raster del repositorio** y primera carpeta `src/lib/assets/`. No es un patrón:
+  ninguna otra pantalla empaqueta raster; si alguna lo quiere, se decide entonces (igual que dice
+  ADR-039 de las ilustraciones).
+- El catálogo suma `AboutDialog` (`src/lib/components/index.ts`, `docs/ui-design.md` §3). `ConfirmDialog`
+  deja de usarse para el «Acerca de»; su prop `dismissible` queda sin consumidor (se conserva).
+- La clave i18n `about.body` se sustituye por `about.bio.p1/p2`, `about.credits`, `about.links`,
+  `about.authorName`, `about.authorRole` y `about.photoAlt`.
+- `get_app_info` y los permisos de Tauri **no cambian**.

@@ -347,9 +347,10 @@ Como usuario quiero consultar versión, autor y licencias.
 
 Criterios de aceptación:
 
-- El botón `?` abre “Acerca de”.
+- El botón del riel abre “Acerca de”.
 - Nombre y versión se obtienen dinámicamente.
 - Muestra autor, MIT, licencias de terceros y repositorio.
+- Presenta al autor con su foto y una biografía breve (ADR-052).
 - Permite copiar información diagnóstica no sensible.
 
 ## Épica H. Configuración y mantenimiento

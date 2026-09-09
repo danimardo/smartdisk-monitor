@@ -9,7 +9,7 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { page } from "$app/state";
-  import { AppShell, ConfirmDialog, IconSprite, Sidebar, Toolbar } from "$lib/components";
+  import { AboutDialog, AppShell, IconSprite, Sidebar, Toolbar } from "$lib/components";
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
@@ -337,19 +337,13 @@
   </AppShell>
 {/if}
 
-<ConfirmDialog
+<AboutDialog
   open={aboutOpen}
-  dismissible
-  title={appInfo ? `${appInfo.name} ${appInfo.version}` : t("about.title")}
-  body={appInfo
-    ? t("about.body", { author: appInfo.author })
-    : aboutError
-      ? t(aboutError.messageKey, aboutError.messageVars)
-      : t("common.loading")}
-  confirmLabel={t("about.cta.copy")}
-  onconfirm={() => {
+  {appInfo}
+  error={aboutError}
+  oncopy={() => {
     void copiarInformacion();
     aboutOpen = false;
   }}
-  oncancel={() => (aboutOpen = false)}
+  onclose={() => (aboutOpen = false)}
 />

@@ -548,6 +548,12 @@
   "settings.dangerZone.done": "All data has been deleted.",
   "nav.about": "About",
   "about.title": "About",
-  "about.body": "By {author}. MIT license. Includes smartmontools (GPLv2) and the Instrument Sans typeface (SIL OFL 1.1); see the full third-party notices in the installer. Repository: https://github.com/danimardo/smartdisk-monitor",
+  "about.authorName": "Daniel Mardomingo",
+  "about.authorRole": "Author",
+  "about.bio.p1": "A technical creator with over 30 years of experience across systems, application development and applied artificial intelligence. He started out in systems administration and moved into software development and AI-assisted engineering.",
+  "about.bio.p2": "He believes in generalist technical profiles, amplified by AI, to solve complex problems with judgement and clarity — and in putting the specification at the centre of the process, with AI agents as the implementers. This app was built that way: specification first, verified at every stage.",
+  "about.credits": "MIT license. Includes smartmontools (GPLv2) and the Instrument Sans typeface (SIL OFL 1.1); see the full third-party notices in the installer. Author: {author}.",
+  "about.links": "mardomingo.com · github.com/danimardo · github.com/danimardo/smartdisk-monitor",
+  "about.photoAlt": "Portrait of Daniel Mardomingo",
   "about.cta.copy": "Copy information"
 }
