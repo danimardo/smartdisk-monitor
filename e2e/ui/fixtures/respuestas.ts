@@ -296,7 +296,8 @@ export const settingsDeFabrica = {
   ai: {
     enabled: false,
     model: "openrouter/free",
-    previewAcknowledged: false
+    previewAcknowledged: false,
+    sendWithoutReview: false
   }
 };
 
@@ -305,6 +306,7 @@ export const estadoIaActiva = {
   activa: true,
   modelo: "openrouter/free",
   previewAcknowledged: true,
+  sendWithoutReview: false,
   claveValida: true
 };
 
@@ -312,6 +314,7 @@ export const estadoIaDesactivada = {
   activa: false,
   modelo: "openrouter/free",
   previewAcknowledged: false,
+  sendWithoutReview: false,
   claveValida: null
 };
 
@@ -320,7 +323,9 @@ export const explicacionOk = {
   markdown:
     "## Qué significa\n\nEl desgaste del disco es alto pero no crítico.\n\n## Qué hacer\n\n- Haz una copia de seguridad.\n- Planifica sustituirlo este año.",
   modeloUsado: "meta-llama/llama-3.1-8b-instruct:free",
-  detalleRecortado: false
+  detalleRecortado: false,
+  sinVolcado: false,
+  sinSuceso: false
 };
 
 export const catalogoModelos = [

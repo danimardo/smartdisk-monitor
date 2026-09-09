@@ -22,6 +22,7 @@
   import {
     borrarClaveIa,
     deleteAllData,
+    establecerEnvioSinRevision,
     getSettings,
     guardarClaveIa,
     openLogFolder,
@@ -71,8 +72,30 @@
 
   let claveIa = $state("");
   let editandoClave = $state(false);
-  let accionIa = $state<"" | "guardar" | "probar" | "borrar">("");
+  let accionIa = $state<"" | "guardar" | "probar" | "borrar" | "envioSinRevision">("");
   let errorIa = $state<AppError | null>(null);
+  let dialogoEnvioSinRevision = $state(false);
+
+  async function cambiarEnvioSinRevision(activar: boolean) {
+    if (activar) {
+      dialogoEnvioSinRevision = true;
+      return;
+    }
+    await aplicarEnvioSinRevision(false);
+  }
+
+  async function aplicarEnvioSinRevision(activar: boolean) {
+    dialogoEnvioSinRevision = false;
+    accionIa = "envioSinRevision";
+    errorIa = null;
+    try {
+      ia.set(await establecerEnvioSinRevision(activar));
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      accionIa = "";
+    }
+  }
 
   async function activarIa() {
     if (claveIa.trim().length === 0) return;
@@ -754,6 +777,14 @@
 
         <AiModelSelect modelo={ia.estado.modelo} disabled={accionIa !== ""} onchange={cambiarModeloIa} />
 
+        <Switch
+          checked={ia.sendWithoutReview}
+          label={t("settings.ai.sendWithoutReview.label")}
+          hint={t("settings.ai.sendWithoutReview.hint")}
+          disabled={accionIa !== ""}
+          onchange={cambiarEnvioSinRevision}
+        />
+
         <div class="flex flex-wrap gap-2">
           <Button
             variant="secondary"
@@ -865,6 +896,16 @@
     </div>
   {/if}
 </div>
+
+<ConfirmDialog
+  open={dialogoEnvioSinRevision}
+  title={t("settings.ai.sendWithoutReview.confirmTitle")}
+  body={t("settings.ai.sendWithoutReview.confirmBody")}
+  impact={t("settings.ai.sendWithoutReview.confirmImpact")}
+  confirmLabel={t("settings.ai.sendWithoutReview.confirmCta")}
+  onconfirm={() => aplicarEnvioSinRevision(true)}
+  oncancel={() => (dialogoEnvioSinRevision = false)}
+/>
 
 <ConfirmDialog
   open={dialogoBorrarAbierto}

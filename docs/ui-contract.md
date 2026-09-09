@@ -462,13 +462,14 @@ acciones de explicación no aparecen en la interfaz.
 invoke<EstadoIaWire>("estado_ia")                                    // sin red
 invoke<EstadoIaWire>("guardar_clave_ia", { clave: string })          // valida y guarda en el Administrador de credenciales
 invoke<EstadoIaWire>("probar_clave_ia")                              // revalida la clave guardada
-invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado
+invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado (incluye send_without_review)
+invoke<EstadoIaWire>("establecer_envio_sin_revision", { activar: boolean })   // modo «enviar sin revisar» (spec 006); el aviso de riesgo lo muestra Ajustes
 invoke<ModeloIaWire[]>("listar_modelos_ia")                          // catálogo para el selector; el primero es «automático»
 invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplicacion })
 ```
 
 ```ts
-type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; claveValida: boolean | null };
+type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null };
 type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
 type OrigenExplicacion = {
   tipo: "alerta" | "smart";
@@ -479,9 +480,16 @@ type OrigenExplicacion = {
   previewConfirmada: boolean;
 };
 type ResultadoExplicacion =
-  | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean }
+  | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean; sinVolcado: boolean; sinSuceso: boolean }
   | { estado: "revision"; textoCompleto: string; fragmentos: { texto: string; motivoKey: string }[] };
 ```
+
+- Desde la spec `006-explicacion-ia-contexto-crudo`, `explicar_detalle_tecnico` incluye en la
+  consulta —además del resumen— el **volcado crudo de `smartctl`** (alertas `smart.*`/`temp.*`/
+  `nvme.*` y detalle SMART) y el **contenido del suceso de Windows** (alertas `events.*`), ambos
+  anonimizados en capas (ADR-047). `sinVolcado`/`sinSuceso` avisan de que no se pudo obtener uno u
+  otro (FR-014/FR-015). Con `send_without_review` activo se omite la respuesta `{ estado: "revision" }`
+  por fragmentos dudosos, no la de vista previa.
 
 - La **clave de API no viaja por el contrato**: vive solo en el Administrador de credenciales de
   Windows. `estado_ia` expone únicamente si existe y si la última comprobación fue válida.

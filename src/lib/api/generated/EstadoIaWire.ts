@@ -5,4 +5,9 @@
  * última comprobación de esta sesión (`None` = sin comprobar), una pista para la UI, no un dato
  * que se persista.
  */
-export type EstadoIaWire = { activa: boolean, modelo: string, previewAcknowledged: boolean, claveValida: boolean | null, };
+export type EstadoIaWire = { activa: boolean, modelo: string, previewAcknowledged: boolean, 
+/**
+ * FR-007 de la spec `006`: modo «enviar sin revisar» activo. Apagado de fábrica; se resetea al
+ * borrar la clave (FR-012).
+ */
+sendWithoutReview: boolean, claveValida: boolean | null, };

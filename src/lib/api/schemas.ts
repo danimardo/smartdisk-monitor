@@ -311,7 +311,8 @@ export const settings = z.object({
   ai: z.object({
     enabled: z.boolean(),
     model: z.string(),
-    previewAcknowledged: z.boolean()
+    previewAcknowledged: z.boolean(),
+    sendWithoutReview: z.boolean()
   })
 });
 
@@ -323,6 +324,7 @@ export const estadoIa = z.object({
   activa: z.boolean(),
   modelo: z.string(),
   previewAcknowledged: z.boolean(),
+  sendWithoutReview: z.boolean(),
   claveValida: z.boolean().nullable()
 });
 
@@ -338,7 +340,9 @@ export const modeloIa = z.object({
 export const explicacionIa = z.object({
   markdown: z.string(),
   modeloUsado: z.string(),
-  detalleRecortado: z.boolean()
+  detalleRecortado: z.boolean(),
+  sinVolcado: z.boolean(),
+  sinSuceso: z.boolean()
 });
 
 const fragmentoDudoso = z.object({

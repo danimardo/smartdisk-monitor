@@ -560,14 +560,25 @@ condiciones. Incumplir una es un defecto, no un matiz.
   pedido.
 - **Un solo proveedor, un solo destino.** La capacidad tiene un host fijo declarado en la pila. No
   es un cliente HTTP de propósito general: no puede alcanzar ninguna otra dirección.
-- **Solo el detalle técnico que la persona ya tiene delante.** Se envía el texto de la alerta o del
-  detalle SMART visible en ese momento y el mínimo contexto para explicarlo. Nunca el inventario,
-  el historial, la configuración ni datos de otras pantallas.
+- **Solo el detalle técnico del suceso que se explica.** Se envía el detalle técnico de la alerta o
+  del detalle SMART: su resumen, el volcado crudo de la herramienta de diagnóstico del disco
+  (`smartctl`) y, en alertas nacidas de un suceso de Windows, el mensaje y los campos de datos de
+  ese suceso. Todo ello es información que la persona puede abrir en la propia pantalla. Nunca el
+  inventario completo, el historial de otras métricas, la configuración, datos de otras pantallas
+  ni de otros discos. El bloque de metadatos de sistema del suceso —nombre del equipo, principal de
+  seguridad, identificadores de proceso— no se envía.
 - **Anonimización obligatoria antes de que el texto salga del proceso.** Rigen las mismas reglas
-  del principio IX y del XV: números de serie, nombre del equipo, nombre de usuario, rutas con
-  perfil de usuario y etiquetas de volumen se sustituyen por marcadores, con sustitución
-  consistente dentro de una misma petición. La anonimización ocurre en el dominio (Rust), no en la
-  interfaz.
+  del principio IX y del XV: números de serie, identificador mundial del disco (WWN), nombre del
+  equipo, nombre de usuario, rutas con perfil de usuario, etiquetas de volumen, identificadores de
+  seguridad (SID) y rutas internas de dispositivo se sustituyen por marcadores, con sustitución
+  consistente dentro de una misma petición. Los datos que no identifican a una persona —marca,
+  modelo, interfaz y firmware del disco— se conservan como contexto. La anonimización ocurre en el
+  dominio (Rust), no en la interfaz, y combina la extracción de campos conocidos con un barrido de
+  patrones; lo que no pueda garantizarse limpio se muestra a la persona para que decida entre
+  enviarlo, quitarlo o cancelar. La persona puede activar de forma explícita un modo «enviar sin
+  revisar» que asume ese riesgo: apagado de fábrica, su activación es un consentimiento informado
+  adicional al de la vista previa, y no desactiva la anonimización por campos y patrones, solo la
+  revisión manual del texto libre residual.
 - **La persona ve qué se envía.** Antes de la primera consulta se muestra el texto exacto que
   saldrá del equipo y una explicación de a dónde va y para qué. La activación de la función es un
   consentimiento informado, no una casilla.
@@ -587,7 +598,9 @@ condiciones. Incumplir una es un defecto, no un matiz.
   las respuestas no se escribe en el log (principio XV); como mucho, metadatos no identificables
   (que hubo una consulta, el modelo, si hubo error).
 
-Requiere el ADR-046, que fija el proveedor, el endpoint y las dependencias.
+Requiere el ADR-046, que fija el proveedor, el endpoint y las dependencias, y el ADR-047, que fija
+el alcance del dato enviado (volcado crudo y contenido del suceso), la anonimización en capas y el
+modo «enviar sin revisar».
 
 ---
 
@@ -771,6 +784,7 @@ sola razón, sin necesidad de más argumento.
 | 1.7.0 | 2026-09-06 | Principio VI, viñeta del acento: se precisa que heredar el acento de Windows es una opción **apagada de fábrica** (ADR-035, spec `002-rediseno-v3`), no el comportamiento por defecto. La corrección de contraste del acento heredado (ADR-017) no se toca. Es `minor` porque **añade** una precisión que refleja una decisión ya adoptada; ningún principio se relaja ni cambia de contenido |
 | 1.8.0 | 2026-09-08 | Principio XVI (asistencia con IA en la nube): capacidad opcional, apagada de fábrica, de proveedor y destino único, iniciada siempre por la persona, con anonimización obligatoria y clave en el almacén de credenciales de Windows. Los principios III y IX ganan una excepción **acotada** que no se aplica en estado de fábrica; ninguna otra norma se relaja. Entran dependencias nuevas (cliente HTTP, almacén de credenciales) y un permiso de red de Tauri, cada uno con su ADR. Requiere ADR-046 |
 | 1.8.1 | 2026-09-08 | Precisión (patch) de la tabla de pila (spec `005-explicacion-ia`): la única dependencia nueva es `reqwest` 0.13 (`native-tls`, `json` — SChannel, la pila TLS del sistema; `rustls` se descartó porque arrastra `aws-lc-sys`), ya en el árbol vía `tauri`; el almacén de credenciales se hace con FFI a mano contra `advapi32`, sin crate nuevo. La vía elegida (llamada desde Rust) no requiere permiso de *capabilities*. No cambia ni relaja ninguna norma. ADR-046 |
+| 1.9.0 | 2026-09-08 | Principio XVI, dos viñetas (spec `006-explicacion-ia-contexto-crudo`): «detalle técnico visible» se amplía para incluir el volcado crudo de `smartctl` y el mensaje y los campos de datos del suceso de Windows que originó la alerta —información que la persona ya puede abrir en pantalla—, manteniendo la prohibición de inventario, historial, configuración, otras pantallas y otros discos, y descartando el bloque de metadatos de sistema del suceso. La cláusula de anonimización añade WWN, SID y rutas de dispositivo a la lista de sustituciones y reconoce un modo **opcional** «enviar sin revisar», apagado de fábrica y con consentimiento propio, que omite solo la revisión manual del texto libre residual (la anonimización por campos y patrones se sigue aplicando). Es `minor` porque **amplía** una excepción ya existente y añade un opt-in que relaja al margen la garantía «sin datos identificables» para quien lo active; ninguna otra norma se toca. Requiere ADR-047 |
 
 ### Cumplimiento
 
@@ -787,4 +801,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.8.1 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-08
+**Versión**: 1.9.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-08

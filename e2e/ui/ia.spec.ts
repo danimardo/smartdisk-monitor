@@ -173,4 +173,55 @@ test.describe("ayuda con IA — explicar una alerta (US2)", () => {
     await expect(page.getByRole("dialog").getByText("smart.wear_high", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: es["ai.preview.confirm"] })).toBeVisible();
   });
+
+  test("el modal avisa cuando la explicación se hizo sin el volcado del disco (006, FR-014)", async ({
+    page
+  }) => {
+    await instalarIpcFalso(
+      page,
+      conIa({
+        explicar_detalle_tecnico: { ...explicacionOk, sinVolcado: true }
+      })
+    );
+    await page.goto("/alerts");
+
+    const titulo = es[`alert.rule.${detalleAlertaActiva.ruleKey}.title` as keyof typeof es];
+    await page.getByRole("button", { name: new RegExp(titulo) }).click();
+    await page.getByRole("button", { name: es["alerts.explainCta"] }).click();
+
+    await expect(page.getByRole("dialog").getByText(es["ai.modal.withoutDump"])).toBeVisible();
+  });
+});
+
+test.describe("ayuda con IA — modo «enviar sin revisar» (006, US4)", () => {
+  test("activar el Switch pide confirmación de riesgo y llama a establecer_envio_sin_revision", async ({
+    page
+  }) => {
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      estado_ia: estadoIaActiva,
+      establecer_envio_sin_revision: { ...estadoIaActiva, sendWithoutReview: true }
+    });
+    await page.goto("/settings");
+
+    await page.getByRole("switch", { name: es["settings.ai.sendWithoutReview.label"] }).click();
+
+    // Diálogo de riesgo antes de nada.
+    const dialogo = page.getByRole("dialog");
+    await expect(dialogo.getByText(es["settings.ai.sendWithoutReview.confirmBody"])).toBeVisible();
+
+    // Cancelar no llama al comando.
+    await dialogo.getByRole("button", { name: es["common.cancel"] }).click();
+    expect((await llamadas(page)).some((l) => l.comando === "establecer_envio_sin_revision")).toBe(false);
+
+    // Reintentar y confirmar sí lo llama con activar: true.
+    await page.getByRole("switch", { name: es["settings.ai.sendWithoutReview.label"] }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: es["settings.ai.sendWithoutReview.confirmCta"] })
+      .click();
+
+    const llamada = (await llamadas(page)).find((l) => l.comando === "establecer_envio_sin_revision");
+    expect(llamada?.args).toMatchObject({ activar: true });
+  });
 });

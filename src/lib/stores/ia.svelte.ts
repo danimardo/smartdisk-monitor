@@ -20,6 +20,11 @@ class IaState {
     return this.estado?.activa ?? false;
   }
 
+  /** `true` si el modo «enviar sin revisar» está activo (spec 006, FR-007). */
+  get sendWithoutReview(): boolean {
+    return this.estado?.sendWithoutReview ?? false;
+  }
+
   estaEnCurso(clave: string): boolean {
     return this.#enCurso.has(clave);
   }

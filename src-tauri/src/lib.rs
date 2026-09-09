@@ -58,6 +58,7 @@ pub fn run() {
             commands::guardar_clave_ia,
             commands::probar_clave_ia,
             commands::borrar_clave_ia,
+            commands::establecer_envio_sin_revision,
             commands::listar_modelos_ia,
             commands::explicar_detalle_tecnico,
             // inventario

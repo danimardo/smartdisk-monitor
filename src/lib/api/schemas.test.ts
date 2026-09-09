@@ -230,7 +230,7 @@ describe("settings — perfiles de alerta v3 (ADR-036)", () => {
     lifecycle: { closeAction: "minimize", closeActionRemembered: false, startWithSystem: false },
     notifications: { soundEnabled: false, enabled: true },
     logging: { verbose: false },
-    ai: { enabled: false, model: "openrouter/free", previewAcknowledged: false }
+    ai: { enabled: false, model: "openrouter/free", previewAcknowledged: false, sendWithoutReview: false }
   };
 
   it("acepta el settings de fábrica v3", () => {
@@ -281,6 +281,7 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
         activa: true,
         modelo: "openrouter/free",
         previewAcknowledged: false,
+        sendWithoutReview: false,
         claveValida: null
       }).success
     ).toBe(true);
@@ -303,7 +304,19 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
 
   it("explicacionIa RECHAZA markdown como número", () => {
     expect(
-      S.explicacionIa.safeParse({ markdown: 42, modeloUsado: "x", detalleRecortado: false }).success
+      S.explicacionIa.safeParse({
+        markdown: 42,
+        modeloUsado: "x",
+        detalleRecortado: false,
+        sinVolcado: false,
+        sinSuceso: false
+      }).success
+    ).toBe(false);
+  });
+
+  it("explicacionIa RECHAZA sinVolcado/sinSuceso ausentes (cambio de contrato del backend)", () => {
+    expect(
+      S.explicacionIa.safeParse({ markdown: "x", modeloUsado: "y", detalleRecortado: false }).success
     ).toBe(false);
   });
 
@@ -313,7 +326,9 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
         estado: "ok",
         markdown: "## Hola",
         modeloUsado: "vendor/model:free",
-        detalleRecortado: false
+        detalleRecortado: false,
+        sinVolcado: false,
+        sinSuceso: false
       }).success
     ).toBe(true);
     expect(

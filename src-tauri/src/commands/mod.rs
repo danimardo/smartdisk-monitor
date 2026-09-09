@@ -733,6 +733,7 @@ fn get_settings_impl(conn: &rusqlite::Connection) -> SettingsWire {
                 crate::domain::ia::MODELO_AUTOMATICO,
             ),
             preview_acknowledged: leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false),
+            send_without_review: leer_ajuste_bool(conn, "settings.ai.send_without_review", false),
         },
     }
 }
@@ -760,6 +761,7 @@ fn construir_estado_ia(
             crate::domain::ia::MODELO_AUTOMATICO,
         ),
         preview_acknowledged: leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false),
+        send_without_review: leer_ajuste_bool(conn, "settings.ai.send_without_review", false),
         clave_valida,
     }
 }
@@ -846,8 +848,39 @@ pub fn borrar_clave_ia(state: State<AppState>) -> AppResult<crate::domain::ia::E
     let ahora = ahora_rfc3339();
     guardar_ajuste(&conn, "settings.ai.enabled", &false, &ahora)?;
     guardar_ajuste(&conn, "settings.ai.preview_acknowledged", &false, &ahora)?;
+    // FR-012 de la 006: reactivar la función vuelve a pedir el consentimiento de riesgo.
+    guardar_ajuste(&conn, "settings.ai.send_without_review", &false, &ahora)?;
     tracing::info!("ayuda con IA desactivada");
     Ok(construir_estado_ia(&conn, None))
+}
+
+/// Activa o desactiva el modo «enviar sin revisar» (spec `006`, FR-007/FR-008). El aviso de riesgo
+/// y su confirmación son responsabilidad de la interfaz (como la vista previa de la 005); aquí solo
+/// se persiste. Sin credencial no tiene sentido: la función está desactivada.
+#[tauri::command]
+pub fn establecer_envio_sin_revision(
+    state: State<AppState>,
+    activar: bool,
+) -> AppResult<crate::domain::ia::EstadoIaWire> {
+    if crate::platform::credenciales::leer().is_none() {
+        return Err(Box::new(AppError::new("ia.no_key", "error.ia.noKey")));
+    }
+    let clave_valida = *state
+        .ia_clave_valida
+        .lock()
+        .expect("el mutex no se envenena: sin pánicos dentro");
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    guardar_ajuste(
+        &conn,
+        "settings.ai.send_without_review",
+        &activar,
+        &ahora_rfc3339(),
+    )?;
+    tracing::debug!(activar, "modo «enviar sin revisar» de la ayuda con IA");
+    Ok(construir_estado_ia(&conn, clave_valida))
 }
 
 /// Catálogo de modelos de OpenRouter para el selector (spec 005, US3). No requiere clave; solo se
@@ -884,6 +917,40 @@ struct DatosExplicacion {
     user_crudo: String,
     modelo: String,
     preview_ack: bool,
+    /// FR-009 de la 006: con `true`, se omite la pantalla de revisión de fragmentos dudosos (no la
+    /// vista previa de la primera consulta).
+    send_without_review: bool,
+    /// FR-014: se esperaba el volcado `smartctl` y no se pudo obtener.
+    sin_volcado: bool,
+    /// FR-015: se esperaba el contenido del suceso de Windows y no se pudo obtener.
+    sin_suceso: bool,
+    /// Número de serie leído del volcado, para añadir al `Anonimizador` (capa 1, spec 006 §D1).
+    serie_volcado: Option<String>,
+    /// WWN (`wwn.id` decimal) leído del volcado, para añadir al `Anonimizador`.
+    wwn_volcado: Option<String>,
+}
+
+/// Volcado `smartctl -a -j` del disco para la ayuda con IA (spec 006, FR-001/FR-003). Bajo demanda,
+/// no se persiste (mismo patrón que `get_alert_smart_raw_json_impl`). `None` si el disco no expone
+/// `smartctl_path` o la consulta falla: el llamador lo traduce a `sin_volcado` (FR-014).
+fn volcado_smartctl_para_ia(disp: &crate::domain::tipos::Device) -> Option<String> {
+    let ruta = disp.smartctl_path.as_deref()?;
+    crate::collectors::smartctl::query_device_json(ruta).ok()
+}
+
+/// Contenido legible del suceso de Windows que disparó una alerta de regla `events.*` (spec 006,
+/// FR-002): el `triggering_event_id` de la ocurrencia más reciente → su `message` + los campos
+/// `<EventData>`. `None` si no hay evento disparador o no tiene contenido legible (FR-015).
+fn contenido_suceso_disparador(
+    conn: &rusqlite::Connection,
+    alert_group_id: &str,
+) -> Option<String> {
+    let event_id = repo_alertas::list_occurrences(conn, alert_group_id)
+        .ok()?
+        .into_iter()
+        .find_map(|o| o.triggering_event_id)?;
+    let ev = repo_varios::get_event_by_id(conn, event_id).ok()??;
+    crate::domain::ia::extraer_contenido_suceso(ev.message.as_deref(), ev.raw_xml.as_deref())
 }
 
 fn tipo_disco_legible(t: &crate::domain::tipos::DeviceType) -> &'static str {
@@ -919,6 +986,7 @@ fn reunir_datos_explicacion(
 
     let modelo = leer_ajuste_string(conn, "settings.ai.model", ia::MODELO_AUTOMATICO);
     let preview_ack = leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false);
+    let send_without_review = leer_ajuste_bool(conn, "settings.ai.send_without_review", false);
 
     match origen.tipo {
         ia::TipoOrigen::Alerta => {
@@ -936,17 +1004,25 @@ fn reunir_datos_explicacion(
                             .with_detail("grupo de alerta desconocido"),
                     )
                 })?;
-            let device_id = grupo.target_device_id.clone().ok_or_else(|| {
-                Box::new(AppError::new(
+            let quiere_volcado = ["smart.", "temp.", "nvme."]
+                .iter()
+                .any(|p| grupo.rule_key.starts_with(p));
+            let es_evento = grupo.rule_key.starts_with("events.");
+
+            // Reglas de disco: el dispositivo es obligatorio. Reglas de suceso: puede apuntar a un
+            // volumen o a nada, y el contenido del suceso lleva la información (spec 006, FR-002).
+            let disp = match grupo.target_device_id.as_deref() {
+                Some(did) => {
+                    repo_inventario::get_device(conn, did).map_err(rusqlite_err_to_app_error)?
+                }
+                None => None,
+            };
+            if disp.is_none() && !es_evento {
+                return Err(Box::new(AppError::new(
                     "alert.no_smart_data",
                     "error.alertNoSmartData",
-                ))
-            })?;
-            let disp = repo_inventario::get_device(conn, &device_id)
-                .map_err(rusqlite_err_to_app_error)?
-                .ok_or_else(|| {
-                    Box::new(AppError::new("device.not_found", "error.deviceNotFound"))
-                })?;
+                )));
+            }
 
             let mut tendencia: Vec<f64> = repo_alertas::list_occurrences(conn, gid)
                 .map_err(rusqlite_err_to_app_error)?
@@ -956,12 +1032,36 @@ fn reunir_datos_explicacion(
                 .collect();
             tendencia.reverse(); // list_occurrences va de más nuevo a más viejo
 
+            let volcado = if quiere_volcado {
+                disp.as_ref().and_then(volcado_smartctl_para_ia)
+            } else {
+                None
+            };
+            let sin_volcado = quiere_volcado && volcado.is_none();
+            let (serie_volcado, wwn_volcado) = match volcado.as_deref() {
+                Some(v) => ia::identificadores_de_volcado(v),
+                None => (None, None),
+            };
+
+            let suceso = if es_evento {
+                contenido_suceso_disparador(conn, gid)
+            } else {
+                None
+            };
+            let sin_suceso = es_evento && suceso.is_none();
+
             let ctx = ia::ContextoDisco {
-                modelo: &disp.model,
-                tipo: tipo_disco_legible(&disp.device_type),
-                bus: disp.bus_type.as_deref(),
-                firmware: disp.firmware.as_deref(),
-                antiguedad_meses: meses_desde(&disp.first_seen_at),
+                modelo: disp
+                    .as_ref()
+                    .map(|d| d.model.as_str())
+                    .unwrap_or("(disco no identificado en el inventario)"),
+                tipo: disp
+                    .as_ref()
+                    .map(|d| tipo_disco_legible(&d.device_type))
+                    .unwrap_or("no identificado"),
+                bus: disp.as_ref().and_then(|d| d.bus_type.as_deref()),
+                firmware: disp.as_ref().and_then(|d| d.firmware.as_deref()),
+                antiguedad_meses: disp.as_ref().and_then(|d| meses_desde(&d.first_seen_at)),
             };
             let det = ia::DetalleAlerta {
                 regla: &grupo.rule_key,
@@ -972,12 +1072,19 @@ fn reunir_datos_explicacion(
                 &ia::Detalle::Alerta(det),
                 &ctx,
                 ia::Idioma::de_codigo(&origen.idioma),
+                volcado.as_deref(),
+                suceso.as_deref(),
             );
             Ok(DatosExplicacion {
                 system,
                 user_crudo,
                 modelo,
                 preview_ack,
+                send_without_review,
+                sin_volcado,
+                sin_suceso,
+                serie_volcado,
+                wwn_volcado,
             })
         }
         ia::TipoOrigen::Smart => {
@@ -1017,16 +1124,31 @@ fn reunir_datos_explicacion(
                 firmware: disp.firmware.as_deref(),
                 antiguedad_meses: meses_desde(&disp.first_seen_at),
             };
+
+            let volcado = volcado_smartctl_para_ia(&disp);
+            let sin_volcado = volcado.is_none();
+            let (serie_volcado, wwn_volcado) = match volcado.as_deref() {
+                Some(v) => ia::identificadores_de_volcado(v),
+                None => (None, None),
+            };
+
             let (system, user_crudo) = ia::componer_consulta(
                 &ia::Detalle::Smart(&contadores),
                 &ctx,
                 ia::Idioma::de_codigo(&origen.idioma),
+                volcado.as_deref(),
+                None,
             );
             Ok(DatosExplicacion {
                 system,
                 user_crudo,
                 modelo,
                 preview_ack,
+                send_without_review,
+                sin_volcado,
+                sin_suceso: false,
+                serie_volcado,
+                wwn_volcado,
             })
         }
     }
@@ -1067,30 +1189,46 @@ pub async fn explicar_detalle_tecnico(
         reunir_datos_explicacion(&conn, &origen)?
     };
 
-    let anon = crate::reporting::anonimizar::Anonimizador::para_esta_maquina(&series);
-    let user_anon = anon.aplicar(&datos.user_crudo);
+    // Anonimización en una sola pasada sobre el `user_crudo` ya ensamblado (spec 006 §D1):
+    // capa 1 = sustitución literal (`Anonimizador`, con la serie y el WWN del volcado añadidos),
+    // capa 2 = barrido de patrones (`redactar_identificadores`: SID, rutas `\Device\`, WWN hex).
+    let mut anon = crate::reporting::anonimizar::Anonimizador::para_esta_maquina(&series);
+    if let Some(serie) = &datos.serie_volcado {
+        anon = anon.con_numero_de_serie(serie);
+    }
+    if let Some(wwn) = &datos.wwn_volcado {
+        anon = anon.con_numero_de_serie(wwn);
+    }
+    let user_anon = ia::redactar_identificadores(&anon.aplicar(&datos.user_crudo));
     let (mut user, recortado) = ia::recortar(
         &user_anon,
         crate::platform::ia_openrouter::MAX_DETALLE_CHARS,
     );
 
-    // Fragmentos que la anonimización no garantiza limpios (FR-026).
-    let fragmentos = ia::barrer_texto_residual(&user);
-    match origen.revision {
-        ia::RevisionEnvio::Ninguna if !fragmentos.is_empty() => {
-            return Ok(ia::ResultadoExplicacion::Revision(
-                ia::RevisionAnonimizacionWire {
-                    texto_completo: user,
-                    fragmentos,
-                },
-            ));
+    // Fragmentos que la anonimización no garantiza limpios (FR-026). Con «enviar sin revisar»
+    // (FR-009 de la 006) se omite esta pantalla y se envía el texto ya anonimizado; la vista previa
+    // de la primera consulta (más abajo) se sigue mostrando.
+    let fragmentos = if datos.send_without_review {
+        Vec::new()
+    } else {
+        ia::barrer_texto_residual(&user)
+    };
+    if ia::debe_parar_en_revision(
+        datos.send_without_review,
+        origen.revision,
+        !fragmentos.is_empty(),
+    ) {
+        return Ok(ia::ResultadoExplicacion::Revision(
+            ia::RevisionAnonimizacionWire {
+                texto_completo: user,
+                fragmentos,
+            },
+        ));
+    }
+    if origen.revision == ia::RevisionEnvio::QuitarFragmentos {
+        for f in &fragmentos {
+            user = user.replace(&f.texto, "<OMITIDO>");
         }
-        ia::RevisionEnvio::QuitarFragmentos => {
-            for f in &fragmentos {
-                user = user.replace(&f.texto, "<OMITIDO>");
-            }
-        }
-        _ => {}
     }
 
     // Vista previa la primera vez (FR-010).
@@ -1127,7 +1265,9 @@ pub async fn explicar_detalle_tecnico(
 
     match respuesta {
         Ok(cuerpo) => {
-            let expl = ia::analizar_respuesta(cuerpo, recortado)?;
+            let mut expl = ia::analizar_respuesta(cuerpo, recortado)?;
+            expl.sin_volcado = datos.sin_volcado;
+            expl.sin_suceso = datos.sin_suceso;
             tracing::debug!(
                 modelo_solicitado = %datos.modelo,
                 modelo_usado = %expl.modelo_usado,
@@ -1623,6 +1763,7 @@ fn claves_por_ambito(scope: &str) -> Vec<&'static str> {
         "settings.ai.model",
         "settings.ai.preview_acknowledged",
         "settings.ai.enabled",
+        "settings.ai.send_without_review",
     ];
     match scope {
         "schedule" => SCHEDULE.to_vec(),
@@ -6982,6 +7123,131 @@ mod tests_comandos_alertas {
             AlertStatus::Active
         );
     }
+
+    // ---------------------------------------------- 006: contexto crudo para la explicación con IA
+
+    fn origen_alerta(gid: &str) -> crate::domain::ia::OrigenExplicacion {
+        crate::domain::ia::OrigenExplicacion {
+            tipo: crate::domain::ia::TipoOrigen::Alerta,
+            device_id: None,
+            alert_group_id: Some(gid.to_string()),
+            idioma: "es".to_string(),
+            revision: crate::domain::ia::RevisionEnvio::Ninguna,
+            preview_confirmada: false,
+        }
+    }
+
+    #[test]
+    fn reunir_datos_alerta_smart_sin_smartctl_path_marca_sin_volcado_y_no_es_error() {
+        // T201: `d1` de `conn_de_prueba` no tiene `smartctl_path`.
+        let conn = conn_de_prueba();
+        let gid = crear_grupo_con_regla(&conn, "smart.wear_high");
+
+        let datos = reunir_datos_explicacion(&conn, &origen_alerta(&gid)).unwrap();
+        assert!(
+            datos.sin_volcado,
+            "se esperaba volcado y no se pudo obtener"
+        );
+        assert!(!datos.sin_suceso);
+        assert!(datos.user_crudo.contains("smart.wear_high"));
+        assert!(!datos.user_crudo.contains("Volcado técnico"));
+    }
+
+    #[test]
+    fn reunir_datos_alerta_de_suceso_con_evento_disparador_incluye_su_contenido() {
+        // T301
+        let conn = conn_de_prueba();
+        let gid = crear_grupo_con_regla(&conn, "events.disk_error");
+
+        let mut ev = crate::domain::tipos::SystemEvent {
+            id: 0,
+            channel: "System".to_string(),
+            record_id: 4242,
+            occurred_at_utc: "2026-09-04T10:00:00Z".to_string(),
+            provider: "disk".to_string(),
+            event_id: 7,
+            level: crate::domain::tipos::EventLevel::Error,
+            message: Some("El controlador ha detectado un error en el disco.".to_string()),
+            raw_xml: Some(
+                "<Event><System><Computer>Ryzen</Computer></System><EventData><Data Name='DeviceName'>\\Device\\Harddisk1\\DR3</Data></EventData></Event>"
+                    .to_string(),
+            ),
+            device_id: Some("d1".to_string()),
+            volume_id: None,
+            mapping_confidence: crate::domain::tipos::MappingConfidence::Unknown,
+            dedup_hash: "hash-4242".to_string(),
+        };
+        let eid = repo_varios::insert_event_returning_new_id(&conn, &ev)
+            .unwrap()
+            .unwrap();
+        ev.id = eid;
+        repo_alertas::set_triggering_event_ultima_ocurrencia(&conn, &gid, eid).unwrap();
+
+        let datos = reunir_datos_explicacion(&conn, &origen_alerta(&gid)).unwrap();
+        assert!(!datos.sin_suceso);
+        assert!(datos
+            .user_crudo
+            .contains("controlador ha detectado un error"));
+        assert!(datos
+            .user_crudo
+            .contains("DeviceName = \\Device\\Harddisk1\\DR3"));
+        assert!(
+            !datos.user_crudo.contains("Ryzen"),
+            "el bloque <System> no viaja"
+        );
+    }
+
+    #[test]
+    fn reunir_datos_alerta_de_suceso_sin_evento_disparador_marca_sin_suceso() {
+        // T302
+        let conn = conn_de_prueba();
+        let gid = crear_grupo_con_regla(&conn, "events.controller_reset");
+
+        let datos = reunir_datos_explicacion(&conn, &origen_alerta(&gid)).unwrap();
+        assert!(datos.sin_suceso);
+        assert!(!datos.sin_volcado, "una regla de suceso no espera volcado");
+    }
+
+    #[test]
+    fn estado_ia_refleja_send_without_review_y_es_false_de_fabrica() {
+        // T502
+        let conn = conn_de_prueba();
+        assert!(!construir_estado_ia(&conn, None).send_without_review);
+
+        guardar_ajuste(
+            &conn,
+            "settings.ai.send_without_review",
+            &true,
+            "2026-09-08T00:00:00Z",
+        )
+        .unwrap();
+        assert!(construir_estado_ia(&conn, None).send_without_review);
+    }
+
+    #[test]
+    fn reunir_datos_lee_send_without_review_de_los_ajustes() {
+        // T501/T502: el flag llega a `DatosExplicacion` para el corte de FR-009.
+        let conn = conn_de_prueba();
+        let gid = crear_grupo_con_regla(&conn, "smart.wear_high");
+        assert!(
+            !reunir_datos_explicacion(&conn, &origen_alerta(&gid))
+                .unwrap()
+                .send_without_review
+        );
+
+        guardar_ajuste(
+            &conn,
+            "settings.ai.send_without_review",
+            &true,
+            "2026-09-08T00:00:00Z",
+        )
+        .unwrap();
+        assert!(
+            reunir_datos_explicacion(&conn, &origen_alerta(&gid))
+                .unwrap()
+                .send_without_review
+        );
+    }
 }
 
 #[cfg(test)]
@@ -8018,6 +8284,13 @@ mod tests_helpers_varios {
         assert!(claves.contains(&"lifecycle.start_with_system"));
         assert!(claves.contains(&"notifications.enabled"));
         assert!(claves.contains(&"logging.verbose"));
+    }
+
+    #[test]
+    fn claves_por_ambito_ai_incluye_send_without_review() {
+        // T513: `reset_settings` ámbito "ai"/"all" borra el modo «enviar sin revisar» (spec 006).
+        assert!(claves_por_ambito("ai").contains(&"settings.ai.send_without_review"));
+        assert!(claves_por_ambito("all").contains(&"settings.ai.send_without_review"));
     }
 
     #[test]

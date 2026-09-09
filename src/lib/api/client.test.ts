@@ -203,6 +203,7 @@ describe("la superficie completa del contrato", () => {
     guardarClaveIa: "guardar_clave_ia",
     probarClaveIa: "probar_clave_ia",
     borrarClaveIa: "borrar_clave_ia",
+    establecerEnvioSinRevision: "establecer_envio_sin_revision",
     listarModelosIa: "listar_modelos_ia",
     explicarDetalleTecnico: "explicar_detalle_tecnico"
   };

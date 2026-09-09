@@ -23,9 +23,11 @@ pub const TIMEOUT_SEGUNDOS: u64 = 60;
 /// Tiempo máximo para establecer la conexión: distingue «sin red» rápido de «modelo lento».
 pub const CONNECT_TIMEOUT_SEGUNDOS: u64 = 10;
 
-/// Recorte defensivo del detalle técnico antes de enviarlo (FR-021). Valor propuesto
-/// (`docs/open-questions.md`).
-pub const MAX_DETALLE_CHARS: usize = 8_000;
+/// Recorte defensivo del detalle técnico antes de enviarlo (FR-021 de la 005, FR-013 de la 006).
+/// Elevado a 40 000 en la spec `006-explicacion-ia-contexto-crudo` para dar cabida a un
+/// `smartctl -a -j` completo (6–35 KB con el registro de errores del disco) más el contenido del
+/// suceso de Windows (`docs/open-questions.md`).
+pub const MAX_DETALLE_CHARS: usize = 40_000;
 
 /// Identifica la aplicación ante OpenRouter (recomendación del proveedor para su panel). No lleva
 /// ningún dato del equipo ni de la persona.

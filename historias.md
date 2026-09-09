@@ -289,11 +289,15 @@ El producto debe ayudar a responder:
 - Español e inglés, seleccionados inicialmente según el idioma del sistema.
 - Tema claro, oscuro o automático según el sistema.
 - Instalador manual y desinstalador.
-- **Ayuda con IA opcional** (spec `005-explicacion-ia`, principio XVI): si la persona configura una
-  clave de API de OpenRouter, puede pedir que se le traduzca a lenguaje llano el detalle técnico de
-  una alerta o del detalle SMART de un disco, con posibles pasos a seguir. Apagada de fábrica; sin
-  clave, la aplicación no hace ninguna conexión a Internet. El detalle técnico se anonimiza antes
-  de enviarse y la persona ve el texto exacto la primera vez.
+- **Ayuda con IA opcional** (spec `005-explicacion-ia`, ampliada por `006-explicacion-ia-contexto-crudo`,
+  principio XVI): si la persona configura una clave de API de OpenRouter, puede pedir que se le
+  traduzca a lenguaje llano el detalle técnico de una alerta o del detalle SMART de un disco, con
+  posibles pasos a seguir. Apagada de fábrica; sin clave, la aplicación no hace ninguna conexión a
+  Internet. La consulta lleva el volcado técnico completo del disco y, en alertas de sucesos de
+  Windows, el contenido de ese suceso; todo se anonimiza en capas antes de salir del equipo
+  (número de serie, WWN, nombre de equipo y usuario, SID, rutas de dispositivo) y la persona ve el
+  texto exacto la primera vez. Un ajuste opcional «enviar sin revisar», apagado de fábrica y con
+  aviso de riesgo, omite la pantalla de revisión de fragmentos dudosos.
 
 #### Fuera del alcance inicial
 
@@ -1630,19 +1634,26 @@ Fichero de origen: `docs/data-model.md`
   observable (tema ≠ `system`, idioma forzado, perfil de alerta ≠ `balanced`, algún alias o alguna
   exclusión), en cuyo caso la graba y sigue sin mostrarlo (FR-043, sin migración). No la restaura
   `reset_settings`.
-- **Ayuda con IA** (spec `005-explicacion-ia`, FR-024). Exactamente tres claves; sin migración:
+- **Ayuda con IA** (spec `005-explicacion-ia` FR-024, ampliada por `006-explicacion-ia-contexto-crudo`
+  FR-011). Exactamente **cuatro** claves; sin migración:
   - `settings.ai.enabled`: booleano, fábrica `false`. Espejo de «existe credencial». Lo escriben
     solo `guardar_clave_ia` (→ `true`) y `borrar_clave_ia` (→ `false`), nunca `set_setting`.
   - `settings.ai.model`: identificador del modelo, fábrica `"openrouter/free"` (= «automático»).
     Se valida solo por forma (no vacío, ≤120, sin espacios), no contra el catálogo del proveedor.
   - `settings.ai.preview_acknowledged`: booleano, fábrica `false`. `true` cuando la persona ha
     confirmado la vista previa del texto a enviar (FR-010). `borrar_clave_ia` lo vuelve a `false`.
+  - `settings.ai.send_without_review`: booleano, fábrica `false`. `true` cuando la persona ha
+    activado el modo «enviar sin revisar» —con confirmación de riesgo (FR-008 de la 006)—, que
+    omite la pantalla de revisión de fragmentos dudosos pero no la vista previa. Lo escribe solo el
+    comando `establecer_envio_sin_revision`, nunca `set_setting`. `borrar_clave_ia` lo vuelve a
+    `false` (FR-012 de la 006).
   - **La clave de API no está aquí.** Vive en el Administrador de credenciales de Windows
     (`CRED_TYPE_GENERIC`, `TargetName` `SmartDisk Monitor/OpenRouter`, `CRED_PERSIST_LOCAL_MACHINE`,
     blob UTF-8), fuera de SQLite y de cualquier fichero (FR-004). `reset_settings` en el ámbito
-    `"ai"` (o `"all"`) borra las tres claves **y** la credencial.
-  - Las entidades de una consulta de explicación (texto a enviar, respuesta del modelo, catálogo de
-    modelos) son **efímeras**: no se persisten en ninguna tabla.
+    `"ai"` (o `"all"`) borra las cuatro claves **y** la credencial.
+  - Las entidades de una consulta de explicación (texto a enviar —resumen + volcado crudo de
+    `smartctl` + contenido del suceso de Windows, anonimizados—, respuesta del modelo, catálogo de
+    modelos) son **efímeras**: no se persisten en ninguna tabla (spec 006, ADR-047).
 - **`volume_free_bytes`** (`metric_samples`, `MetricTarget::Volume`): muestra periódica del espacio
   libre de cada volumen monitorizado, persistida en el ciclo de descubrimiento (ADR-036). Antes la
   capacidad solo vivía como instantánea en `volumes.free_bytes`; ahora también como serie, para que
@@ -2503,13 +2514,14 @@ acciones de explicación no aparecen en la interfaz.
 invoke<EstadoIaWire>("estado_ia")                                    // sin red
 invoke<EstadoIaWire>("guardar_clave_ia", { clave: string })          // valida y guarda en el Administrador de credenciales
 invoke<EstadoIaWire>("probar_clave_ia")                              // revalida la clave guardada
-invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado
+invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado (incluye send_without_review)
+invoke<EstadoIaWire>("establecer_envio_sin_revision", { activar: boolean })   // modo «enviar sin revisar» (spec 006); el aviso de riesgo lo muestra Ajustes
 invoke<ModeloIaWire[]>("listar_modelos_ia")                          // catálogo para el selector; el primero es «automático»
 invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplicacion })
 ```
 
 ```ts
-type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; claveValida: boolean | null };
+type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null };
 type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
 type OrigenExplicacion = {
   tipo: "alerta" | "smart";
@@ -2520,9 +2532,16 @@ type OrigenExplicacion = {
   previewConfirmada: boolean;
 };
 type ResultadoExplicacion =
-  | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean }
+  | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean; sinVolcado: boolean; sinSuceso: boolean }
   | { estado: "revision"; textoCompleto: string; fragmentos: { texto: string; motivoKey: string }[] };
 ```
+
+- Desde la spec `006-explicacion-ia-contexto-crudo`, `explicar_detalle_tecnico` incluye en la
+  consulta —además del resumen— el **volcado crudo de `smartctl`** (alertas `smart.*`/`temp.*`/
+  `nvme.*` y detalle SMART) y el **contenido del suceso de Windows** (alertas `events.*`), ambos
+  anonimizados en capas (ADR-047). `sinVolcado`/`sinSuceso` avisan de que no se pudo obtener uno u
+  otro (FR-014/FR-015). Con `send_without_review` activo se omite la respuesta `{ estado: "revision" }`
+  por fragmentos dudosos, no la de vista previa.
 
 - La **clave de API no viaja por el contrato**: vive solo en el Administrador de credenciales de
   Windows. `estado_ia` expone únicamente si existe y si la última comprobación fue válida.
@@ -5263,9 +5282,11 @@ condiciones:
   aplicación mantenga una lista. La persona puede elegir otro modelo; la lista se puebla desde
   `GET /api/v1/models`. Se registra y se puede mostrar el modelo realmente usado (campo `model` de
   la respuesta).
-- **Datos enviados**: solo el texto técnico visible, anonimizado en el dominio (Rust) antes de
-  salir del proceso, con las reglas del principio IX y XV. La persona ve el texto exacto que se
-  enviará antes de la primera consulta.
+- **Datos enviados**: el detalle técnico visible, anonimizado en el dominio (Rust) antes de salir
+  del proceso, con las reglas del principio IX y XV. La persona ve el texto exacto que se enviará
+  antes de la primera consulta. **El alcance del dato lo amplía y precisa ADR-047** (volcado crudo
+  de `smartctl`, contenido del suceso de Windows, anonimización en capas, modo «enviar sin
+  revisar»); esta viñeta describe la 005, ADR-047 describe la 006.
 - **Clave**: se guarda en el almacén de credenciales de Windows (DPAPI). En `settings` solo el
   estado de activación y el modelo elegido.
 - **Ubicación de la llamada**: en el backend Rust, no en el WebView (principio XVI).
@@ -5327,6 +5348,92 @@ condiciones:
   del texto que se enviará.
 - Los límites de OpenRouter (p. ej. 50 peticiones/día en cuenta gratuita) no se codifican: se
   maneja el error de cuota como un `AppError` con reintento diferido.
+
+### ADR-047 — Alcance del dato para la ayuda con IA: volcado crudo, contenido del suceso y anonimización en capas
+
+Estado: aceptada.
+
+#### El problema
+
+La 005 dejó la ayuda con IA funcionando, pero enviando al modelo una reconstrucción mínima: el
+identificador interno de la regla (`smart.reallocated_high`), el valor que la disparó, su tendencia
+y un contexto acotado del disco. El modelo explica a ciegas: no ve los atributos SMART reales, ni
+sus umbrales, ni el registro de errores del disco, ni —en alertas nacidas de un suceso de
+Windows— el contenido de ese suceso. La explicación resultante es genérica y poco fiable.
+
+El detalle técnico real **sí** está en la propia pantalla: el botón «Ver detalle técnico» abre el
+volcado `smartctl -a -j`, y el detalle de una alerta de suceso muestra el evento. La 005 no lo
+enviaba porque el principio XVI, en su redacción original, se leía como «solo el texto de la alerta
+visible en ese momento».
+
+#### La decisión
+
+La feature `006-explicacion-ia-contexto-crudo` amplía el dato que sale del equipo, con la enmienda
+constitucional 1.9.0 (principio XVI) que la autoriza:
+
+- **Se añade a la consulta**, además del resumen estructurado que ya se enviaba:
+  - el **volcado `smartctl -a -j`** completo del disco implicado, en alertas `smart.*`/`temp.*`/
+    `nvme.*` y en el detalle SMART de un disco;
+  - el **contenido legible del suceso de Windows** que disparó la alerta (regla `events.*`): su
+    mensaje renderizado y los pares `Nombre = valor` de `<EventData>`. **No** el bloque `<System>`
+    del XML (proveedor, GUID, ProcessID/ThreadID, `Computer`, `Security UserID`): metadatos de
+    transporte que concentran identificadores y no explican nada.
+- **Anonimización en tres capas**, toda en el dominio (Rust), en una sola pasada sobre el texto ya
+  ensamblado, antes de recortar:
+  1. **Extracción estructurada → sustitución literal.** Del JSON de `smartctl` se leen
+     `serial_number` y `wwn.id`; se pasan al `Anonimizador` ya auditado (`reporting::anonimizar`),
+     junto con las series de inventario y el equipo/usuario de la máquina. Marca, modelo, interfaz
+     y firmware **no** se sustituyen: son contexto necesario y no identifican a una persona.
+  2. **Barrido por patrones → sustitución por marcador** (`domain::ia::redactar_identificadores`,
+     byte a byte, **sin crate `regex`**): SID (`S-1-…` → `<SID>`), rutas NT de dispositivo
+     (`\Device\…` → `<DISPOSITIVO>`), WWN hexadecimales (`0x` + 12–16 hex → `<WWN>`).
+  3. **Barrido residual → señalar para revisión** (`barrer_texto_residual`, ya existía): lo que
+     quede marcado dispara la pantalla de revisión de FR-026, salvo que…
+- **Modo «enviar sin revisar»** (`settings.ai.send_without_review`, cuarta clave del grupo `ai`,
+  apagado de fábrica): la persona lo activa con una confirmación de riesgo explícita —independiente
+  y adicional a la vista previa de FR-010— y a partir de entonces las consultas omiten la pantalla
+  de revisión de fragmentos. La anonimización por campos y patrones (capas 1–2) **se sigue
+  aplicando**; solo se salta la revisión manual del texto libre residual. Se resetea al desactivar
+  la ayuda con IA.
+- **`MAX_DETALLE_CHARS`** sube de 8 000 a 40 000 para dar cabida a un volcado completo con su
+  registro de errores más el suceso. El texto se ensambla en orden `resumen → volcado → suceso`, de
+  modo que al recortar se pierde antes el suceso y nunca el resumen (FR-013). Si se recorta, la
+  respuesta lo advierte (ya lo hacía FR-021).
+
+#### Alternativas descartadas
+
+- **Crate `regex` para el barrido de patrones.** Menos código, pero es una dependencia nueva en un
+  binario privilegiado (límite duro de `AGENTS.md`) para un problema que el patrón byte a byte que
+  el proyecto ya usa en `barrer_texto_residual` resuelve igual de bien.
+- **Enviar el volcado sin la capa de patrones, confiando solo en la extracción literal + el barrido
+  residual.** El barrido residual solo *señala*; sin la capa 2, un SID o una ruta `\Device\` en el
+  mensaje de un suceso obligaría a pasar por la pantalla de revisión en casi todas las consultas de
+  suceso. La capa 2 los limpia de entrada.
+- **Anonimizar en el frontend.** Prohibido por el principio XVI: la anonimización precede a la
+  salida del texto y ocurre en Rust.
+- **Presupuesto de recorte por sección** (p. ej. 30 KB de volcado + 8 KB de suceso). Más lógica
+  para el mismo efecto que el orden de concatenación + un único `recortar`.
+- **Enviar el `raw_xml` entero del suceso.** El bloque `<System>` no aporta a la explicación y
+  concentra identificadores; extraer solo `message` + `EventData` reduce la superficie.
+
+#### Consecuencias
+
+- La superficie de datos que sale del equipo **crece**: un volcado completo del disco y el
+  contenido de un suceso, frente a una etiqueta de regla y unas cifras. Se acota con la
+  anonimización en capas (determinista primero, heurística después) y con el modo «enviar sin
+  revisar» apagado de fábrica y con doble consentimiento.
+- El modo «enviar sin revisar» relaja **al margen** la garantía «sin datos identificables» del
+  principio XVI para quien lo active a conciencia: fragmentos de texto libre que la heurística no
+  pueda clasificar podrían salir sin revisión manual. Es un opt-in informado, no el comportamiento
+  por defecto.
+- Un prompt mayor consume más tokens y puede acercar antes el límite de la cuota gratuita de
+  OpenRouter; el error de cuota ya se maneja como `AppError` con reintento diferido.
+- **Sin dependencias, permisos de Tauri ni componentes de catálogo nuevos.** El barrido de patrones
+  y el lector de `EventData` son código propio; el `Switch` y el `ConfirmDialog` del modo nuevo son
+  del catálogo existente.
+- Documentos actualizados en consecuencia: principio XVI (enmienda 1.9.0), `docs/data-model.md`
+  (cuarta clave de `settings.ai`), `docs/ui-contract.md` (comando `establecer_envio_sin_revision`,
+  campos nuevos en `EstadoIaWire` y `ExplicacionIaWire`), `docs/open-questions.md` (X.4).
 
 
 ---
@@ -6614,11 +6721,16 @@ va elevado (ADR-004); las pruebas usan `CRED_PERSIST_SESSION` para no exigir ele
 `DECIDIDO` (clarify de la spec). Holgado sobre los ~20 s del caso normal (SC-002); superado, se
 cancela y se ofrece reintentar.
 
-#### X.4 · Recorte del detalle técnico: 8 000 caracteres
+#### X.4 · Recorte del detalle técnico: 40 000 caracteres
 
-`PROPUESTO`. Valor de `MAX_DETALLE_CHARS` en `platform::ia_openrouter`. No medido: es una defensa
-contra un detalle absurdamente largo, no un límite ajustado a nada concreto. Si se recorta, la
-respuesta lo advierte (FR-021).
+`DECIDIDO` (spec `006-explicacion-ia-contexto-crudo`, ADR-047). Valor de `MAX_DETALLE_CHARS` en
+`platform::ia_openrouter`. La 005 lo dejó `PROPUESTO` en 8 000 como defensa contra un detalle
+absurdamente largo. La 006 añade a la consulta el volcado `smartctl -a -j` completo (6–20 KB
+típico, hasta ~35 KB con el registro de errores del disco) y el contenido del suceso de Windows;
+40 000 caracteres cubren el caso normal completo. Para `openrouter/free` son ~12–14k tokens de
+entrada, dentro de lo que aceptan los modelos gratuitos actuales. El texto se ensambla
+`resumen → volcado → suceso`, así que al recortar se pierde antes el suceso y nunca el resumen
+(FR-013). Si se recorta, la respuesta lo advierte (FR-021).
 
 #### X.5 · La explicación devuelta es efímera
 
@@ -9070,6 +9182,12 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.ai.model.paidBody": "«{name}» no es un modelo gratuito.",
   "settings.ai.model.paidImpact": "Cada explicación que generes con este modelo puede generar cargos en tu cuenta de OpenRouter.",
   "settings.ai.model.paidConfirm": "Usar este modelo",
+  "settings.ai.sendWithoutReview.label": "Enviar sin revisar",
+  "settings.ai.sendWithoutReview.hint": "Omite la pantalla de revisión de fragmentos dudosos. El texto se sigue anonimizando (número de serie, WWN, nombre del equipo, usuario, SID y rutas) antes de salir del equipo.",
+  "settings.ai.sendWithoutReview.confirmTitle": "Activar el envío sin revisión",
+  "settings.ai.sendWithoutReview.confirmBody": "La aplicación seguirá sustituyendo los identificadores conocidos. Pero fragmentos de texto libre del volcado técnico o de un suceso de Windows podrían salir del equipo sin que los revises antes.",
+  "settings.ai.sendWithoutReview.confirmImpact": "Podrás desactivarlo cuando quieras. Al desactivar la ayuda con IA se apaga solo.",
+  "settings.ai.sendWithoutReview.confirmCta": "Activar",
   "common.back": "Atrás",
   "common.retry": "Reintentar",
   "disk.noSmartData": "Sin datos SMART",
@@ -9172,6 +9290,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "ai.modal.model": "Generado por el modelo {model}",
   "ai.modal.disclaimer": "Es una orientación generada por IA, no un diagnóstico de la aplicación. Contrasta lo importante.",
   "ai.modal.truncated": "El detalle técnico era largo y se envió un extracto.",
+  "ai.modal.withoutDump": "Esta explicación se hizo sin el detalle técnico completo del disco (no se pudo leer en ese momento).",
+  "ai.modal.withoutEvent": "Esta explicación se hizo sin el contenido del suceso de Windows que originó la alerta.",
   "ai.preview.body": "Esto es exactamente lo que se enviará a OpenRouter para generar la explicación. Solo se muestra la primera vez.",
   "ai.preview.confirm": "Enviar y explicar",
   "ai.review.body": "El texto a enviar contiene fragmentos que podrían identificar tu equipo y que no se han podido sustituir automáticamente. Revísalo antes de continuar.",
@@ -9622,6 +9742,12 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.ai.model.paidBody": "“{name}” is not a free model.",
   "settings.ai.model.paidImpact": "Every explanation you generate with this model may incur charges on your OpenRouter account.",
   "settings.ai.model.paidConfirm": "Use this model",
+  "settings.ai.sendWithoutReview.label": "Send without review",
+  "settings.ai.sendWithoutReview.hint": "Skips the flagged-fragments review screen. The text is still anonymised (serial number, WWN, computer name, user, SID and paths) before it leaves your machine.",
+  "settings.ai.sendWithoutReview.confirmTitle": "Turn on send without review",
+  "settings.ai.sendWithoutReview.confirmBody": "The app will still replace known identifiers. But free-text fragments from the technical dump or a Windows event could leave your machine without you reviewing them first.",
+  "settings.ai.sendWithoutReview.confirmImpact": "You can turn it off at any time. Turning off AI help switches it off automatically.",
+  "settings.ai.sendWithoutReview.confirmCta": "Turn on",
   "common.back": "Back",
   "common.retry": "Retry",
   "disk.noSmartData": "No SMART data",
@@ -9724,6 +9850,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "ai.modal.model": "Generated by the {model} model",
   "ai.modal.disclaimer": "This is AI-generated guidance, not a diagnosis from the app. Double-check anything important.",
   "ai.modal.truncated": "The technical detail was long, so an excerpt was sent.",
+  "ai.modal.withoutDump": "This explanation was made without the disk's full technical detail (it could not be read at the time).",
+  "ai.modal.withoutEvent": "This explanation was made without the content of the Windows event that raised the alert.",
   "ai.preview.body": "This is exactly what will be sent to OpenRouter to generate the explanation. Shown only the first time.",
   "ai.preview.confirm": "Send and explain",
   "ai.review.body": "The text to send contains fragments that could identify your computer and could not be replaced automatically. Review it before continuing.",

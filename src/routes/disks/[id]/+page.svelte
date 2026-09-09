@@ -404,6 +404,8 @@
   markdown={explicacion.markdown}
   modeloUsado={explicacion.modeloUsado}
   detalleRecortado={explicacion.detalleRecortado}
+  sinVolcado={explicacion.sinVolcado}
+  sinSuceso={explicacion.sinSuceso}
   error={explicacion.error}
   textoRevision={explicacion.textoRevision}
   fragmentos={explicacion.fragmentos}

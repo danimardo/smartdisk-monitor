@@ -21,6 +21,8 @@
     markdown = "",
     modeloUsado = "",
     detalleRecortado = false,
+    sinVolcado = false,
+    sinSuceso = false,
     error = null as AppError | null,
     textoRevision = "",
     fragmentos = [] as Fragmento[],
@@ -108,6 +110,16 @@
         {#if detalleRecortado}
           <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">
             {t("ai.modal.truncated")}
+          </p>
+        {/if}
+        {#if sinVolcado}
+          <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">
+            {t("ai.modal.withoutDump")}
+          </p>
+        {/if}
+        {#if sinSuceso}
+          <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">
+            {t("ai.modal.withoutEvent")}
           </p>
         {/if}
         <div class="flex flex-col gap-2 border-t border-hairline pt-3">

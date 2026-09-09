@@ -151,19 +151,26 @@
   observable (tema ≠ `system`, idioma forzado, perfil de alerta ≠ `balanced`, algún alias o alguna
   exclusión), en cuyo caso la graba y sigue sin mostrarlo (FR-043, sin migración). No la restaura
   `reset_settings`.
-- **Ayuda con IA** (spec `005-explicacion-ia`, FR-024). Exactamente tres claves; sin migración:
+- **Ayuda con IA** (spec `005-explicacion-ia` FR-024, ampliada por `006-explicacion-ia-contexto-crudo`
+  FR-011). Exactamente **cuatro** claves; sin migración:
   - `settings.ai.enabled`: booleano, fábrica `false`. Espejo de «existe credencial». Lo escriben
     solo `guardar_clave_ia` (→ `true`) y `borrar_clave_ia` (→ `false`), nunca `set_setting`.
   - `settings.ai.model`: identificador del modelo, fábrica `"openrouter/free"` (= «automático»).
     Se valida solo por forma (no vacío, ≤120, sin espacios), no contra el catálogo del proveedor.
   - `settings.ai.preview_acknowledged`: booleano, fábrica `false`. `true` cuando la persona ha
     confirmado la vista previa del texto a enviar (FR-010). `borrar_clave_ia` lo vuelve a `false`.
+  - `settings.ai.send_without_review`: booleano, fábrica `false`. `true` cuando la persona ha
+    activado el modo «enviar sin revisar» —con confirmación de riesgo (FR-008 de la 006)—, que
+    omite la pantalla de revisión de fragmentos dudosos pero no la vista previa. Lo escribe solo el
+    comando `establecer_envio_sin_revision`, nunca `set_setting`. `borrar_clave_ia` lo vuelve a
+    `false` (FR-012 de la 006).
   - **La clave de API no está aquí.** Vive en el Administrador de credenciales de Windows
     (`CRED_TYPE_GENERIC`, `TargetName` `SmartDisk Monitor/OpenRouter`, `CRED_PERSIST_LOCAL_MACHINE`,
     blob UTF-8), fuera de SQLite y de cualquier fichero (FR-004). `reset_settings` en el ámbito
-    `"ai"` (o `"all"`) borra las tres claves **y** la credencial.
-  - Las entidades de una consulta de explicación (texto a enviar, respuesta del modelo, catálogo de
-    modelos) son **efímeras**: no se persisten en ninguna tabla.
+    `"ai"` (o `"all"`) borra las cuatro claves **y** la credencial.
+  - Las entidades de una consulta de explicación (texto a enviar —resumen + volcado crudo de
+    `smartctl` + contenido del suceso de Windows, anonimizados—, respuesta del modelo, catálogo de
+    modelos) son **efímeras**: no se persisten en ninguna tabla (spec 006, ADR-047).
 - **`volume_free_bytes`** (`metric_samples`, `MetricTarget::Volume`): muestra periódica del espacio
   libre de cada volumen monitorizado, persistida en el ciclo de descubrimiento (ADR-036). Antes la
   capacidad solo vivía como instantánea en `volumes.free_bytes`; ahora también como serie, para que

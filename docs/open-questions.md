@@ -1279,11 +1279,16 @@ va elevado (ADR-004); las pruebas usan `CRED_PERSIST_SESSION` para no exigir ele
 `DECIDIDO` (clarify de la spec). Holgado sobre los ~20 s del caso normal (SC-002); superado, se
 cancela y se ofrece reintentar.
 
-### X.4 · Recorte del detalle técnico: 8 000 caracteres
+### X.4 · Recorte del detalle técnico: 40 000 caracteres
 
-`PROPUESTO`. Valor de `MAX_DETALLE_CHARS` en `platform::ia_openrouter`. No medido: es una defensa
-contra un detalle absurdamente largo, no un límite ajustado a nada concreto. Si se recorta, la
-respuesta lo advierte (FR-021).
+`DECIDIDO` (spec `006-explicacion-ia-contexto-crudo`, ADR-047). Valor de `MAX_DETALLE_CHARS` en
+`platform::ia_openrouter`. La 005 lo dejó `PROPUESTO` en 8 000 como defensa contra un detalle
+absurdamente largo. La 006 añade a la consulta el volcado `smartctl -a -j` completo (6–20 KB
+típico, hasta ~35 KB con el registro de errores del disco) y el contenido del suceso de Windows;
+40 000 caracteres cubren el caso normal completo. Para `openrouter/free` son ~12–14k tokens de
+entrada, dentro de lo que aceptan los modelos gratuitos actuales. El texto se ensambla
+`resumen → volcado → suceso`, así que al recortar se pierde antes el suceso y nunca el resumen
+(FR-013). Si se recorta, la respuesta lo advierte (FR-021).
 
 ### X.5 · La explicación devuelta es efímera
 

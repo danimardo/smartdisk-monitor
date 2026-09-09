@@ -262,6 +262,11 @@ export const probarClaveIa = () => call("probar_clave_ia", S.estadoIa);
 /** Desactiva la ayuda: borra la credencial y limpia el estado. Conserva el modelo elegido. */
 export const borrarClaveIa = () => call("borrar_clave_ia", S.estadoIa);
 
+/** Activa/desactiva el modo «enviar sin revisar» (spec 006, FR-007). El aviso de riesgo y su
+ *  confirmación los muestra la pantalla de Ajustes antes de llamar con `activar: true`. */
+export const establecerEnvioSinRevision = (activar: boolean) =>
+  call("establecer_envio_sin_revision", S.estadoIa, { activar });
+
 /** Catálogo de modelos de OpenRouter para el selector. El primero es «modelo gratuito automático».
  *  Si falla, la interfaz deja seguir con «automático». */
 export const listarModelosIa = () => call("listar_modelos_ia", S.modeloIa.array());

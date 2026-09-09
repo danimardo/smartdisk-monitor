@@ -20,6 +20,8 @@ class Explicacion {
   markdown = $state("");
   modeloUsado = $state("");
   detalleRecortado = $state(false);
+  sinVolcado = $state(false);
+  sinSuceso = $state(false);
   error = $state<AppError | null>(null);
   textoRevision = $state("");
   fragmentos = $state<{ texto: string; motivoKey: string }[]>([]);
@@ -67,6 +69,8 @@ class Explicacion {
         this.markdown = r.markdown;
         this.modeloUsado = r.modeloUsado;
         this.detalleRecortado = r.detalleRecortado;
+        this.sinVolcado = r.sinVolcado;
+        this.sinSuceso = r.sinSuceso;
         this.fase = "resultado";
       } else {
         this.textoRevision = r.textoCompleto;

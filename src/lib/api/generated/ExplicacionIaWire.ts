@@ -16,4 +16,14 @@ modeloUsado: string,
 /**
  * `true` si el detalle técnico se recortó antes de enviarlo (FR-021).
  */
-detalleRecortado: boolean, };
+detalleRecortado: boolean, 
+/**
+ * `true` si la explicación se hizo sin el volcado técnico del disco porque no se pudo obtener
+ * en ese momento (FR-014, spec `006-explicacion-ia-contexto-crudo`).
+ */
+sinVolcado: boolean, 
+/**
+ * `true` si se hizo sin el contenido del suceso de Windows que originó la alerta (FR-015,
+ * spec `006-explicacion-ia-contexto-crudo`).
+ */
+sinSuceso: boolean, };

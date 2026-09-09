@@ -26,10 +26,14 @@ pub struct EstadoIaWire {
     pub activa: bool,
     pub modelo: String,
     pub preview_acknowledged: bool,
+    /// FR-007 de la spec `006`: modo «enviar sin revisar» activo. Apagado de fábrica; se resetea al
+    /// borrar la clave (FR-012).
+    pub send_without_review: bool,
     pub clave_valida: Option<bool>,
 }
 
-/// Grupo `ai` de `SettingsWire` (`docs/data-model.md`). Tres datos, los que fija FR-024.
+/// Grupo `ai` de `SettingsWire` (`docs/data-model.md`). Cuatro datos: los tres de FR-024 de la 005
+/// más `send_without_review` (FR-011 de la 006).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/lib/api/generated/")]
@@ -37,6 +41,7 @@ pub struct AiSettingsWire {
     pub enabled: bool,
     pub model: String,
     pub preview_acknowledged: bool,
+    pub send_without_review: bool,
 }
 
 /// Un modelo del catálogo de OpenRouter, para el selector. `es_de_pago` decide si mostrar el
@@ -62,6 +67,12 @@ pub struct ExplicacionIaWire {
     pub modelo_usado: String,
     /// `true` si el detalle técnico se recortó antes de enviarlo (FR-021).
     pub detalle_recortado: bool,
+    /// `true` si la explicación se hizo sin el volcado técnico del disco porque no se pudo obtener
+    /// en ese momento (FR-014, spec `006-explicacion-ia-contexto-crudo`).
+    pub sin_volcado: bool,
+    /// `true` si se hizo sin el contenido del suceso de Windows que originó la alerta (FR-015,
+    /// spec `006-explicacion-ia-contexto-crudo`).
+    pub sin_suceso: bool,
 }
 
 /// Un fragmento del texto a enviar que la anonimización no ha podido garantizar limpio (FR-026).
@@ -131,6 +142,17 @@ pub enum RevisionEnvio {
 pub enum ResultadoExplicacion {
     Ok(ExplicacionIaWire),
     Revision(RevisionAnonimizacionWire),
+}
+
+/// ¿La consulta debe pararse en la pantalla de revisión de fragmentos dudosos (FR-026 de la 005)?
+/// `false` = seguir. Con «enviar sin revisar» activo (FR-009 de la 006) nunca para aquí; la vista
+/// previa de la primera consulta (FR-010) es una comprobación aparte, posterior a esta.
+pub fn debe_parar_en_revision(
+    send_without_review: bool,
+    revision: RevisionEnvio,
+    hay_fragmentos_dudosos: bool,
+) -> bool {
+    !send_without_review && hay_fragmentos_dudosos && revision == RevisionEnvio::Ninguna
 }
 
 // ---------------------------------------------------------------- respuesta cruda de OpenRouter
@@ -239,6 +261,10 @@ pub fn analizar_respuesta(
             markdown,
             modelo_usado: cuerpo.model.unwrap_or_default(),
             detalle_recortado,
+            // Los avisos de FR-014/FR-015 los conoce el comando (fue él quien recolectó los datos):
+            // aquí se dejan en `false` y el comando los fija sobre el wire devuelto.
+            sin_volcado: false,
+            sin_suceso: false,
         }),
         None => Err(Box::new(
             AppError::new("ia.empty_response", "error.ia.emptyResponse").retryable(),
@@ -438,13 +464,17 @@ Rules: always answer in English. Use Markdown with headings (##) and lists. Be b
 words). Do NOT invent data, values or causes that are not in the text I give you. Do NOT use \
 jargon without explaining it.";
 
-/// Compone el par `(system, user)` para la petición. `detalle` y `disco` deben venir **ya
-/// anonimizados**. El `system` es una constante, no i18n (constitución §XV: es instrucción al
-/// modelo, no interfaz).
+/// Compone el par `(system, user)` para la petición. **Ensambla el `user` en bruto** en orden
+/// `resumen → volcado → suceso`; **no anonimiza**: el comando aplica `Anonimizador` +
+/// [`redactar_identificadores`] sobre el texto completo después (spec `006`, §D1). Que el suceso
+/// vaya al final hace que sea lo primero que se pierde al recortar (FR-013). El `system` es una
+/// constante, no i18n (constitución §XV: es instrucción al modelo, no interfaz).
 pub fn componer_consulta(
     detalle: &Detalle,
     disco: &ContextoDisco,
     idioma: Idioma,
+    volcado: Option<&str>,
+    suceso: Option<&str>,
 ) -> (String, String) {
     let system = match idioma {
         Idioma::Es => SYSTEM_ES,
@@ -504,6 +534,23 @@ pub fn componer_consulta(
         user.push_str(&format!(", antigüedad aproximada {meses} meses"));
     }
     user.push('\n');
+
+    if let Some(v) = volcado {
+        let v = v.trim();
+        if !v.is_empty() {
+            user.push_str("\nVolcado técnico del disco (smartctl -a -j):\n");
+            user.push_str(v);
+            user.push('\n');
+        }
+    }
+    if let Some(s) = suceso {
+        let s = s.trim();
+        if !s.is_empty() {
+            user.push_str("\nContenido del suceso de Windows que originó la alerta:\n");
+            user.push_str(s);
+            user.push('\n');
+        }
+    }
 
     (system.to_owned(), user)
 }
@@ -626,6 +673,217 @@ fn token_parece_identificador(token: &str) -> bool {
         }
     }
     letra && digito
+}
+
+// ================================================================ anonimización de capas (spec 006)
+
+/// Sustituye por marcadores los identificadores con **gramática fija** que la sustitución literal
+/// del `Anonimizador` (capa 1) no cubre porque no vienen de un campo conocido: SID de Windows,
+/// rutas NT de dispositivo y WWN hexadecimales (FR-004 de la spec `006`). Byte-a-byte, **sin
+/// `regex`**, mismo criterio conservador que [`barrer_texto_residual`]: puede sustituir de más (una
+/// explicación un poco más pobre), nunca de menos.
+pub fn redactar_identificadores(texto: &str) -> String {
+    let b = texto.as_bytes();
+    let n = b.len();
+    let mut out = String::with_capacity(n);
+    let en_limite = |idx: usize| {
+        idx == 0 || {
+            let c = b[idx - 1];
+            !(c.is_ascii_alphanumeric() || c == b'_')
+        }
+    };
+    let mut i = 0;
+    while i < n {
+        // SID: "S-1-" seguido de al menos un grupo "-<dígitos>".
+        if b[i] == b'S'
+            && en_limite(i)
+            && i + 3 < n
+            && b[i + 1] == b'-'
+            && b[i + 2] == b'1'
+            && b[i + 3] == b'-'
+        {
+            let mut j = i + 3; // apunta al '-' tras el "1"
+            let mut grupos = 0;
+            while j < n && b[j] == b'-' {
+                let mut k = j + 1;
+                while k < n && b[k].is_ascii_digit() {
+                    k += 1;
+                }
+                if k == j + 1 {
+                    break; // '-' sin dígitos detrás
+                }
+                grupos += 1;
+                j = k;
+            }
+            if grupos >= 1 {
+                out.push_str("<SID>");
+                i = j;
+                continue;
+            }
+        }
+        // Ruta NT de dispositivo: "\Device\..." hasta un separador.
+        if b[i] == b'\\' && texto[i..].starts_with("\\Device\\") {
+            let mut j = i + "\\Device\\".len();
+            while j < n {
+                let c = b[j];
+                if c.is_ascii_whitespace()
+                    || matches!(c, b'"' | b'\'' | b'<' | b'(' | b')' | b',' | b';')
+                {
+                    break;
+                }
+                j += 1;
+            }
+            out.push_str("<DISPOSITIVO>");
+            i = j;
+            continue;
+        }
+        // WWN hexadecimal: "0x" + 12..=16 dígitos hex, en límite de palabra por ambos lados.
+        if (b[i] == b'0')
+            && en_limite(i)
+            && i + 2 < n
+            && (b[i + 1] == b'x' || b[i + 1] == b'X')
+            && b[i + 2].is_ascii_hexdigit()
+        {
+            let mut j = i + 2;
+            while j < n && b[j].is_ascii_hexdigit() {
+                j += 1;
+            }
+            let hexlen = j - (i + 2);
+            let fin_limpio = j == n || !(b[j].is_ascii_alphanumeric() || b[j] == b'_');
+            if (12..=16).contains(&hexlen) && fin_limpio {
+                out.push_str("<WWN>");
+                i = j;
+                continue;
+            }
+        }
+        let ch = texto[i..]
+            .chars()
+            .next()
+            .expect("i está en un límite de carácter");
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+#[derive(Deserialize)]
+struct VolcadoIds {
+    #[serde(default)]
+    serial_number: Option<String>,
+    #[serde(default)]
+    wwn: Option<VolcadoWwn>,
+}
+
+#[derive(Deserialize)]
+struct VolcadoWwn {
+    #[serde(default)]
+    id: Option<i64>,
+}
+
+/// Extrae del JSON de `smartctl -a -j` los identificadores del disco que hay que anonimizar por
+/// sustitución literal (capa 1, spec `006` §D3): número de serie y WWN (`wwn.id`, en la
+/// representación decimal exacta con la que aparece en el JSON). Devuelve `(serie, wwn)`. Un JSON
+/// ilegible o sin esos campos da `(None, None)` sin error: el volcado se enviará igual y el barrido
+/// de patrones ([`redactar_identificadores`]) es la red de seguridad. La marca, el modelo y el
+/// firmware **no** se extraen: son contexto necesario y no identifican a una persona (FR-005).
+pub fn identificadores_de_volcado(json: &str) -> (Option<String>, Option<String>) {
+    match serde_json::from_str::<VolcadoIds>(json) {
+        Ok(v) => (
+            v.serial_number.filter(|s| !s.trim().is_empty()),
+            v.wwn.and_then(|w| w.id).map(|id| id.to_string()),
+        ),
+        Err(_) => (None, None),
+    }
+}
+
+/// Contenido legible de un suceso de Windows para la ayuda con IA (spec `006`, FR-002): su mensaje
+/// renderizado (si Windows lo guardó) más los pares `Nombre = valor` de los nodos `<EventData>` del
+/// XML. **No** incluye el bloque `<System>` (proveedor, GUID, ProcessID/ThreadID, `Computer`,
+/// `Security`): son metadatos de transporte que concentran identificadores y no explican nada.
+/// `None` si no hay ni mensaje ni datos legibles (FR-015). Lector acotado sobre la cadena, sin
+/// parser XML ni dependencia nueva; el `raw_xml` lo produce el colector de la 003 y su forma es
+/// estable.
+pub fn extraer_contenido_suceso(message: Option<&str>, raw_xml: Option<&str>) -> Option<String> {
+    let mut partes: Vec<String> = Vec::new();
+    if let Some(m) = message {
+        let m = m.trim();
+        if !m.is_empty() {
+            partes.push(m.to_owned());
+        }
+    }
+    if let Some(xml) = raw_xml {
+        let datos = extraer_event_data(xml);
+        if !datos.is_empty() {
+            partes.push(format!("Datos del suceso:\n{}", datos.join("\n")));
+        }
+    }
+    if partes.is_empty() {
+        None
+    } else {
+        Some(partes.join("\n\n"))
+    }
+}
+
+fn extraer_event_data(xml: &str) -> Vec<String> {
+    let Some(ini) = xml.find("<EventData") else {
+        return Vec::new();
+    };
+    let tras_ini = &xml[ini..];
+    let Some(fin) = tras_ini.find("</EventData>") else {
+        return Vec::new();
+    };
+    let bloque = &tras_ini[..fin];
+    let mut out = Vec::new();
+    let mut resto = bloque;
+    while let Some(p) = resto.find("<Data") {
+        resto = &resto[p + "<Data".len()..];
+        let Some(cierre_tag) = resto.find('>') else {
+            break;
+        };
+        let attrs = &resto[..cierre_tag];
+        // `<Data .../>` sin contenido: ignorar y seguir.
+        if attrs.ends_with('/') {
+            resto = &resto[cierre_tag + 1..];
+            continue;
+        }
+        let nombre = atributo_xml(attrs, "Name");
+        resto = &resto[cierre_tag + 1..];
+        let Some(fin_val) = resto.find("</Data>") else {
+            break;
+        };
+        let valor = desescapar_xml(resto[..fin_val].trim());
+        resto = &resto[fin_val + "</Data>".len()..];
+        if valor.is_empty() {
+            continue;
+        }
+        match nombre {
+            Some(n) => out.push(format!("{n} = {valor}")),
+            None => out.push(valor),
+        }
+    }
+    out
+}
+
+fn atributo_xml(attrs: &str, nombre: &str) -> Option<String> {
+    let clave = format!("{nombre}=");
+    let pos = attrs.find(&clave)? + clave.len();
+    let tras = &attrs[pos..];
+    let comilla = tras.chars().next()?;
+    if comilla != '\'' && comilla != '"' {
+        return None;
+    }
+    let tras = &tras[1..];
+    let fin = tras.find(comilla)?;
+    Some(tras[..fin].to_owned())
+}
+
+fn desescapar_xml(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
@@ -830,8 +1088,13 @@ mod tests {
             valor_actual: Some(8.0),
             tendencia: &[5.0, 6.0, 8.0],
         };
-        let (system, user) =
-            componer_consulta(&Detalle::Alerta(detalle), &disco_de_prueba(), Idioma::Es);
+        let (system, user) = componer_consulta(
+            &Detalle::Alerta(detalle),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
         assert!(system.contains("español"));
         assert!(system.contains("NO inventes"));
         assert!(user.contains("smart.reallocated_high"));
@@ -849,8 +1112,13 @@ mod tests {
             valor_actual: None,
             tendencia: &[],
         };
-        let (system, user) =
-            componer_consulta(&Detalle::Alerta(detalle), &disco_de_prueba(), Idioma::En);
+        let (system, user) = componer_consulta(
+            &Detalle::Alerta(detalle),
+            &disco_de_prueba(),
+            Idioma::En,
+            None,
+            None,
+        );
         assert!(system.contains("English"));
         assert!(!user.contains("Valor actual"));
         assert!(!user.contains("Valores recientes"));
@@ -864,8 +1132,13 @@ mod tests {
             valor_actual: Some(61.0),
             tendencia: &[],
         };
-        let (_, user) =
-            componer_consulta(&Detalle::Alerta(detalle), &disco_de_prueba(), Idioma::Es);
+        let (_, user) = componer_consulta(
+            &Detalle::Alerta(detalle),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
         assert!(!user.to_lowercase().contains("serie"));
         assert!(!user.contains("<"));
     }
@@ -886,8 +1159,13 @@ mod tests {
                 significativo: false,
             },
         ];
-        let (system, user) =
-            componer_consulta(&Detalle::Smart(&contadores), &disco_de_prueba(), Idioma::Es);
+        let (system, user) = componer_consulta(
+            &Detalle::Smart(&contadores),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
         assert!(system.contains("español"));
         assert!(user.contains("reallocated_sectors = 8 count (subiendo)"));
         assert!(user.contains("temperature = 41 celsius\n"));
@@ -901,6 +1179,223 @@ mod tests {
         assert_eq!(Idioma::de_codigo("EN"), Idioma::En);
         assert_eq!(Idioma::de_codigo("es"), Idioma::Es);
         assert_eq!(Idioma::de_codigo("fr"), Idioma::Es);
+    }
+
+    // ------------------------------------------- 006: volcado y suceso en componer_consulta (T102)
+
+    #[test]
+    fn componer_consulta_ensambla_resumen_volcado_suceso_en_ese_orden() {
+        let detalle = DetalleAlerta {
+            regla: "smart.reallocated_high",
+            valor_actual: Some(8.0),
+            tendencia: &[],
+        };
+        let (_, user) = componer_consulta(
+            &Detalle::Alerta(detalle),
+            &disco_de_prueba(),
+            Idioma::Es,
+            Some(r#"{"serial_number":"ABC123"}"#),
+            Some("El controlador de disco detectó un error."),
+        );
+        let pos_resumen = user.find("smart.reallocated_high").unwrap();
+        let pos_volcado = user.find("serial_number").unwrap();
+        let pos_suceso = user.find("controlador de disco").unwrap();
+        assert!(
+            pos_resumen < pos_volcado,
+            "el resumen va antes que el volcado"
+        );
+        assert!(
+            pos_volcado < pos_suceso,
+            "el volcado va antes que el suceso"
+        );
+        assert!(user.contains("Volcado técnico del disco"));
+        assert!(user.contains("Contenido del suceso de Windows"));
+    }
+
+    #[test]
+    fn componer_consulta_sin_volcado_ni_suceso_no_anade_secciones() {
+        let detalle = DetalleAlerta {
+            regla: "smart.wear_high",
+            valor_actual: None,
+            tendencia: &[],
+        };
+        let (_, user) = componer_consulta(
+            &Detalle::Alerta(detalle),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
+        assert!(!user.contains("Volcado técnico"));
+        assert!(!user.contains("suceso de Windows"));
+    }
+
+    #[test]
+    fn al_recortar_se_pierde_antes_el_suceso_que_el_volcado_y_el_resumen() {
+        let detalle = DetalleAlerta {
+            regla: "smart.reallocated_high",
+            valor_actual: Some(8.0),
+            tendencia: &[],
+        };
+        let volcado = "V".repeat(200);
+        let suceso = "S".repeat(200);
+        let (_, user) = componer_consulta(
+            &Detalle::Alerta(detalle),
+            &disco_de_prueba(),
+            Idioma::Es,
+            Some(&volcado),
+            Some(&suceso),
+        );
+        let (cortado, recortado) = recortar(&user, 120);
+        assert!(recortado);
+        assert!(
+            cortado.contains("smart.reallocated_high"),
+            "el resumen sobrevive"
+        );
+        assert!(!cortado.contains(&suceso), "el suceso completo se pierde");
+    }
+
+    // ------------------------------------------- 006: redactar_identificadores (T100)
+
+    #[test]
+    fn redactar_sustituye_sid_ruta_de_dispositivo_y_wwn_hex() {
+        let t = redactar_identificadores(
+            "user S-1-5-21-1004336348-1177238915-682003330-512 en \\Device\\HarddiskVolume24, wwn 0x5002538e40abc123 fin",
+        );
+        assert!(t.contains("<SID>"), "{t}");
+        assert!(t.contains("<DISPOSITIVO>"), "{t}");
+        assert!(t.contains("<WWN>"), "{t}");
+        assert!(!t.contains("S-1-5-21"));
+        assert!(!t.contains("HarddiskVolume24"));
+        assert!(!t.contains("5002538e40abc123"));
+    }
+
+    #[test]
+    fn redactar_no_toca_hex_corto_palabras_normales_ni_marcadores() {
+        let t = redactar_identificadores(
+            "color 0xFF, palabra Serial1234, marcador <SERIE-1> y <EQUIPO>",
+        );
+        assert_eq!(
+            t,
+            "color 0xFF, palabra Serial1234, marcador <SERIE-1> y <EQUIPO>"
+        );
+    }
+
+    #[test]
+    fn redactar_respeta_utf8_alrededor() {
+        let t = redactar_identificadores("año 2024, disco \\Device\\Harddisk1\\DR19 señalado");
+        assert!(t.starts_with("año 2024"));
+        assert!(t.contains("<DISPOSITIVO> señalado"));
+    }
+
+    // ------------------------------------------- 006: identificadores_de_volcado (T101)
+
+    #[test]
+    fn identificadores_de_volcado_extrae_serie_y_wwn_id_decimal() {
+        let json = r#"{"model_name":"WDC WD40EFAX","serial_number":"WD-WX12A34B5678","firmware_version":"83.00A83","wwn":{"naa":5,"oui":6478,"id":1234567890}}"#;
+        let (serie, wwn) = identificadores_de_volcado(json);
+        assert_eq!(serie.as_deref(), Some("WD-WX12A34B5678"));
+        assert_eq!(wwn.as_deref(), Some("1234567890"));
+    }
+
+    #[test]
+    fn identificadores_de_volcado_json_sin_wwn_o_ilegible_no_rompe() {
+        let (serie, wwn) = identificadores_de_volcado(r#"{"serial_number":"ABC"}"#);
+        assert_eq!(serie.as_deref(), Some("ABC"));
+        assert_eq!(wwn, None);
+        assert_eq!(identificadores_de_volcado("no es json"), (None, None));
+    }
+
+    // ------------------------------------------- 006: extraer_contenido_suceso (T300)
+
+    const EVENTO_NTFS_98: &str = r#"<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-Ntfs' Guid='{3ff37a1c-a68d-4d6e-8c9b-f79e8b16c482}'/><EventID>98</EventID><TimeCreated SystemTime='2026-09-05T05:57:42Z'/><EventRecordID>811025</EventRecordID><Execution ProcessID='4' ThreadID='23724'/><Channel>System</Channel><Computer>Ryzen</Computer><Security UserID='S-1-5-18'/></System><EventData><Data Name='DriveName'>E:</Data><Data Name='DeviceName'>\Device\HarddiskVolume24</Data><Data Name='CorruptionActionState'>0</Data></EventData></Event>"#;
+    const EVENTO_DISK_158: &str = r#"<Event><System><Provider Name='disk'/><EventID Qualifiers='32772'>158</EventID><Computer>Ryzen</Computer><Security/></System><EventData><Data>\Device\Harddisk1\DR19</Data><Data>1</Data><Binary>1B00000002003000</Binary></EventData></Event>"#;
+
+    #[test]
+    fn extraer_contenido_suceso_toma_mensaje_y_eventdata_sin_bloque_system() {
+        let c = extraer_contenido_suceso(
+            Some("El sistema de archivos de la estructura del disco está dañado."),
+            Some(EVENTO_NTFS_98),
+        )
+        .unwrap();
+        assert!(c.contains("estructura del disco"));
+        assert!(c.contains("DriveName = E:"));
+        assert!(c.contains("DeviceName = \\Device\\HarddiskVolume24"));
+        assert!(c.contains("CorruptionActionState = 0"));
+        assert!(!c.contains("Ryzen"), "no lleva <Computer>");
+        assert!(!c.contains("S-1-5-18"), "no lleva <Security UserID>");
+        assert!(!c.contains("ProcessID"));
+        assert!(!c.contains("EventRecordID"));
+    }
+
+    #[test]
+    fn extraer_contenido_suceso_data_sin_nombre_y_sin_mensaje() {
+        let c = extraer_contenido_suceso(None, Some(EVENTO_DISK_158)).unwrap();
+        assert!(c.contains("\\Device\\Harddisk1\\DR19"));
+        assert!(!c.contains("Binary"));
+        assert!(!c.contains("1B00000002003000"));
+    }
+
+    #[test]
+    fn extraer_contenido_suceso_sin_nada_legible_es_none() {
+        assert_eq!(
+            extraer_contenido_suceso(None, Some("<Event><System/></Event>")),
+            None
+        );
+        assert_eq!(extraer_contenido_suceso(Some("   "), None), None);
+        assert_eq!(extraer_contenido_suceso(None, None), None);
+    }
+
+    // ------------------------------------------- 006: debe_parar_en_revision (T500)
+
+    #[test]
+    fn debe_parar_en_revision_con_fragmentos_y_sin_modo() {
+        assert!(debe_parar_en_revision(false, RevisionEnvio::Ninguna, true));
+    }
+
+    #[test]
+    fn enviar_sin_revisar_nunca_para_en_la_pantalla_de_fragmentos() {
+        assert!(!debe_parar_en_revision(true, RevisionEnvio::Ninguna, true));
+    }
+
+    #[test]
+    fn sin_fragmentos_o_ya_revisado_no_para() {
+        assert!(!debe_parar_en_revision(
+            false,
+            RevisionEnvio::Ninguna,
+            false
+        ));
+        assert!(!debe_parar_en_revision(
+            false,
+            RevisionEnvio::EnviarIgual,
+            true
+        ));
+        assert!(!debe_parar_en_revision(
+            false,
+            RevisionEnvio::QuitarFragmentos,
+            true
+        ));
+    }
+
+    #[test]
+    fn pasada_completa_de_anonimizacion_deja_marca_y_firmware_pero_no_ids() {
+        // T103: anon.aplicar (capa 1) + redactar_identificadores (capa 2) sobre el texto ensamblado.
+        let json = r#"{"model_name":"WDC WD40EFAX-68JH4N1","serial_number":"WD-WX12A34B5678","firmware_version":"83.00A83","wwn":{"naa":5,"oui":6478,"id":1234567890}}"#;
+        let (serie, wwn) = identificadores_de_volcado(json);
+        let anon = crate::reporting::anonimizar::Anonimizador::sin_anonimizar()
+            .con_numero_de_serie(serie.as_deref().unwrap())
+            .con_numero_de_serie(wwn.as_deref().unwrap());
+        let crudo = format!("{json}\nSID S-1-5-21-1-2-3-513 en \\Device\\HarddiskVolume7");
+        let limpio = redactar_identificadores(&anon.aplicar(&crudo));
+        assert!(!limpio.contains("WD-WX12A34B5678"));
+        assert!(!limpio.contains("1234567890"));
+        assert!(!limpio.contains("S-1-5-21"));
+        assert!(!limpio.contains("HarddiskVolume7"));
+        assert!(
+            limpio.contains("WDC WD40EFAX-68JH4N1"),
+            "la marca/modelo se conserva"
+        );
+        assert!(limpio.contains("83.00A83"), "el firmware se conserva");
     }
 
     // ---------------------------------------------------------------- recortar
