@@ -190,5 +190,22 @@
         {/each}
       </div>
     </div>
+
+    {#if hayCurva && !loading}
+      <!-- Capa de lectura, encima de todo: repite la serie **sin trazo** (solo el punto resaltado y
+           el globo) y solo la mitad derecha despejada —sin texto encima— responde al ratón. El
+           teclado recorre toda la curva. -->
+      <div class="pointer-events-none absolute inset-0">
+        <Sparkline
+          points={series}
+          color={serieColor}
+          height={246}
+          interactivo
+          soloLectura
+          hitDesde={0.5}
+          unidad="°C"
+        />
+      </div>
+    {/if}
   </div>
 </Card>

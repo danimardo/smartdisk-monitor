@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { app } from "./app.svelte";
+import { app, VENTANA_ACTIVIDAD_TARJETA_MS } from "./app.svelte";
 import type { AlertGroup, DiskSummary } from "$lib/design/types";
 
 /** El estado se alimenta de eventos que traen el objeto completo, no un parche (ADR-015).
@@ -80,6 +80,78 @@ describe("upsertAlerts", () => {
     app.upsertAlerts([alert("g1")]);
     app.upsertAlerts([alert("g2")], ["g1"]);
     expect(app.alerts.map((a) => a.id)).toEqual(["g2"]);
+  });
+});
+
+describe("onda de actividad de la tarjeta (ADR-051)", () => {
+  const T0 = Date.parse("2026-09-09T10:00:00Z");
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const conActividad = (
+    id: string,
+    estado: DiskSummary["activity"]["estado"],
+    media: number | null
+  ): DiskSummary =>
+    disk(id, {
+      activity: { estado, mediaPercent: media, picoPercent: media, muestras: 30, ventanaSegundos: 30 }
+    });
+
+  beforeEach(() => {
+    app.devices = [];
+    app.activitySeries = {};
+  });
+
+  it("añade un punto por disco en cada evento", () => {
+    app.pushActivitySamples([conActividad("a", "valido", 20)], iso(T0));
+    app.pushActivitySamples(
+      [conActividad("a", "valido", 30), conActividad("b", "valido", 5)],
+      iso(T0 + 30_000)
+    );
+    expect(app.activitySeries["a"]).toEqual([
+      { t: T0, v: 20 },
+      { t: T0 + 30_000, v: 30 }
+    ]);
+    expect(app.activitySeries["b"]).toEqual([{ t: T0 + 30_000, v: 5 }]);
+  });
+
+  it("pinta la media parcial, pero deja hueco (v null) cuando no hay dato", () => {
+    app.pushActivitySamples([conActividad("a", "parcial", 40)], iso(T0));
+    app.pushActivitySamples([conActividad("a", "no_disponible", null)], iso(T0 + 30_000));
+    expect(app.activitySeries["a"].map((p) => p.v)).toEqual([40, null]);
+  });
+
+  it("ignora un evento a menos de 15 s del último punto (reemisión del ciclo SMART)", () => {
+    app.pushActivitySamples([conActividad("a", "valido", 20)], iso(T0));
+    app.pushActivitySamples([conActividad("a", "valido", 99)], iso(T0 + 5_000));
+    expect(app.activitySeries["a"]).toEqual([{ t: T0, v: 20 }]);
+  });
+
+  it("recorta los puntos que salen de la ventana relativa al más reciente", () => {
+    app.pushActivitySamples([conActividad("a", "valido", 10)], iso(T0));
+    app.pushActivitySamples(
+      [conActividad("a", "valido", 50)],
+      iso(T0 + VENTANA_ACTIVIDAD_TARJETA_MS + 60_000)
+    );
+    expect(app.activitySeries["a"]).toEqual([{ t: T0 + VENTANA_ACTIVIDAD_TARJETA_MS + 60_000, v: 50 }]);
+  });
+
+  it("la siembra se fusiona con lo que ya llegó en vivo, sin pisarlo", () => {
+    app.pushActivitySamples([conActividad("a", "valido", 30)], iso(T0 + 60_000));
+    app.seedActivitySeries("a", [
+      { t: T0, v: 10 },
+      { t: T0 + 30_000, v: 20 }
+    ]);
+    expect(app.activitySeries["a"]).toEqual([
+      { t: T0, v: 10 },
+      { t: T0 + 30_000, v: 20 },
+      { t: T0 + 60_000, v: 30 }
+    ]);
+  });
+
+  it("prunearSeriesActividad descarta los discos que ya no están presentes", () => {
+    app.pushActivitySamples([conActividad("a", "valido", 1), conActividad("b", "valido", 2)], iso(T0));
+    app.devices = [disk("a")];
+    app.prunearSeriesActividad();
+    expect(Object.keys(app.activitySeries)).toEqual(["a"]);
   });
 });
 

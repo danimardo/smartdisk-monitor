@@ -4005,8 +4005,12 @@ pub struct MetricSeriesWire {
 /// resolución `raw`.
 fn cadencia_esperada_ms(metric_key: &str) -> i64 {
     match metric_key {
-        "temperature_celsius"
-        | "activity_percent"
+        // Métricas del colector rápido (`planificador::METRICAS_RAPIDAS`, 30 s de fábrica).
+        // `temperature_celsius` **no** está aquí: solo se obtiene del parseo de `smartctl`, que
+        // escribe `planificador::SMART_COMPLETO` (300 s), y cae al `_` de abajo. Declararla a 30 s
+        // hacía que `domain::series::completar_serie` metiera un hueco entre cada par de muestras
+        // (300 s ≫ 2,5 × 30 s) y la gráfica de temperatura salía como puntos sueltos.
+        "activity_percent"
         | "read_bytes_per_second"
         | "write_bytes_per_second"
         | "read_latency_ms"
@@ -4273,6 +4277,43 @@ mod tests_series {
 
         assert_eq!(serie.resolution, Resolution::Raw);
         assert!(serie.points.iter().any(|p| p.v == Some(40.0)));
+    }
+
+    #[test]
+    fn la_temperatura_cruda_declara_la_cadencia_del_ciclo_smart_no_la_de_metricas_rapidas() {
+        // `temperature_celsius` solo la escribe el ciclo SMART (300 s). Con la cadencia de 30 s que
+        // se declaraba antes, dos muestras separadas 5 min quedaban partidas por un hueco.
+        let conn = conn_de_prueba();
+        let ahora = time::OffsetDateTime::now_utc();
+        let fmt = |t: time::OffsetDateTime| {
+            t.format(&time::format_description::well_known::Rfc3339)
+                .unwrap()
+        };
+        repo_metricas::insert_sample(
+            &conn,
+            &muestra(&fmt(ahora - time::Duration::minutes(10)), 40.0),
+        )
+        .unwrap();
+        repo_metricas::insert_sample(
+            &conn,
+            &muestra(&fmt(ahora - time::Duration::minutes(5)), 42.0),
+        )
+        .unwrap();
+
+        let serie = get_metric_series_impl(
+            &conn,
+            Some("d1"),
+            None,
+            "temperature_celsius",
+            &fmt(ahora - time::Duration::minutes(11)),
+            &fmt(ahora),
+        )
+        .unwrap();
+
+        assert_eq!(serie.expected_interval_ms, 300_000.0);
+        // Las dos muestras a 5 min de distancia no generan un hueco entre ellas (300 s < 2,5 × 300 s).
+        let valores: Vec<_> = serie.points.iter().map(|p| p.v).collect();
+        assert_eq!(valores, vec![Some(40.0), Some(42.0)]);
     }
 
     #[test]

@@ -152,4 +152,42 @@ describe("Sparkline", () => {
     await userEvent.keyboard("{ArrowRight}{ArrowRight}");
     expect(viva.textContent).toContain("42");
   });
+
+  it("`soloLectura`: no repinta el trazo, pero el cursor de teclado sigue leyendo (capa de overlay)", async () => {
+    const points: Punto[] = Array.from({ length: 8 }, (_, i) => ({
+      t: Date.parse("2026-09-06T08:00:00Z") + i * 3_600_000,
+      v: 40 + i
+    }));
+    const { container } = await render(Sparkline, {
+      props: { points, interactivo: true, soloLectura: true, unidad: "°C" }
+    });
+    // Sin trazo ni relleno: es una capa que va encima de otra Sparkline decorativa.
+    expect(container.querySelector('path[fill="none"]')).toBeNull();
+
+    const svg = container.querySelector("svg")!;
+    (svg as unknown as HTMLElement).focus();
+    await userEvent.keyboard("{Home}");
+    expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain("40");
+    // El punto resaltado (r=2.5) sí se dibuja: es lo único visible de la capa.
+    expect(container.querySelector('circle[r="2.5"]')).not.toBeNull();
+  });
+
+  it("`hitDesde`: solo una franja del SVG capta el ratón; el resto es pointer-events none", async () => {
+    const { container } = await render(Sparkline, {
+      props: {
+        points: [
+          { t: 0, v: 1 },
+          { t: 1, v: 2 }
+        ] as Punto[],
+        interactivo: true,
+        hitDesde: 0.45
+      }
+    });
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("style")).toContain("pointer-events: none");
+    const rect = container.querySelector("rect[fill='transparent']")!;
+    expect(rect).not.toBeNull();
+    // Empieza a la derecha (45 % de un viewBox de 100) y no cubre la mitad izquierda.
+    expect(Number(rect.getAttribute("x"))).toBeCloseTo(45);
+  });
 });

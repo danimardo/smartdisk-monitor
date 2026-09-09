@@ -1,5 +1,9 @@
 # HeroPanel · **NUEVO**
 
+> **Nota (2026-09-09, ADR-051):** la curva de fondo dejó de ser puramente decorativa: al pasar el
+> ratón por la **mitad derecha despejada** aparece un globo con la temperatura y la hora del punto
+> (y el teclado la recorre entera). El resto de este documento sigue vigente.
+
 ## Justificación (`ui-design.md` §3)
 
 Ningún componente del catálogo resuelve «un dato dominante con su serie de fondo y sus acciones».

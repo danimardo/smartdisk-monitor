@@ -106,8 +106,8 @@ Debe mostrar de un vistazo:
 
 ## 4. Frecuencias predeterminadas
 
-- Temperatura, actividad, capacidad y latencia: cada 30 segundos.
-- SMART completo: cada 5 minutos.
+- Actividad, capacidad y latencia: cada 30 segundos.
+- SMART completo (incluye la temperatura): cada 5 minutos.
 - Eventos de Windows: cada 30 segundos, usando un marcador persistente para no duplicarlos.
 - Detección de discos añadidos o retirados: cada minuto.
 - Botón para forzar una actualización completa.
@@ -117,10 +117,13 @@ Todas las frecuencias son configurables dentro de estos límites, que valida el 
 
 | Trabajo | Por defecto | Mínimo | Máximo |
 |---|---|---|---|
-| Temperatura, actividad, capacidad, latencia | 30 s | 10 s | 5 min |
-| SMART completo | 5 min | 1 min | 60 min |
+| Actividad, capacidad, latencia, caudal | 30 s | 10 s | 5 min |
+| SMART completo (incluye la temperatura) | 5 min | 1 min | 60 min |
 | Eventos de Windows | 30 s | 15 s | 5 min |
 | Detección de altas y bajas | 60 s | 30 s | 10 min |
+
+La temperatura va con «SMART completo», no con las métricas rápidas: solo se obtiene del parseo de
+`smartctl` (`docs/open-questions.md` D.6).
 
 En batería se multiplica por cuatro el intervalo de las métricas rápidas y el de detección de altas
 y bajas. SMART completo y eventos de Windows no se alteran: son las fuentes de las alertas graves.

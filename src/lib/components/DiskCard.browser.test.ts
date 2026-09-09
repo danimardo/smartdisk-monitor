@@ -222,4 +222,37 @@ describe("DiskCard", () => {
     // Temperatura y desgaste sí se ocultan; la actividad no.
     await expect.element(page.getByText("66 %")).toBeInTheDocument();
   });
+
+  // ---- onda de actividad de fondo de la cabecera (ADR-051) ----
+
+  const onda = (base: number) => [0, 30_000, 60_000, 90_000].map((d, i) => ({ t: base + d, v: 10 + i * 5 }));
+
+  it("con `activitySeries` la cabecera pinta la onda de actividad", async () => {
+    const { container } = await render(DiskCard, {
+      props: {
+        disk: discoBase(),
+        href: "/disks/d1",
+        activitySeries: onda(Date.parse("2026-09-09T10:00:00Z"))
+      }
+    });
+    expect(container.querySelector("svg path")).not.toBeNull();
+  });
+
+  it("la onda se dibuja también sin lectura SMART fresca (la actividad no depende de SMART)", async () => {
+    const { container } = await render(DiskCard, {
+      props: {
+        disk: discoBase({ state: "unknown", unknownReason: "unreadable", temperatureC: null }),
+        href: "/disks/d1",
+        activitySeries: onda(Date.parse("2026-09-09T10:00:00Z"))
+      }
+    });
+    expect(container.querySelector("svg path")).not.toBeNull();
+  });
+
+  it("sin `activitySeries` la cabecera queda plana, sin onda", async () => {
+    const { container } = await render(DiskCard, {
+      props: { disk: discoBase(), href: "/disks/d1" }
+    });
+    expect(container.querySelector("svg path")).toBeNull();
+  });
 });

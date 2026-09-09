@@ -430,8 +430,8 @@ Debe mostrar de un vistazo:
 
 ### 4. Frecuencias predeterminadas
 
-- Temperatura, actividad, capacidad y latencia: cada 30 segundos.
-- SMART completo: cada 5 minutos.
+- Actividad, capacidad y latencia: cada 30 segundos.
+- SMART completo (incluye la temperatura): cada 5 minutos.
 - Eventos de Windows: cada 30 segundos, usando un marcador persistente para no duplicarlos.
 - Detección de discos añadidos o retirados: cada minuto.
 - Botón para forzar una actualización completa.
@@ -441,10 +441,13 @@ Todas las frecuencias son configurables dentro de estos límites, que valida el 
 
 | Trabajo | Por defecto | Mínimo | Máximo |
 |---|---|---|---|
-| Temperatura, actividad, capacidad, latencia | 30 s | 10 s | 5 min |
-| SMART completo | 5 min | 1 min | 60 min |
+| Actividad, capacidad, latencia, caudal | 30 s | 10 s | 5 min |
+| SMART completo (incluye la temperatura) | 5 min | 1 min | 60 min |
 | Eventos de Windows | 30 s | 15 s | 5 min |
 | Detección de altas y bajas | 60 s | 30 s | 10 min |
+
+La temperatura va con «SMART completo», no con las métricas rápidas: solo se obtiene del parseo de
+`smartctl` (`docs/open-questions.md` D.6).
 
 En batería se multiplica por cuatro el intervalo de las métricas rápidas y el de detección de altas
 y bajas. SMART completo y eventos de Windows no se alteran: son las fuentes de las alertas graves.
@@ -1919,7 +1922,8 @@ vetada.
 
 `N ciclos` se refiere siempre a ciclos consecutivos del recopilador de esa fuente, no a ocurrencias
 dentro de una ventana. Con las frecuencias por defecto, 3 ciclos son 90 s en el recopilador rápido
-y 15 min en SMART.
+y 15 min en SMART. Las reglas de temperatura son de fuente `smartctl`, así que sus 3 ciclos son
+15 min (la temperatura se recopila en el ciclo SMART, no en el rápido — `open-questions.md` D.6).
 
 Las reglas basadas en el registro de eventos llevan además una **ventana de correlación** de 60 s:
 un mismo hecho físico produce varios eventos distintos a la vez, y sin ella un solo disco
@@ -5747,6 +5751,89 @@ en `docs/open-questions.md` D.4.
 - La actividad deja de apagarse cuando falta una lectura SMART fresca: sigue su propio `estado`, a
   diferencia de temperatura y desgaste.
 
+### ADR-051 — El fondo de la `DiskCard` es la actividad de disco de ventana corta, no la temperatura de 24 h
+
+Estado: aceptada. Fecha: 2026-09-09. Enmienda ADR-034 (y la parte correspondiente de
+`design/propuesta-redisenov2/cambios/componentes/DiskCard.md`).
+
+#### El problema
+
+v3 puso de fondo en la cabecera de cada `DiskCard` la **serie de temperatura de 24 h** (ADR-034,
+`Sparkline`). Usando la aplicación contra hardware real, el usuario contó como mucho 5 puntos tras
+un buen rato con el panel abierto, y la onda no se movía. Dos causas:
+
+1. `temperature_celsius` **solo** sale del parseo de `smartctl`, que escribe el trabajo
+   `planificador::SMART_COMPLETO` (300 s de fábrica). Ningún colector rápido la produce. Una ventana
+   de minutos tiene 1-2 puntos, y la temperatura apenas varía en ese plazo → onda casi plana.
+2. La serie se pedía **una vez** de forma perezosa y no se refrescaba nunca: no hay evento que
+   empuje puntos nuevos de una serie histórica, así que mientras el panel seguía abierto la onda se
+   quedaba congelada.
+
+La temperatura es la señal equivocada para una miniatura que debe llenarse enseguida y moverse.
+
+#### La decisión
+
+El fondo de la `DiskCard` pasa a ser la **onda de actividad de disco** (`activity_percent`),
+ventana ≈ **5 min** (`VENTANA_ACTIVIDAD_TARJETA_MS`), con dos fuentes que se fusionan:
+
+- **Siembra**: al primer render de la tarjeta, `get_metric_series("activity_percent")` de los
+  últimos ~15 min (`+page.svelte` → `app.seedActivitySeries`). Igual que antes, pero de actividad.
+- **Refresco en vivo**: cada evento `metrics:updated` (~30 s, el de siempre) añade un punto a la
+  onda de cada disco con la **media** de la ventana deslizante (`DiskSummary.activity.mediaPercent`;
+  es hueco solo con `estado === "no_disponible"`) — `app.pushActivitySamples`, llamado desde el
+  handler del layout. Con `parcial` sí se pinta: la onda de fondo de la tarjeta es contexto, no
+  lectura (el cuerpo ya marca `~` la cifra parcial), y una máquina con la ventana de actividad
+  siempre `parcial` —colector PDH degradado— no debe quedarse sin onda. **No** es el «modo en vivo»
+  de 1-2 s que ADR-050 descartó: se consume el evento que ya llega, sin sondeo (ADR-015,
+  `frontera-ipc.md`), sin evento ni comando nuevo.
+
+La onda se dibuja **también en discos sin lectura SMART fresca** (USB sin SMART, disco que dejó de
+responder): la actividad tiene su propio `estado` y no depende de SMART. Esto cambia la regla del
+estado «Sin datos SMART» de `DiskCard.md` («cabecera sin sparkline»). El `HeroPanel` **no** cambia
+de métrica: su cifra dominante es la temperatura y su curva de 24 h va acoplada a esa cifra.
+
+**Cursor de lectura en la curva del `HeroPanel`.** La curva de fondo del Hero deja de ser puramente
+decorativa: gana el mismo cursor de lectura (ratón + teclado + globo `ChartTip` + región
+`aria-live`) que ya tienen `MetricCard` y `TimeSeriesChart`, para poder consultar la temperatura y
+la hora de un punto concreto. Como la curva va **a sangre por detrás del texto y de los cuatro
+cuadros**, el ratón solo la activa en la **mitad derecha despejada** (`Sparkline` gana la prop
+`hitDesde`): un `<rect>` transparente sobre esa franja capta el puntero y el resto del SVG queda
+`pointer-events: none`, de modo que el texto de la izquierda se sigue seleccionando y los botones
+funcionan. Se implementa como una **segunda `Sparkline` superpuesta en modo `soloLectura`** (sin
+repintar la curva sobre el texto); el teclado recorre toda la serie. Silencio de accesibilidad del
+`<rect>` en `known-issues.md` #5.
+
+Como efecto colateral se corrige una incoherencia previa: `cadencia_esperada_ms` agrupaba
+`temperature_celsius` con las métricas de 30 s, lo que hacía que `domain::series::completar_serie`
+metiera un hueco entre cada par de muestras (300 s ≫ 2,5 × 30 s) y la gráfica de temperatura del
+detalle saliera como puntos sueltos. La temperatura pasa a declarar 300 s. Registrado, con la
+corrección de la tabla D.1 y de B.9, en `docs/open-questions.md`.
+
+#### Alternativas descartadas
+
+- **Seguir con la temperatura y bajar el intervalo de «SMART completo»**. `smartctl` es una cascada
+  de hasta ~75 s por disco que despierta los discos y consume CPU (por eso su mínimo configurable es
+  60 s); y la curva seguiría siendo casi plana en una ventana corta.
+- **Búfer en cliente de la temperatura instantánea** (`DiskSummary.temperatureC` en cada evento):
+  quita el problema del refresco pero no el de la señal — la temperatura no se mueve en 5 min.
+- **Re-pedir `getMetricSeries` con un temporizador**: llenaría la onda, pero es sondeo de la
+  frontera IPC, prohibido (ADR-015).
+- **Cambiar también el fondo del `HeroPanel` a actividad**: desacopla la curva de la cifra
+  dominante (temperatura), que es justo lo que el Hero explica sin leer.
+
+#### Consecuencias
+
+- Cambio de presentación, **sin tocar `src-tauri` salvo un `match`** (`cadencia_esperada_ms`), sin
+  contrato, modelo de datos ni permiso nuevos. `metrics:updated` ya trae `activity`.
+- La `DiskCard` renombra su prop `temperatureSeries` → `activitySeries`. La onda sigue decorativa
+  (`aria-hidden`): la cifra de actividad ya está en el cuerpo de la tarjeta (`ui-design.md` §6).
+- La temperatura deja de graficarse en el panel general; sigue en el detalle de disco y en el Hero.
+- `Sparkline` gana dos props opcionales, `hitDesde` y `soloLectura`, retrocompatibles (por defecto
+  0 / false → comportamiento actual).
+- `docs/ui-design.md` (fila de catálogo `DiskCard`, fila de `Sparkline`/`HeroPanel` y regla de > 12
+  discos) y `DiskCard.md` se actualizan; el boceto `design/SmartDisk Monitor v2.dc.html` conserva su
+  onda de temperatura como ilustración (no se reedita el HTML de canvas a mano).
+
 
 ---
 
@@ -5906,7 +5993,8 @@ correctamente un pendrive monitorizado generaría un crítico falso. Reglas:
 
 Donde la especificación decía "tras tres muestras" o "tras tres intentos", se entiende **tres
 ciclos consecutivos del recopilador correspondiente**, no tres dentro de una ventana. Con la
-frecuencia por defecto: 90 s para temperatura, 15 min para SMART. Recogido en `alert-rules.md`.
+frecuencia por defecto: **15 min para SMART** (la temperatura también, D.6 — el «90 s para
+temperatura» de la redacción original era incorrecto). Recogido en `alert-rules.md`.
 
 #### B.10 · Un disco sin SMART fresco no enseña su última lectura como si fuera de ahora · `DECIDIDO`
 
@@ -5951,7 +6039,7 @@ Ajustes no se puede diseñar sin ellos:
 
 | Trabajo | Por defecto | Mínimo | Máximo |
 |---|---|---|---|
-| Temperatura, actividad, capacidad, latencia | 30 s | 10 s | 5 min |
+| Actividad, capacidad, latencia, caudal | 30 s | 10 s | 5 min |
 | SMART completo | 5 min | 1 min | 60 min |
 | Eventos de Windows | 30 s | 15 s | 5 min |
 | Detección de altas y bajas | 60 s | 30 s | 10 min |
@@ -5959,12 +6047,17 @@ Ajustes no se puede diseñar sin ellos:
 Por debajo del mínimo el coste de CPU y de despertar el disco deja de compensar; por encima del
 máximo la aplicación deja de merecer el nombre de monitor.
 
+> **Corrección (2026-09-09, D.6):** la primera fila incluía «Temperatura», pero la temperatura solo
+> se obtiene del parseo de `smartctl` y va con «SMART completo» (5 min), no con este trabajo. El
+> texto original decía «Temperatura, actividad, capacidad, latencia»; se conserva aquí la razón del
+> cambio.
+
 #### D.2 · Comportamiento en batería · `PROPUESTO`
 
-Con el equipo a batería se multiplica por **4** el intervalo de temperatura/actividad/capacidad y de
-detección de altas y bajas. SMART completo y eventos de Windows **no se alteran**: son las fuentes de
-las alertas graves, y spec §4 exige no suspenderlas. Al volver a red se restauran de inmediato y se
-fuerza un ciclo completo.
+Con el equipo a batería se multiplica por **4** el intervalo de actividad/capacidad/latencia y de
+detección de altas y bajas. SMART completo (que es de donde sale la temperatura, D.6) y eventos de
+Windows **no se alteran**: son las fuentes de las alertas graves, y spec §4 exige no suspenderlas. Al
+volver a red se restauran de inmediato y se fuerza un ciclo completo.
 
 #### D.3 · Qué hace exactamente "Pausar" · `PROPUESTO`
 
@@ -6008,6 +6101,38 @@ Reglas asociadas:
 - Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
   todos los discos (estado `parcial` ≤ una cadencia): compromiso aceptado para no gestionar
   contadores PDH vivos uno a uno.
+
+#### D.5 · Onda de actividad de fondo de la `DiskCard` · `DECIDIDO` (2026-09-09)
+
+El fondo de la cabecera de la `DiskCard` era la serie de **temperatura de 24 h** (ADR-034). Contra
+hardware real no servía: la temperatura solo se muestrea en el ciclo SMART (5 min, D.6) y apenas
+varía, y la serie se pedía una vez y no se refrescaba nunca. Pasa a ser la **actividad de disco**:
+
+| Parámetro | Valor | Nota |
+|---|---|---|
+| Métrica | `activity_percent` (media de la ventana deslizante, D.4) | La misma que la cifra de la tarjeta; se dibuja también sin SMART fresco, y también con la ventana `parcial` (hueco solo con `no_disponible`): es contexto, no lectura. |
+| Ventana mostrada | **≈ 5 min** (`VENTANA_ACTIVIDAD_TARJETA_MS`) | Corta a propósito: «¿ha estado ocupado ahora mismo?», no histórico. ~10 puntos a 30 s. |
+| Siembra | `get_metric_series("activity_percent")` de los últimos ~15 min, al primer render | Para que no arranque vacía. |
+| Refresco | un punto por evento `metrics:updated` (~30 s, el de siempre) | **Sin sondeo** (ADR-015): se consume el evento que ya llega. No es el «modo en vivo» de 1-2 s que descartó ADR-050. |
+| Dedup | se ignora un evento a < 15 s del último punto | Un ciclo SMART reemite `metrics:updated` sin que la ventana avance. |
+
+Registrado en ADR-051. El `HeroPanel` **no** cambia: su curva de fondo sigue acoplada a su cifra
+dominante, la temperatura.
+
+#### D.6 · La temperatura es una métrica de cadencia SMART, no de métricas rápidas · `DECIDIDO` (2026-09-09)
+
+`docs/product-specification.md` y la tabla de D.1 agrupaban «Temperatura» con actividad/capacidad/
+latencia (30 s), y B.9 hablaba de «90 s para temperatura». Es incorrecto: `temperature_celsius`
+**solo** se obtiene del parseo de `smartctl`, que escribe el trabajo `SMART_COMPLETO` (`planificador.rs`,
+300 s por defecto). Ningún colector rápido la produce. La cadencia real de un punto de temperatura
+es la del ciclo SMART.
+
+Consecuencia práctica: `commands::cadencia_esperada_ms` declaraba `temperature_celsius` a 30 s, lo
+que hacía que `domain::series::completar_serie` insertara un hueco entre cada par de muestras (300 s
+≫ 2,5 × 30 s, E.1) y la gráfica de temperatura del detalle saliera como puntos sueltos con bandas de
+hueco. Corregido: la temperatura declara **300 s**. La ventana de conteo de las reglas de
+temperatura ya se contaba en ciclos SMART (3 ciclos = 15 min, `alert-rules.md` §2), así que las
+alertas no cambian; se corrige el «90 s» de B.9.
 
 ---
 
@@ -7277,8 +7402,8 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
 | `Button` | acciones | **una sola** `variant="primary"` por pantalla; `variant="feature"` es la acción **estrella** de una pantalla (degradado diagonal del acento + halo de `--sdm-accent-soft`) y convive con una `primary` porque son roles distintos — **una sola `feature` por pantalla** (hoy: «Explícamelo en lenguaje claro», spec 006); `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 17 del sprite (`sparkles` marca la ayuda con IA); `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
-| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
-| `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
+| `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usan `MetricCard` y la curva del `HeroPanel`. `hitDesde` limita a una franja la zona sensible al ratón (Hero: mitad derecha despejada); `soloLectura` la superpone a otra `Sparkline` decorativa sin repintar el trazo. El fondo de `DiskCard` sí es decorativo |
+| `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto; la curva lleva cursor de lectura (ratón solo en la mitad derecha despejada, teclado en toda la serie) |
 | `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cinco escenas (`welcome` / `disks` / `alerts` / `ai` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
 | `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
@@ -7288,7 +7413,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
 | `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |
 | `SegmentedControl` | intervalos 24 h / 7 d / 30 d / personalizado | |
-| `DiskCard` | tarjeta de disco del panel | recibe `href`; cabecera de 52 px que hereda el color del estado con `sparkline` de temperatura de fondo (`temperatureSeries` opcional); dato ausente como «—» discreto, no «No disponible» a 23 px |
+| `DiskCard` | tarjeta de disco del panel | recibe `href`; cabecera de 52 px que hereda el color del estado con `sparkline` de **actividad de disco** de fondo (`activitySeries` opcional; ventana ≈ 5 min, se refresca en vivo desde `metrics:updated` — ADR-051; se dibuja también sin SMART fresco); dato ausente como «—» discreto, no «No disponible» a 23 px |
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
@@ -7491,7 +7616,7 @@ puede tener veinte o más. Reglas obligatorias, no opcionales:
 - El panel general usa rejilla `repeat(auto-fill, minmax(272px, 1fr))` (v3; la `DiskCard` v3 encaja
   tres magnitudes y la barra de capacidad en 272 px).
 - A partir de **12 discos monitorizados**, `DiskCard` usa su variante compacta: **sin la sparkline de
-  temperatura de cabecera** (`conSparklines = devices.length <= 12`). Es también lo que mantiene
+  actividad de cabecera** (`conSparklines = devices.length <= 12`). Es también lo que mantiene
   SC-006 sin virtualizar la rejilla (`open-questions.md` §U); medido en `e2e/ui/rendimiento.spec.ts`.
 - El «Reparto de estados» y el recuento cuentan solo los discos monitorizados. Los excluidos por el
   usuario no aparecen; se listan aparte, como exige US-011.
@@ -9827,7 +9952,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.cta.restoreDefaults": "Restaurar valores de fábrica",
   "settings.schedule.title": "Frecuencias",
   "settings.schedule.rangeHint": "Entre {min} y {max} s",
-  "settings.schedule.metricsFast": "Temperatura, actividad, capacidad y latencia",
+  "settings.schedule.metricsFast": "Actividad, capacidad y latencia",
   "settings.schedule.smartFull": "SMART completo",
   "settings.schedule.events": "Eventos de Windows",
   "settings.schedule.discovery": "Detección de altas y bajas",
@@ -10390,7 +10515,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.cta.restoreDefaults": "Restore factory values",
   "settings.schedule.title": "Frequencies",
   "settings.schedule.rangeHint": "Between {min} and {max} s",
-  "settings.schedule.metricsFast": "Temperature, activity, capacity and latency",
+  "settings.schedule.metricsFast": "Activity, capacity and latency",
   "settings.schedule.smartFull": "Full SMART",
   "settings.schedule.events": "Windows events",
   "settings.schedule.discovery": "Arrival/removal detection",

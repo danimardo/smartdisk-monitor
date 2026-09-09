@@ -1,4 +1,4 @@
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
 import HeroPanel from "./HeroPanel.svelte";
@@ -64,6 +64,20 @@ describe("HeroPanel", () => {
     });
     await expect.element(page.getByText("Ventana: 25 min")).toBeInTheDocument();
     expect(page.getByText(es["dashboard.hero.collecting"]).query()).toBeNull();
+  });
+
+  it("la curva de fondo tiene cursor de lectura: el teclado recorre los puntos y anuncia la temperatura", async () => {
+    const { container } = await render(HeroPanel, {
+      props: { disk: discoBase(), series: serieDensa }
+    });
+    // Dos SVG: el decorativo (aria-hidden) y la capa de lectura (role="img", enfocable).
+    const lectura = container.querySelector('svg[role="img"]') as unknown as HTMLElement;
+    expect(lectura).not.toBeNull();
+    lectura.focus();
+    await userEvent.keyboard("{Home}");
+    const viva = container.querySelector('[aria-live="polite"]')!;
+    expect(viva.textContent).toContain("42");
+    expect(viva.textContent).toContain("°C");
   });
 
   it("disco que dejó de responder: píldora «Sin datos SMART», explica que dejó de responder, cifra «No disponible»", async () => {

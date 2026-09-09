@@ -1896,3 +1896,86 @@ en `docs/open-questions.md` D.4.
   el «Pico N %».
 - La actividad deja de apagarse cuando falta una lectura SMART fresca: sigue su propio `estado`, a
   diferencia de temperatura y desgaste.
+
+## ADR-051 — El fondo de la `DiskCard` es la actividad de disco de ventana corta, no la temperatura de 24 h
+
+Estado: aceptada. Fecha: 2026-09-09. Enmienda ADR-034 (y la parte correspondiente de
+`design/propuesta-redisenov2/cambios/componentes/DiskCard.md`).
+
+### El problema
+
+v3 puso de fondo en la cabecera de cada `DiskCard` la **serie de temperatura de 24 h** (ADR-034,
+`Sparkline`). Usando la aplicación contra hardware real, el usuario contó como mucho 5 puntos tras
+un buen rato con el panel abierto, y la onda no se movía. Dos causas:
+
+1. `temperature_celsius` **solo** sale del parseo de `smartctl`, que escribe el trabajo
+   `planificador::SMART_COMPLETO` (300 s de fábrica). Ningún colector rápido la produce. Una ventana
+   de minutos tiene 1-2 puntos, y la temperatura apenas varía en ese plazo → onda casi plana.
+2. La serie se pedía **una vez** de forma perezosa y no se refrescaba nunca: no hay evento que
+   empuje puntos nuevos de una serie histórica, así que mientras el panel seguía abierto la onda se
+   quedaba congelada.
+
+La temperatura es la señal equivocada para una miniatura que debe llenarse enseguida y moverse.
+
+### La decisión
+
+El fondo de la `DiskCard` pasa a ser la **onda de actividad de disco** (`activity_percent`),
+ventana ≈ **5 min** (`VENTANA_ACTIVIDAD_TARJETA_MS`), con dos fuentes que se fusionan:
+
+- **Siembra**: al primer render de la tarjeta, `get_metric_series("activity_percent")` de los
+  últimos ~15 min (`+page.svelte` → `app.seedActivitySeries`). Igual que antes, pero de actividad.
+- **Refresco en vivo**: cada evento `metrics:updated` (~30 s, el de siempre) añade un punto a la
+  onda de cada disco con la **media** de la ventana deslizante (`DiskSummary.activity.mediaPercent`;
+  es hueco solo con `estado === "no_disponible"`) — `app.pushActivitySamples`, llamado desde el
+  handler del layout. Con `parcial` sí se pinta: la onda de fondo de la tarjeta es contexto, no
+  lectura (el cuerpo ya marca `~` la cifra parcial), y una máquina con la ventana de actividad
+  siempre `parcial` —colector PDH degradado— no debe quedarse sin onda. **No** es el «modo en vivo»
+  de 1-2 s que ADR-050 descartó: se consume el evento que ya llega, sin sondeo (ADR-015,
+  `frontera-ipc.md`), sin evento ni comando nuevo.
+
+La onda se dibuja **también en discos sin lectura SMART fresca** (USB sin SMART, disco que dejó de
+responder): la actividad tiene su propio `estado` y no depende de SMART. Esto cambia la regla del
+estado «Sin datos SMART» de `DiskCard.md` («cabecera sin sparkline»). El `HeroPanel` **no** cambia
+de métrica: su cifra dominante es la temperatura y su curva de 24 h va acoplada a esa cifra.
+
+**Cursor de lectura en la curva del `HeroPanel`.** La curva de fondo del Hero deja de ser puramente
+decorativa: gana el mismo cursor de lectura (ratón + teclado + globo `ChartTip` + región
+`aria-live`) que ya tienen `MetricCard` y `TimeSeriesChart`, para poder consultar la temperatura y
+la hora de un punto concreto. Como la curva va **a sangre por detrás del texto y de los cuatro
+cuadros**, el ratón solo la activa en la **mitad derecha despejada** (`Sparkline` gana la prop
+`hitDesde`): un `<rect>` transparente sobre esa franja capta el puntero y el resto del SVG queda
+`pointer-events: none`, de modo que el texto de la izquierda se sigue seleccionando y los botones
+funcionan. Se implementa como una **segunda `Sparkline` superpuesta en modo `soloLectura`** (sin
+repintar la curva sobre el texto); el teclado recorre toda la serie. Silencio de accesibilidad del
+`<rect>` en `known-issues.md` #5.
+
+Como efecto colateral se corrige una incoherencia previa: `cadencia_esperada_ms` agrupaba
+`temperature_celsius` con las métricas de 30 s, lo que hacía que `domain::series::completar_serie`
+metiera un hueco entre cada par de muestras (300 s ≫ 2,5 × 30 s) y la gráfica de temperatura del
+detalle saliera como puntos sueltos. La temperatura pasa a declarar 300 s. Registrado, con la
+corrección de la tabla D.1 y de B.9, en `docs/open-questions.md`.
+
+### Alternativas descartadas
+
+- **Seguir con la temperatura y bajar el intervalo de «SMART completo»**. `smartctl` es una cascada
+  de hasta ~75 s por disco que despierta los discos y consume CPU (por eso su mínimo configurable es
+  60 s); y la curva seguiría siendo casi plana en una ventana corta.
+- **Búfer en cliente de la temperatura instantánea** (`DiskSummary.temperatureC` en cada evento):
+  quita el problema del refresco pero no el de la señal — la temperatura no se mueve en 5 min.
+- **Re-pedir `getMetricSeries` con un temporizador**: llenaría la onda, pero es sondeo de la
+  frontera IPC, prohibido (ADR-015).
+- **Cambiar también el fondo del `HeroPanel` a actividad**: desacopla la curva de la cifra
+  dominante (temperatura), que es justo lo que el Hero explica sin leer.
+
+### Consecuencias
+
+- Cambio de presentación, **sin tocar `src-tauri` salvo un `match`** (`cadencia_esperada_ms`), sin
+  contrato, modelo de datos ni permiso nuevos. `metrics:updated` ya trae `activity`.
+- La `DiskCard` renombra su prop `temperatureSeries` → `activitySeries`. La onda sigue decorativa
+  (`aria-hidden`): la cifra de actividad ya está en el cuerpo de la tarjeta (`ui-design.md` §6).
+- La temperatura deja de graficarse en el panel general; sigue en el detalle de disco y en el Hero.
+- `Sparkline` gana dos props opcionales, `hitDesde` y `soloLectura`, retrocompatibles (por defecto
+  0 / false → comportamiento actual).
+- `docs/ui-design.md` (fila de catálogo `DiskCard`, fila de `Sparkline`/`HeroPanel` y regla de > 12
+  discos) y `DiskCard.md` se actualizan; el boceto `design/SmartDisk Monitor v2.dc.html` conserva su
+  onda de temperatura como ilustración (no se reedita el HTML de canvas a mano).

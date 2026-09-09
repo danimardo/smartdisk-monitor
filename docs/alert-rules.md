@@ -79,7 +79,8 @@ vetada.
 
 `N ciclos` se refiere siempre a ciclos consecutivos del recopilador de esa fuente, no a ocurrencias
 dentro de una ventana. Con las frecuencias por defecto, 3 ciclos son 90 s en el recopilador rápido
-y 15 min en SMART.
+y 15 min en SMART. Las reglas de temperatura son de fuente `smartctl`, así que sus 3 ciclos son
+15 min (la temperatura se recopila en el ciclo SMART, no en el rápido — `open-questions.md` D.6).
 
 Las reglas basadas en el registro de eventos llevan además una **ventana de correlación** de 60 s:
 un mismo hecho físico produce varios eventos distintos a la vez, y sin ella un solo disco

@@ -1,5 +1,10 @@
 # DiskCard
 
+> **Nota (2026-09-09, ADR-051):** la onda de fondo de la cabecera pasó de la temperatura de 24 h a
+> la **actividad de disco** de ventana corta, refrescada en vivo, y se dibuja también en tarjetas
+> «Sin datos SMART». La prop `temperatureSeries` se llama ahora `activitySeries`. El resto de este
+> documento se conserva como referencia histórica; la norma vigente está en `docs/ui-design.md`.
+
 ## Antes
 
 ```

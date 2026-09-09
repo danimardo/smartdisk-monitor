@@ -152,7 +152,8 @@ correctamente un pendrive monitorizado generaría un crítico falso. Reglas:
 
 Donde la especificación decía "tras tres muestras" o "tras tres intentos", se entiende **tres
 ciclos consecutivos del recopilador correspondiente**, no tres dentro de una ventana. Con la
-frecuencia por defecto: 90 s para temperatura, 15 min para SMART. Recogido en `alert-rules.md`.
+frecuencia por defecto: **15 min para SMART** (la temperatura también, D.6 — el «90 s para
+temperatura» de la redacción original era incorrecto). Recogido en `alert-rules.md`.
 
 ### B.10 · Un disco sin SMART fresco no enseña su última lectura como si fuera de ahora · `DECIDIDO`
 
@@ -197,7 +198,7 @@ Ajustes no se puede diseñar sin ellos:
 
 | Trabajo | Por defecto | Mínimo | Máximo |
 |---|---|---|---|
-| Temperatura, actividad, capacidad, latencia | 30 s | 10 s | 5 min |
+| Actividad, capacidad, latencia, caudal | 30 s | 10 s | 5 min |
 | SMART completo | 5 min | 1 min | 60 min |
 | Eventos de Windows | 30 s | 15 s | 5 min |
 | Detección de altas y bajas | 60 s | 30 s | 10 min |
@@ -205,12 +206,17 @@ Ajustes no se puede diseñar sin ellos:
 Por debajo del mínimo el coste de CPU y de despertar el disco deja de compensar; por encima del
 máximo la aplicación deja de merecer el nombre de monitor.
 
+> **Corrección (2026-09-09, D.6):** la primera fila incluía «Temperatura», pero la temperatura solo
+> se obtiene del parseo de `smartctl` y va con «SMART completo» (5 min), no con este trabajo. El
+> texto original decía «Temperatura, actividad, capacidad, latencia»; se conserva aquí la razón del
+> cambio.
+
 ### D.2 · Comportamiento en batería · `PROPUESTO`
 
-Con el equipo a batería se multiplica por **4** el intervalo de temperatura/actividad/capacidad y de
-detección de altas y bajas. SMART completo y eventos de Windows **no se alteran**: son las fuentes de
-las alertas graves, y spec §4 exige no suspenderlas. Al volver a red se restauran de inmediato y se
-fuerza un ciclo completo.
+Con el equipo a batería se multiplica por **4** el intervalo de actividad/capacidad/latencia y de
+detección de altas y bajas. SMART completo (que es de donde sale la temperatura, D.6) y eventos de
+Windows **no se alteran**: son las fuentes de las alertas graves, y spec §4 exige no suspenderlas. Al
+volver a red se restauran de inmediato y se fuerza un ciclo completo.
 
 ### D.3 · Qué hace exactamente "Pausar" · `PROPUESTO`
 
@@ -254,6 +260,38 @@ Reglas asociadas:
 - Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
   todos los discos (estado `parcial` ≤ una cadencia): compromiso aceptado para no gestionar
   contadores PDH vivos uno a uno.
+
+### D.5 · Onda de actividad de fondo de la `DiskCard` · `DECIDIDO` (2026-09-09)
+
+El fondo de la cabecera de la `DiskCard` era la serie de **temperatura de 24 h** (ADR-034). Contra
+hardware real no servía: la temperatura solo se muestrea en el ciclo SMART (5 min, D.6) y apenas
+varía, y la serie se pedía una vez y no se refrescaba nunca. Pasa a ser la **actividad de disco**:
+
+| Parámetro | Valor | Nota |
+|---|---|---|
+| Métrica | `activity_percent` (media de la ventana deslizante, D.4) | La misma que la cifra de la tarjeta; se dibuja también sin SMART fresco, y también con la ventana `parcial` (hueco solo con `no_disponible`): es contexto, no lectura. |
+| Ventana mostrada | **≈ 5 min** (`VENTANA_ACTIVIDAD_TARJETA_MS`) | Corta a propósito: «¿ha estado ocupado ahora mismo?», no histórico. ~10 puntos a 30 s. |
+| Siembra | `get_metric_series("activity_percent")` de los últimos ~15 min, al primer render | Para que no arranque vacía. |
+| Refresco | un punto por evento `metrics:updated` (~30 s, el de siempre) | **Sin sondeo** (ADR-015): se consume el evento que ya llega. No es el «modo en vivo» de 1-2 s que descartó ADR-050. |
+| Dedup | se ignora un evento a < 15 s del último punto | Un ciclo SMART reemite `metrics:updated` sin que la ventana avance. |
+
+Registrado en ADR-051. El `HeroPanel` **no** cambia: su curva de fondo sigue acoplada a su cifra
+dominante, la temperatura.
+
+### D.6 · La temperatura es una métrica de cadencia SMART, no de métricas rápidas · `DECIDIDO` (2026-09-09)
+
+`docs/product-specification.md` y la tabla de D.1 agrupaban «Temperatura» con actividad/capacidad/
+latencia (30 s), y B.9 hablaba de «90 s para temperatura». Es incorrecto: `temperature_celsius`
+**solo** se obtiene del parseo de `smartctl`, que escribe el trabajo `SMART_COMPLETO` (`planificador.rs`,
+300 s por defecto). Ningún colector rápido la produce. La cadencia real de un punto de temperatura
+es la del ciclo SMART.
+
+Consecuencia práctica: `commands::cadencia_esperada_ms` declaraba `temperature_celsius` a 30 s, lo
+que hacía que `domain::series::completar_serie` insertara un hueco entre cada par de muestras (300 s
+≫ 2,5 × 30 s, E.1) y la gráfica de temperatura del detalle saliera como puntos sueltos con bandas de
+hueco. Corregido: la temperatura declara **300 s**. La ventana de conteo de las reglas de
+temperatura ya se contaba en ciclos SMART (3 ciclos = 15 min, `alert-rules.md` §2), así que las
+alertas no cambian; se corrige el «90 s» de B.9.
 
 ---
 

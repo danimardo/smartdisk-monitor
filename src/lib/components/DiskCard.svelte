@@ -1,8 +1,9 @@
 <script lang="ts">
   /** Tarjeta de disco del panel general (US-012), recompuesta en v3 (`DiskCard.md`): cabecera de
-   *  52 px que **hereda el color del estado** con la sparkline de temperatura de fondo, cifras de
-   *  display, y el dato ausente como «—» discreto —no «No disponible» a 23 px, que pesaba más que
-   *  el dato presente—.
+   *  52 px que **hereda el color del estado** con la onda de **actividad de disco** de fondo
+   *  (ADR-051: ventana corta y refresco en vivo; antes era la temperatura de 24 h, que no se movía
+   *  a la cadencia del panel), cifras de display, y el dato ausente como «—» discreto —no «No
+   *  disponible» a 23 px, que pesaba más que el dato presente—.
    *
    *  Navega con **un enlace real** (constitución §XIV): conserva ctrl+clic, clic central, menú
    *  contextual, foco y el anuncio como enlace. Sin `href` se renderiza como bloque no interactivo. */
@@ -27,8 +28,9 @@
   let {
     disk = null as DiskSummary | null,
     href = undefined as string | undefined,
-    /** Serie de temperatura de 24 h para el fondo de la cabecera. Sin ella, cabecera plana. */
-    temperatureSeries = [] as Punto[],
+    /** Onda de actividad de disco (ventana corta) para el fondo de la cabecera. Sin ella, cabecera
+     *  plana. Independiente de SMART: un disco sin lectura SMART fresca sí tiene actividad. */
+    activitySeries = [] as Punto[],
     /** Umbrales de `settings.alerts` para el veredicto del tooltip de cada métrica. A falta de
      *  ellos, `metricHelp` usa los de fábrica (una ayuda, no una alerta). */
     umbrales = undefined as
@@ -49,7 +51,8 @@
     !!disk?.temperatureC && !!disk?.vendorTempLimitC && disk.temperatureC >= disk.vendorTempLimitC
   );
   const volume = $derived(disk?.volumes?.[0] ?? null);
-  const hayCurva = $derived(!sinSmartFresco && temperatureSeries.some((p) => p.v !== null));
+  /** La onda es de actividad, no de SMART: se dibuja aunque no haya lectura SMART fresca. */
+  const hayCurva = $derived(activitySeries.some((p) => p.v !== null));
 
   /** Un dato ausente se compone como «—» a text-xs en gris, con el texto completo en el `title`
    *  (`DiskCard.md`): así el disco sin SMART deja de pesar más que el que tiene datos. */
@@ -138,7 +141,7 @@
       >
         {#if hayCurva}
           <div class="pointer-events-none absolute inset-0 opacity-[0.85]">
-            <Sparkline points={temperatureSeries} color={tone.fg} height={52} strokeWidth={1.6} />
+            <Sparkline points={activitySeries} color={tone.fg} height={52} strokeWidth={1.6} />
           </div>
         {/if}
         <span

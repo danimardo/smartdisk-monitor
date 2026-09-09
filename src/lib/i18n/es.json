@@ -490,7 +490,7 @@
   "settings.cta.restoreDefaults": "Restaurar valores de fábrica",
   "settings.schedule.title": "Frecuencias",
   "settings.schedule.rangeHint": "Entre {min} y {max} s",
-  "settings.schedule.metricsFast": "Temperatura, actividad, capacidad y latencia",
+  "settings.schedule.metricsFast": "Actividad, capacidad y latencia",
   "settings.schedule.smartFull": "SMART completo",
   "settings.schedule.events": "Eventos de Windows",
   "settings.schedule.discovery": "Detección de altas y bajas",

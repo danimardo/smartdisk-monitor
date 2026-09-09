@@ -3,9 +3,10 @@
    *  un vistazo: `HeroPanel` con el disco que necesita atención, rejilla de `DiskCard`, y al pie los
    *  sucesos del sistema y el reparto de estados.
    *
-   *  El inventario llega del `load` del layout (constitución §XIV) y vive en el store; las series de
-   *  temketaratura se piden **perezosamente** por disco visible tras el primer render (v3, `open-questions.md`):
-   *  el panel pinta enseguida y cada sparkline aparece cuando llega su serie. */
+   *  El inventario llega del `load` del layout (constitución §XIV) y vive en el store. Las series de
+   *  fondo se piden **perezosamente** tras el primer render: temperatura de 24 h para el `HeroPanel`
+   *  y actividad de ventana corta para cada `DiskCard` (ADR-051, esta última luego se refresca en
+   *  vivo desde `metrics:updated`). El panel pinta enseguida y cada onda aparece cuando llega. */
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { Card, DiskCard, EmptyState, EventRow, HeroPanel, Icon } from "$lib/components";
@@ -82,7 +83,9 @@
 
   /* ---------------------------------------------------------------- series perezosas */
 
-  async function pedirSerie(deviceId: string) {
+  /** Serie de temperatura de 24 h para el fondo del `HeroPanel`. Se pide una vez para el disco
+   *  protagonista y se cachea en el store. */
+  async function pedirSerieHero(deviceId: string) {
     if (app.temperatureSeries[deviceId]) return;
     // marca temprana para no lanzar dos peticiones a la vez
     app.temperatureSeries = { ...app.temperatureSeries, [deviceId]: [] };
@@ -100,12 +103,32 @@
     }
   }
 
+  /** Siembra la onda de actividad de una tarjeta con la serie persistida (ADR-051); a partir de ahí
+   *  el evento `metrics:updated` la mantiene fresca (`app.pushActivitySamples`). Se pide un poco más
+   *  de ventana que la mostrada para que `ultimoTramoVisible` tenga margen. */
+  const actividadSembrada = new Set<string>();
+  async function pedirSerieActividad(deviceId: string) {
+    if (actividadSembrada.has(deviceId)) return;
+    actividadSembrada.add(deviceId);
+    try {
+      const ahora = new Date();
+      const serie = await getMetricSeries({
+        deviceId,
+        metricKey: "activity_percent",
+        fromUtc: new Date(ahora.getTime() - 15 * 60 * 1000).toISOString(),
+        toUtc: ahora.toISOString()
+      });
+      app.seedActivitySeries(deviceId, serie.points);
+    } catch {
+      // Sin siembra: la onda empieza vacía y se llena en vivo desde los eventos.
+    }
+  }
+
   $effect(() => {
     if (!ready) return;
-    const objetivo = new Set<string>();
-    if (heroDisk) objetivo.add(heroDisk.id);
-    if (conSparklines) for (const d of devices) if (d.state !== "unknown") objetivo.add(d.id);
-    for (const id of objetivo) void pedirSerie(id);
+    if (heroDisk) void pedirSerieHero(heroDisk.id);
+    // La actividad no depende de una lectura SMART fresca: se siembra también en discos `unknown`.
+    if (conSparklines) for (const d of devices) void pedirSerieActividad(d.id);
   });
 
   /** El gráfico del panel enseña **solo el último tramo sin cortes** (`ultimoTramoVisible`): con la
@@ -122,8 +145,10 @@
   );
   const heroThreshold = $derived(heroDisk?.vendorTempLimitC ?? null);
 
-  function serieVisibleTarjeta(deviceId: string): Punto[] {
-    return conSparklines ? ultimoTramoVisible(app.temperatureSeries[deviceId] ?? []).points : [];
+  /** Onda de actividad de la tarjeta: solo el último tramo sin cortes (si la app estuvo parada, el
+   *  hueco se recorta en vez de dibujar puntos sueltos). */
+  function serieActividadTarjeta(deviceId: string): Punto[] {
+    return conSparklines ? ultimoTramoVisible(app.activitySeries[deviceId] ?? []).points : [];
   }
 
   /** Umbrales para el veredicto del tooltip de cada métrica de la tarjeta. Se piden una vez, sin
@@ -208,7 +233,7 @@
           {disk}
           {umbrales}
           href={`/disks/${disk.id}`}
-          temperatureSeries={serieVisibleTarjeta(disk.id)}
+          activitySeries={serieActividadTarjeta(disk.id)}
         />
       {/each}
     </div>

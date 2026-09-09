@@ -220,6 +220,9 @@
         unsubscribe = await subscribe({
           "metrics:updated": (p) => {
             app.upsertDevices(p.devices);
+            // Cada evento aporta un punto a la onda de actividad de cada tarjeta (ADR-051): así se
+            // refresca en vivo sin sondeo (el backend ya empuja, ADR-015).
+            app.pushActivitySamples(p.devices, p.emittedAt);
             app.sources = p.sources;
             app.loadedAt = p.emittedAt;
           },
@@ -227,6 +230,7 @@
           "inventory:changed": (p) => {
             app.upsertDevices([...p.added, ...p.updated]);
             app.devices = app.devices.filter((d) => !p.removed.includes(d.id));
+            app.prunearSeriesActividad();
           },
           "monitoring:paused": (p) => {
             app.paused = true;

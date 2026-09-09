@@ -1,5 +1,9 @@
 # Sparkline · **NUEVO**
 
+> **Nota (2026-09-09, ADR-051):** el fondo de la cabecera de `DiskCard` que se menciona abajo dejó
+> de ser la temperatura de 24 h y pasó a la actividad de disco de ventana corta. La primitiva
+> `Sparkline` no cambia; solo qué serie se le pasa.
+
 ## Justificación (`ui-design.md` §3)
 
 `TimeSeriesChart` no sirve para esto: trae ejes, leyenda, umbral y pie, y mide 240 px de alto. Aquí hace

@@ -43,7 +43,15 @@
      *  fondo de `HeroPanel`/`DiskCard` es decorativo. */
     interactivo = false,
     /** Unidad para el texto del globo cuando `interactivo` (p. ej. "°C", "%"). */
-    unidad = ""
+    unidad = "",
+    /** Fracción del ancho (0–1, desde la izquierda) a partir de la cual el ratón activa el cursor de
+     *  lectura. 0 = todo el ancho (por defecto). El `HeroPanel` la usa para que solo la mitad
+     *  derecha despejada —sin texto encima— responda al ratón. El teclado recorre toda la serie. */
+    hitDesde = 0,
+    /** Capa de solo lectura: no dibuja trazo, relleno ni umbral; solo la superficie sensible al
+     *  ratón, el punto resaltado y el globo. Para superponerla a otra `Sparkline` decorativa
+     *  (`HeroPanel`) sin repintar la curva sobre el texto. */
+    soloLectura = false
   } = $props();
 
   /** El `id` del degradado tiene que ser único por instancia: con varias sparklines en pantalla, un
@@ -71,13 +79,16 @@
   /* ---- Cursor de lectura (solo con `interactivo`) ------------------------------------------------ */
   let anchoPx = $state(0);
   let cursorIdx = $state<number | null>(null);
+  /** El SVG completo: se mide siempre sobre él aunque el evento venga de la franja sensible
+   *  (`hitDesde`), que es más estrecha. */
+  let svgEl = $state<SVGSVGElement | undefined>();
   const legibles = $derived(muestras.filter((p): p is { t: number; v: number } => p.v !== null));
   const hovered = $derived(cursorIdx === null ? null : (legibles[cursorIdx] ?? null));
   const puntoPx = $derived(hovered ? { x: (sx(hovered.t) / W) * anchoPx, y: sy(hovered.v) } : null);
 
   function alPuntero(e: PointerEvent) {
-    if (!interactivo || !legibles.length) return;
-    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    if (!interactivo || !legibles.length || !svgEl) return;
+    const rect = svgEl.getBoundingClientRect();
     const time = t0 + ((e.clientX - rect.left) / rect.width) * span;
     const p = masCercano(legibles, time);
     cursorIdx = p ? legibles.indexOf(p) : null;
@@ -140,10 +151,11 @@
          `tabindex="0"` + `aria-label` + flechas, el mismo patrón que `TimeSeriesChart`.
          Ver docs/known-issues.md #3 -->
     <svg
+      bind:this={svgEl}
       viewBox="0 0 {W} {height}"
       preserveAspectRatio="none"
       class="block w-full"
-      style="height: {height}px; color: {color}"
+      style="height: {height}px; color: {color}{interactivo && hitDesde > 0 ? '; pointer-events: none' : ''}"
       role={interactivo || label ? "img" : undefined}
       aria-label={interactivo ? resumen : label}
       aria-hidden={interactivo || label ? undefined : "true"}
@@ -152,51 +164,70 @@
       onpointerleave={() => (cursorIdx = null)}
       onkeydown={alTeclado}
     >
-      {#if fill}
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="currentColor" stop-opacity="0.32" />
-            <stop offset="1" stop-color="currentColor" stop-opacity="0" />
-          </linearGradient>
-        </defs>
-      {/if}
-      {#if threshold != null && threshold >= rango.min && threshold <= rango.max}
-        <line
-          x1="0"
-          y1={sy(threshold)}
-          x2={W}
-          y2={sy(threshold)}
-          stroke="currentColor"
-          stroke-width="1"
-          stroke-dasharray="3 3"
-          opacity="0.5"
-          vector-effect="non-scaling-stroke"
-        />
-      {/if}
-      {#each runs as run}
-        {#if run.length > 1}
-          {#if fill}
-            <path d={areaSuave(run, height)} fill="url(#{gradId})" />
-          {/if}
-          <path
-            d={rutaSuave(run)}
-            fill="none"
+      {#if !soloLectura}
+        {#if fill}
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="currentColor" stop-opacity="0.32" />
+              <stop offset="1" stop-color="currentColor" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+        {/if}
+        {#if threshold != null && threshold >= rango.min && threshold <= rango.max}
+          <line
+            x1="0"
+            y1={sy(threshold)}
+            x2={W}
+            y2={sy(threshold)}
             stroke="currentColor"
-            stroke-width={strokeWidth}
-            stroke-linejoin="round"
-            stroke-linecap="round"
-            vector-effect="non-scaling-stroke"
-          />
-        {:else if run.length === 1}
-          <circle
-            cx={run[0].x}
-            cy={run[0].y}
-            r="1.5"
-            fill="currentColor"
+            stroke-width="1"
+            stroke-dasharray="3 3"
+            opacity="0.5"
             vector-effect="non-scaling-stroke"
           />
         {/if}
-      {/each}
+        {#each runs as run}
+          {#if run.length > 1}
+            {#if fill}
+              <path d={areaSuave(run, height)} fill="url(#{gradId})" />
+            {/if}
+            <path
+              d={rutaSuave(run)}
+              fill="none"
+              stroke="currentColor"
+              stroke-width={strokeWidth}
+              stroke-linejoin="round"
+              stroke-linecap="round"
+              vector-effect="non-scaling-stroke"
+            />
+          {:else if run.length === 1}
+            <circle
+              cx={run[0].x}
+              cy={run[0].y}
+              r="1.5"
+              fill="currentColor"
+              vector-effect="non-scaling-stroke"
+            />
+          {/if}
+        {/each}
+      {/if}
+      {#if interactivo && hitDesde > 0}
+        <!-- Solo esta franja capta el ratón; el resto del SVG es `pointer-events: none` para que el
+             texto que va encima en el `HeroPanel` siga seleccionándose. La lectura accesible
+             (teclado + `role="img"` + `aria-live`) vive en el `<svg>`, no aquí. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- Ver docs/known-issues.md #5 -->
+        <rect
+          x={W * hitDesde}
+          y="0"
+          width={W * (1 - hitDesde)}
+          {height}
+          fill="transparent"
+          style="pointer-events: auto"
+          onpointermove={alPuntero}
+          onpointerleave={() => (cursorIdx = null)}
+        />
+      {/if}
       {#if hovered}
         <circle
           cx={sx(hovered.t)}
