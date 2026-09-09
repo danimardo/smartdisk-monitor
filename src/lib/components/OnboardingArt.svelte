@@ -8,8 +8,8 @@
    *  funciona en tema claro y oscuro sin una sola condicional. Las coordenadas y los `stroke-width`
    *  son geometría del dibujo, no valores de tema (misma regla que el sprite de `IconSprite`).
    *
-   *  Cuatro escenas, una por paso: `welcome`, `disks`, `alerts`, `done`. */
-  type Escena = "welcome" | "disks" | "alerts" | "done";
+   *  Cinco escenas, una por paso: `welcome`, `disks`, `alerts`, `ai`, `done`. */
+  type Escena = "welcome" | "disks" | "alerts" | "ai" | "done";
 
   let {
     name,
@@ -131,6 +131,46 @@
       opacity="0.4"
     />
     <path d="M150 34l3 6 6 3-6 3-3 6-3-6-6-3 6-3Z" fill="var(--sdm-accent-soft)" />
+  {:else if name === "ai"}
+    <!-- Explícamelo: un disco cuyo detalle técnico sale traducido a lenguaje llano en un globo,
+         con la chispa de la ayuda y la nube que recuerda que la consulta viaja fuera. -->
+    <ellipse cx="120" cy="128" rx="76" ry="12" fill="var(--sdm-glass-3)" />
+    <rect
+      x="34"
+      y="72"
+      width="58"
+      height="46"
+      rx="10"
+      fill="var(--sdm-accent-soft)"
+      stroke="var(--sdm-accent)"
+      stroke-width="3.5"
+    />
+    <circle cx="49" cy="86" r="4.5" fill="var(--sdm-ok)" />
+    <path
+      d="M112 26h72a16 16 0 0 1 16 16v32a16 16 0 0 1-16 16h-50l-40 16 24-16h-6a16 16 0 0 1-16-16V42a16 16 0 0 1 16-16Z"
+      fill="var(--sdm-accent-soft)"
+      stroke="var(--sdm-accent)"
+      stroke-width="4"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M114 44h68M114 58h54M114 72h36"
+      stroke="var(--sdm-accent)"
+      stroke-width="4"
+      stroke-linecap="round"
+    />
+    <path
+      d="M128 14a10 10 0 0 1 19-2 7 7 0 0 1 2 13h-22a8 8 0 0 1 1-11Z"
+      fill="none"
+      stroke="var(--sdm-accent)"
+      stroke-width="3"
+      stroke-linejoin="round"
+      opacity="0.5"
+    />
+    <path d="M206 24l4 9 9 4-9 4-4 9-4-9-9-4 9-4Z" fill="var(--sdm-accent-soft)" />
+    <circle cx="30" cy="52" r="4" fill="var(--sdm-accent)" />
+    <circle cx="120" cy="112" r="4" fill="var(--sdm-accent-soft)" />
+    <path d="M214 96l3 6 6 3-6 3-3 6-3-6-6-3 6-3Z" fill="var(--sdm-accent-soft)" />
   {:else}
     <!-- Todo listo: sello de conformidad y la primera lectura arrancando. -->
     <ellipse cx="120" cy="128" rx="70" ry="12" fill="var(--sdm-glass-3)" />

@@ -4924,6 +4924,12 @@ Reglas que cumple, como cualquier pieza del catálogo:
 - Si en el futuro otra pantalla quiere una ilustración, se decide entonces con el criterio de
   `ui-design.md` §3, no por analogía con esta.
 
+**Actualización (2026-09-09)**: se añade una **quinta escena `ai`** para el paso de «ayuda con IA»
+que introdujo la spec 005 (`005-explicacion-ia`) sin ilustración. Un disco cuyo detalle técnico
+sale traducido en un globo de explicación, con la chispa de la ayuda y una nube que recuerda que la
+consulta viaja fuera del equipo. Mismo criterio y mismas reglas (tokens, `aria-hidden`, sin figuras
+humanas); no cambia la decisión, solo completa el juego para el paso que faltaba.
+
 ### ADR-040 — La geometría de la ventana se recuerda en `settings`, no con un plugin
 
 Estado: aceptada. Fecha: 2026-09-06.
@@ -7193,7 +7199,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 17 del sprite (`sparkles` marca la ayuda con IA); `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
-| `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
+| `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cinco escenas (`welcome` / `disks` / `alerts` / `ai` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
 | `StatusPill` / `StatusDot` | estado de salud | requieren `label`; el color nunca es el único portador de significado; `StatusPill` admite ranura de icono (`icon="auto"` ⇒ `healthIcon[state]`) |
 | `MetricCard` | cifra destacada + procedencia | icono obligatorio + `sparkline` opcional; cifra con `.sdm-display` (peso 600, **no** 800); `value={null}` ⇒ "No disponible" **compuesto como texto en `text-lg`, no como cifra**. Bloque interno (`bg-glass-3` + `rounded-inner`), nunca material sobre material |
 | `DataRow` | contador SMART etiqueta/valor/delta | color en el delta solo si significa algo |
@@ -7388,10 +7394,11 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
 6. **Asistente inicial** (`/onboarding`, US-002, v3) — **sin `AppShell`**: `+layout.svelte` omite el
    riel y la barra de herramientas en esta ruta. Cabecera propia de 56 px (logo, indicador de paso,
    «Omitir y usar los valores de fábrica» siempre visible), cuerpo `max-w-[1000px]` centrado, pie de
-   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cuatro pasos, uno por pantalla, cada uno
+   navegación `sticky bottom-0` con `.sdm-material-chrome`. Cinco pasos, uno por pantalla, cada uno
    con su escena de `OnboardingArt` (ADR-039): `welcome` y `done` centradas sobre el título;
-   `disks` y `alerts` compactas junto al encabezado, ocultas por debajo de 720 px de cuerpo. El
-   guardián de redirección vive en `+layout.ts` (`open-questions.md` §V).
+   `disks`, `alerts` y `ai` compactas junto al encabezado, ocultas por debajo de 720 px de cuerpo
+   (el paso `ai` —ayuda con IA, spec 005— se añadió con su escena el 2026-09-09). El guardián de
+   redirección vive en `+layout.ts` (`open-questions.md` §V).
 7. **Informes**: hereda tokens; sin composición nueva.
 
 #### Comportamiento con muchos discos

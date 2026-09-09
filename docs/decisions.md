@@ -1154,6 +1154,12 @@ Reglas que cumple, como cualquier pieza del catálogo:
 - Si en el futuro otra pantalla quiere una ilustración, se decide entonces con el criterio de
   `ui-design.md` §3, no por analogía con esta.
 
+**Actualización (2026-09-09)**: se añade una **quinta escena `ai`** para el paso de «ayuda con IA»
+que introdujo la spec 005 (`005-explicacion-ia`) sin ilustración. Un disco cuyo detalle técnico
+sale traducido en un globo de explicación, con la chispa de la ayuda y una nube que recuerda que la
+consulta viaja fuera del equipo. Mismo criterio y mismas reglas (tokens, `aria-hidden`, sin figuras
+humanas); no cambia la decisión, solo completa el juego para el paso que faltaba.
+
 ## ADR-040 — La geometría de la ventana se recuerda en `settings`, no con un plugin
 
 Estado: aceptada. Fecha: 2026-09-06.

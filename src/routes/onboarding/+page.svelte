@@ -386,6 +386,7 @@
     {:else if paso === 4}
       <div class="flex items-center gap-6">
         <h1 class="sdm-display m-0 text-2xl">{t("onboarding.ai.title")}</h1>
+        <div class="ml-auto shrink-0 max-[720px]:hidden"><OnboardingArt name="ai" width={150} /></div>
       </div>
       <p class="m-0 max-w-[560px] text-sm leading-relaxed text-fg-dim" style="text-wrap: pretty">
         {t("onboarding.ai.body")}
