@@ -30,7 +30,11 @@ lleva texto de estado y tiempo restante: una barra sin leyenda no dice nada.
 ## Estados
 
 - **En curso**: como arriba.
-- **Indeterminado**: relleno de un tercio con pulso; con `prefers-reduced-motion` se queda quieto al
-  33 % y la leyenda pasa a «en curso, sin estimación».
+- **Indeterminado**: un segmento (35 % de la pista) que la **recorre de lado a lado en bucle** —el
+  patrón universal de «cargando, sin saber cuánto falta»—, no un relleno fijo que aparenta un
+  porcentaje. Antes era un tercio con pulso de opacidad: parecía una barra encallada al 30 %, y
+  peor en pantallas como el «Todo listo» del asistente. Con `prefers-reduced-motion` no hay
+  recorrido: la pista se llena entera y se atenúa (opacidad 0,5), que sigue leyéndose como
+  «activo». La leyenda la pone la pantalla (p. ej. «en curso, sin estimación»).
 - **Cancelando**: relleno congelado al 40 % de opacidad y leyenda «cancelando…». El botón Cancelar queda
   deshabilitado con `disabledReason`, para que no se pulse dos veces.

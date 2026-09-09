@@ -26,9 +26,9 @@
     aria-valuemax="100"
   >
     <div
-      class="h-full rounded-pill transition-all duration-base ease-sdm {indeterminate
-        ? 'animate-pulse w-1/3'
-        : ''} {emphasis === 'display' ? 'shadow-edge' : 'bg-accent'}"
+      class="h-full rounded-pill {indeterminate
+        ? 'sdm-indeterminate'
+        : 'transition-all duration-base ease-sdm'} {emphasis === 'display' ? 'shadow-edge' : 'bg-accent'}"
       style="{indeterminate ? '' : `width: ${pct}%;`}{emphasis === 'display'
         ? ' background: linear-gradient(90deg, var(--sdm-accent), var(--sdm-accent-hi));'
         : ''}"
@@ -39,3 +39,34 @@
     <span class="font-semibold text-fg">{trailing}</span>
   </div>
 </div>
+
+<style>
+  /* Indeterminado: un segmento que recorre la pista de lado a lado en bucle —el patrón universal
+     de «en curso, sin estimación»—, no un relleno fijo que aparenta un porcentaje. Nunca sale del
+     todo de la pista (siempre queda una esquirla visible), así que el bucle no parpadea. El ancho
+     y el recorrido son geometría de la animación, no valores de tema (misma consideración que las
+     keyframes de `AppShell`). */
+  .sdm-indeterminate {
+    width: 45%;
+    animation: sdm-progress-indeterminate 1.3s linear infinite;
+    will-change: transform;
+  }
+  @keyframes sdm-progress-indeterminate {
+    from {
+      transform: translateX(-80%);
+    }
+    to {
+      transform: translateX(200%);
+    }
+  }
+  /* Sin movimiento: la pista se llena y se atenúa un poco. Un segmento congelado quedaría fuera de
+     la pista y dejaría la barra vacía, que es justo la confusión que esto evita. */
+  @media (prefers-reduced-motion: reduce) {
+    .sdm-indeterminate {
+      width: 100%;
+      transform: none;
+      opacity: 0.5;
+      animation: none;
+    }
+  }
+</style>

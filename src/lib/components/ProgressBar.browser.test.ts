@@ -25,6 +25,14 @@ describe("ProgressBar", () => {
     await expect.element(barra).not.toHaveAttribute("aria-valuenow");
   });
 
+  it("indeterminado: un segmento que recorre la pista, no un relleno fijo con porcentaje", async () => {
+    const { container } = await render(ProgressBar, { props: { indeterminate: true } });
+    const relleno = container.querySelector<HTMLElement>('[role="progressbar"] > div')!;
+    // La clase que anima el recorrido, y ningún `width` en línea (eso sería un porcentaje fijo).
+    expect(relleno.className).toContain("sdm-indeterminate");
+    expect(relleno.getAttribute("style") ?? "").not.toContain("width");
+  });
+
   it("un valor fuera de rango se recorta a 0-100, nunca se desborda visualmente", async () => {
     const { container } = await render(ProgressBar, { props: { value: 150 } });
     const relleno = container.querySelector<HTMLElement>('[style*="width"]');
