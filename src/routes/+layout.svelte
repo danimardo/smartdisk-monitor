@@ -38,6 +38,22 @@
   let ready = $state(false);
   let startupError = $state<AppError | null>(null);
 
+  /** Refresco manual de datos («Refrescar» de la barra). `refresh_now` corre en un hilo bloqueante
+   *  del backend, así que la ventana no se congela; aquí solo se refleja que hay trabajo en curso
+   *  (spinner en el botón + barra superior). */
+  let refrescando = $state(false);
+  async function refrescar() {
+    if (refrescando) return;
+    refrescando = true;
+    try {
+      await refreshNow("all");
+    } catch (cause) {
+      startupError = toAppError(cause);
+    } finally {
+      refrescando = false;
+    }
+  }
+
   /** El asistente inicial (US-002) ocupa la ventana entera: sin riel ni barra de herramientas
    *  (FR-033). El `onMount` de abajo sigue corriendo —el asistente necesita tema, idioma e
    *  inventario—, solo se omite el `AppShell`. */
@@ -281,7 +297,7 @@
     </div>
   {/if}
 {:else}
-  <AppShell transitionKey={page.url.pathname}>
+  <AppShell transitionKey={page.url.pathname} busy={refrescando}>
     {#snippet sidebar()}
       <Sidebar
         {sections}
@@ -302,7 +318,8 @@
         {globalLabel}
         {freshness}
         primaryLabel={t("common.refresh")}
-        onprimary={() => refreshNow("all").catch((c) => (startupError = toAppError(c)))}
+        primaryLoading={refrescando}
+        onprimary={refrescar}
       />
     {/snippet}
 

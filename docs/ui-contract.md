@@ -61,6 +61,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
 | `app.log_reload_failed` | no se pudo aplicar en caliente el nuevo nivel de registro | sí |
 | `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
+| `app.refresh_failed` | el hilo de `refresh_now` terminó de forma anómala (panic); caso inesperado | sí |
 | `ia.no_key` | comando de IA sin clave de API configurada | no |
 | `ia.invalid_key_format` | la clave de API no tiene el formato esperado | no |
 | `ia.unauthorized` | OpenRouter rechazó la clave (HTTP 401/403) | no |
@@ -232,11 +233,16 @@ interface SmartCounter {
 
 invoke<void>("set_device_monitoring", { deviceId: string, enabled: boolean })
 invoke<void>("set_device_alias", { deviceId: string, alias: string | null })
-invoke<void>("refresh_now", { scope: "all" | "device", deviceId?: string })
+invoke<void>("refresh_now", { scope: "all" | "device", deviceId?: string })   // asíncrono
 ```
 
 `refresh_now` es idempotente: si ya hay una recopilación igual en curso, devuelve sin encolar otra
 (US-013). No es un error; la respuesta lo indica en el evento `metrics:updated` correspondiente.
+
+Es un comando **asíncrono**: corre en un hilo bloqueante del backend (`spawn_blocking`), no en el
+hilo principal, para que la ventana no se congele durante la relectura de inventario y la cascada
+de `smartctl` (ADR-042, corrección de 2026-09-09). La firma TS no cambia (`Promise<void>`); la
+interfaz refleja el trabajo en curso con el `loading` del botón «Refrescar» y la barra superior.
 
 ### 3.3 Series temporales
 

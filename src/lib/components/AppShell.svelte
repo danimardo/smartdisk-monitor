@@ -10,13 +10,14 @@
   import { navigating } from "$app/state";
   import { t } from "$lib/i18n";
 
-  let { sidebar, toolbar, children, transitionKey = "" } = $props();
+  let { sidebar, toolbar, children, transitionKey = "", busy = false } = $props();
 
   // Barra fina de navegación (spec 004): la navegación de SvelteKit espera al `load` de la ruta;
   // si algo tarda, esto avisa de que la aplicación está trabajando en vez de parecer congelada. El
   // `animation-delay` la retrasa ~150 ms para que una navegación instantánea no la haga parpadear
   // (a diferencia de `animation-duration`, `prefers-reduced-motion` no anula `animation-delay`).
-  const navegando = $derived(navigating.to != null);
+  // `busy` la reutiliza para una operación global en curso (p. ej. el refresco manual de datos).
+  const trabajando = $derived(navigating.to != null || busy);
 </script>
 
 <!-- El sprite de iconos (v3, ADR-034) ya no vive aquí: se monta una sola vez en
@@ -26,7 +27,7 @@
 <div
   class="relative flex h-screen overflow-hidden rounded-window bg-[linear-gradient(160deg,var(--sdm-bg),var(--sdm-bg-2))]"
 >
-  {#if navegando}
+  {#if trabajando}
     <div
       class="sdm-nav-progress pointer-events-none absolute inset-x-0 top-0 z-50 h-[2px] bg-accent"
       role="progressbar"

@@ -34,7 +34,7 @@ ninguna de estas rutas.
 | Tipos, formato, salud, iconos, tema y acento | `src/lib/design/` (incluye `icons.ts`) |
 | Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
 | Tipografía empotrada | `src/design-system/fonts/` |
-| Juego de iconos de línea (sprite, 15 símbolos) | `src/lib/components/IconSprite.svelte`, montado una vez en `src/routes/+layout.svelte` (fuera de `AppShell`, para que resuelva también en `/onboarding`); se usa vía `<Icon name="…" />` |
+| Juego de iconos de línea (sprite, 17 símbolos) | `src/lib/components/IconSprite.svelte`, montado una vez en `src/routes/+layout.svelte` (fuera de `AppShell`, para que resuelva también en `/onboarding`); se usa vía `<Icon name="…" />` |
 | **Boceto aprobado v3** (4 pantallas, ambos temas) | `design/propuesta-redisenov2/mockups/smartdisk-v3.html` |
 | Hoja de contacto de los iconos | `design/propuesta-redisenov2/mockups/icons-hoja-de-contacto.html` |
 | Fichas de cambio del rediseño v3 | `design/propuesta-redisenov2/cambios/` · spec: `specs/002-rediseno-v3/` |
@@ -156,8 +156,8 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | Componente | Para qué | Notas de uso obligatorias |
 |---|---|---|
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
-| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
-| `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
+| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `variant="feature"` es la acción **estrella** de una pantalla (degradado diagonal del acento + halo de `--sdm-accent-soft`) y convive con una `primary` porque son roles distintos — **una sola `feature` por pantalla** (hoy: «Explícamelo en lenguaje claro», spec 006); `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
+| `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 17 del sprite (`sparkles` marca la ayuda con IA); `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
 | `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
@@ -466,12 +466,18 @@ Errores que se cometen aunque las reglas de arriba estén leídas:
   (`SegmentedControl`, `FilterBar`) realzan el fondo del segmento inactivo con `hover:bg-glass-2`
   además del texto. El riel (`Sidebar`) y las opciones de `RadioGroup` ya realzaban con `bg-glass-3`
   / `bg-glass`.
-- **Indicador de navegación.** `AppShell` pinta una barra fina (2 px) pegada al borde superior de la
-  ventana mientras `navigating` (de `$app/state`) sea no nulo: `role="progressbar"`, color
-  `bg-accent`, con un `animation-delay` de ~150 ms para que una navegación instantánea no la haga
+- **Indicador de navegación / operación global.** `AppShell` pinta una barra fina (2 px) pegada al
+  borde superior de la ventana mientras `navigating` (de `$app/state`) sea no nulo **o** mientras la
+  prop `busy` esté activa (el refresco manual de datos la usa): `role="progressbar"`, color
+  `bg-accent`, con un `animation-delay` de ~150 ms para que una operación instantánea no la haga
   parpadear (bajo `prefers-reduced-motion` el retardo sigue vigente; solo se anula el avance). Es la
-  red de seguridad para cuando un `load` tarda —no sustituye a que la interfaz responda al instante,
-  que es lo normal tras ADR-042—.
+  red de seguridad para cuando un `load` o un comando largo tarda —no sustituye a que la interfaz
+  responda al instante, que es lo normal tras ADR-042; el comando largo corre en un hilo bloqueante
+  del backend, nunca en el hilo principal—.
+- **`Select size="sm"`** es la variante compacta (misma altura que un `Button size="sm"`) para
+  usarlo **en línea junto a botones** —p. ej. la duración del silencio en el detalle de una alerta—.
+  No pinta el rótulo ni el `hint` visibles, pero conserva `aria-label={label}`: el nombre accesible
+  no se pierde.
 - **`ConfirmDialog` con `dismissible`** muestra una cruz de cerrar en la esquina. Se usa solo en
   diálogos **informativos** (Acerca de), donde cerrar y «cancelar» son lo mismo; una confirmación
   real de escritura/carga no la lleva — se decide con sus botones.

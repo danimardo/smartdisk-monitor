@@ -98,6 +98,25 @@ test.describe("smoke @smoke", () => {
     await expect(barra).toHaveCount(0);
   });
 
+  test("«Refrescar» no congela: el botón muestra carga y aparece la barra superior", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS, { retardoMs: { refresh_now: 600 } });
+    await page.goto("/");
+
+    const boton = page.getByRole("button", { name: es["common.refresh"] });
+    const barra = page.getByRole("progressbar", { name: es["common.loading"] });
+    await boton.click();
+
+    // Mientras trabaja: botón deshabilitado + barra visible, y la navegación sigue respondiendo.
+    await expect(boton).toBeDisabled();
+    await expect(barra).toBeVisible();
+    await page.locator('a[href="/alerts"]').first().click();
+    await expect(page).toHaveURL(/\/alerts/);
+
+    // Al terminar: vuelve a la normalidad.
+    await expect(boton).toBeEnabled();
+    await expect(barra).toHaveCount(0);
+  });
+
   test("aplica el tema y resuelve el material", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/");

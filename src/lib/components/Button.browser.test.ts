@@ -79,6 +79,24 @@ describe("Button", () => {
     expect(enfocado).not.toBe("none");
   });
 
+  it("la variante `feature` se distingue visualmente de `secondary` (degradado + halo)", async () => {
+    const { rerender } = await render(Button, {
+      props: { variant: "secondary", children: contenido("Explícamelo") }
+    });
+    const elemento = document.querySelector("button")!;
+    const secundario = getComputedStyle(elemento);
+    const fondoSecundario = secundario.backgroundImage;
+    const sombraSecundaria = secundario.boxShadow;
+
+    await rerender({ variant: "feature", children: contenido("Explícamelo") });
+    const destacado = getComputedStyle(elemento);
+    // `feature` lleva un degradado (no `none`) y un halo distinto del material translúcido.
+    expect(destacado.backgroundImage).toContain("gradient");
+    expect(destacado.backgroundImage).not.toBe(fondoSecundario);
+    expect(destacado.boxShadow).not.toBe(sombraSecundaria);
+    expect(destacado.boxShadow).not.toBe("none");
+  });
+
   it("no se recorta a 1024 × 560, el mínimo técnico", async () => {
     await render(Button, {
       props: { size: "lg", children: contenido("Crear paquete de diagnóstico completo") }

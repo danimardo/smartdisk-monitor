@@ -2113,6 +2113,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
 | `app.log_reload_failed` | no se pudo aplicar en caliente el nuevo nivel de registro | sí |
 | `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
+| `app.refresh_failed` | el hilo de `refresh_now` terminó de forma anómala (panic); caso inesperado | sí |
 | `ia.no_key` | comando de IA sin clave de API configurada | no |
 | `ia.invalid_key_format` | la clave de API no tiene el formato esperado | no |
 | `ia.unauthorized` | OpenRouter rechazó la clave (HTTP 401/403) | no |
@@ -2284,11 +2285,16 @@ interface SmartCounter {
 
 invoke<void>("set_device_monitoring", { deviceId: string, enabled: boolean })
 invoke<void>("set_device_alias", { deviceId: string, alias: string | null })
-invoke<void>("refresh_now", { scope: "all" | "device", deviceId?: string })
+invoke<void>("refresh_now", { scope: "all" | "device", deviceId?: string })   // asíncrono
 ```
 
 `refresh_now` es idempotente: si ya hay una recopilación igual en curso, devuelve sin encolar otra
 (US-013). No es un error; la respuesta lo indica en el evento `metrics:updated` correspondiente.
+
+Es un comando **asíncrono**: corre en un hilo bloqueante del backend (`spawn_blocking`), no en el
+hilo principal, para que la ventana no se congele durante la relectura de inventario y la cascada
+de `smartctl` (ADR-042, corrección de 2026-09-09). La firma TS no cambia (`Promise<void>`); la
+interfaz refleja el trabajo en curso con el `loading` del botón «Refrescar» y la barra superior.
 
 #### 3.3 Series temporales
 
@@ -5048,6 +5054,18 @@ conserva la semántica de «el refresco manual espera al ciclo en curso» sin re
 - Sin comando nuevo, sin permiso de Tauri, sin dependencia. `.claude/rules/backend-rust.md` recoge
   la trampa.
 
+#### Corrección (2026-09-09)
+
+ADR-042 quitó la contención del candado, pero `refresh_now` seguía siendo un `#[tauri::command]`
+**síncrono**: la doc de Tauri v2 dice que un comando no asíncrono se ejecuta **en el hilo
+principal**, así que el botón «Refrescar» congelaba toda la interfaz durante la relectura de
+inventario + la cascada de `smartctl` (minutos si un disco falla lento). Se pasa `refresh_now` a
+`pub async fn` que delega en `tauri::async_runtime::spawn_blocking` —el mismo patrón que
+`iniciar_planificador`—, con el cuerpo síncrono extraído a `refresh_now_sync`. El frontend refleja
+el trabajo en curso (spinner en el botón + la barra superior de `AppShell` vía prop `busy`). Sin
+esto, la nota de `ui-design.md` Apéndice B «la interfaz responde al instante tras ADR-042» no era
+cierta para el refresco manual.
+
 ### ADR-043 — El instalador añade la excepción de Control de acceso a carpetas para `smartctl.exe`
 
 Estado: aceptada. Fecha: 2026-09-07.
@@ -5434,6 +5452,52 @@ constitucional 1.9.0 (principio XVI) que la autoriza:
 - Documentos actualizados en consecuencia: principio XVI (enmienda 1.9.0), `docs/data-model.md`
   (cuarta clave de `settings.ai`), `docs/ui-contract.md` (comando `establecer_envio_sin_revision`,
   campos nuevos en `EstadoIaWire` y `ExplicacionIaWire`), `docs/open-questions.md` (X.4).
+
+### ADR-048 — Botón destacado y icono de IA para la ayuda con IA
+
+Estado: aceptada. Fecha: 2026-09-09.
+
+#### El problema
+
+«Explícamelo en lenguaje claro» (spec 005/006) es la capacidad más visible del producto, pero en la
+interfaz era un `Button variant="secondary"` de contorno plano, del mismo peso visual que «Ver
+detalle técnico» o «Reconocer», y estirado a todo el ancho de la tarjeta por el contenedor
+`flex-col`. No se distinguía como lo que es.
+
+#### La decisión
+
+- **Variante `feature` de `Button`**: relleno con degradado diagonal del acento
+  (`linear-gradient(135deg, --sdm-accent-hi, --sdm-accent)`), texto `--sdm-on-accent`, y un **halo**
+  compuesto por un anillo translúcido de `--sdm-accent-soft` (4 px) + una sombra suave del mismo
+  token + el brillo interior de 1 px que ya usa `primary`. Todo con `var(--sdm-*)`; los `rgba()`
+  literales van precedidos de `_` (sintaxis de valor arbitrario de Tailwind), igual que `primary`
+  hoy, así `pnpm verify:tokens` no los marca.
+- **Convive con `primary`**: son roles distintos (`primary` = acción principal de la barra o del
+  formulario; `feature` = la capacidad estrella de la pantalla). Regla: **una sola `feature` por
+  pantalla**, igual que con `primary`.
+- **Icono `sparkles`** nuevo en el sprite (`IconSprite.svelte`, ADR-034): dos estrellas de cuatro
+  puntas rellenas. Es la convención de facto para «IA». Marca solo esta acción; entra en
+  `$lib/design/icons.ts` como el 17.º símbolo.
+- El botón deja de estar estirado (envuelto en un `<div>` para que su `inline-flex` mande el ancho).
+
+#### Alternativas descartadas
+
+- **Hacerlo `variant="primary"`.** Choca con «una sola `primary` por pantalla» (la barra ya tiene
+  «Refrescar»; el detalle de alerta, «Reconocer»).
+- **`primary` + `size="lg"` a secas.** Más grande, pero no más *distinto*: sigue siendo el mismo
+  tratamiento que la acción principal, y el usuario pidió que **llamara la atención** como algo
+  aparte.
+- **Un componente nuevo (`FeatureButton`).** La regla de las ≥3 pantallas no se cumple y todo el
+  comportamiento (tamaño, foco, `loading`, `hint`) es el de `Button`; una variante basta.
+- **Un icono de sprite de terceros o un emoji.** El sprite es cerrado y de estilo propio (ADR-034);
+  un emoji no hereda `currentColor` ni el tema.
+
+#### Consecuencias
+
+- El catálogo gana una variante y el sprite un símbolo; `docs/ui-design.md` §0/§3 y Apéndice B lo
+  recogen, e `icons.test.ts` pasa a esperar 17.
+- Cualquier pantalla futura con una capacidad estrella tiene ya el tratamiento; hay que vigilar que
+  no haya dos `feature` compitiendo en la misma pantalla (revisión visual, §8).
 
 
 ---
@@ -6810,7 +6874,7 @@ ninguna de estas rutas.
 | Tipos, formato, salud, iconos, tema y acento | `src/lib/design/` (incluye `icons.ts`) |
 | Diccionarios de idioma | `src/lib/i18n/es.json` y `src/lib/i18n/en.json` |
 | Tipografía empotrada | `src/design-system/fonts/` |
-| Juego de iconos de línea (sprite, 15 símbolos) | `src/lib/components/IconSprite.svelte`, montado una vez en `src/routes/+layout.svelte` (fuera de `AppShell`, para que resuelva también en `/onboarding`); se usa vía `<Icon name="…" />` |
+| Juego de iconos de línea (sprite, 17 símbolos) | `src/lib/components/IconSprite.svelte`, montado una vez en `src/routes/+layout.svelte` (fuera de `AppShell`, para que resuelva también en `/onboarding`); se usa vía `<Icon name="…" />` |
 | **Boceto aprobado v3** (4 pantallas, ambos temas) | `design/propuesta-redisenov2/mockups/smartdisk-v3.html` |
 | Hoja de contacto de los iconos | `design/propuesta-redisenov2/mockups/icons-hoja-de-contacto.html` |
 | Fichas de cambio del rediseño v3 | `design/propuesta-redisenov2/cambios/` · spec: `specs/002-rediseno-v3/` |
@@ -6932,8 +6996,8 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | Componente | Para qué | Notas de uso obligatorias |
 |---|---|---|
 | `Card` | contenedor de toda información | radio xl + `shadow-card`; no anides sombras; ranura `leading` opcional (cuadrado de icono a la izquierda del título, v3); prop `border` (`hairline` por defecto, `crit` para una zona destructiva — solo el filo, el fondo no se tiñe) |
-| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
-| `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 15 del sprite; `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
+| `Button` | acciones | **una sola** `variant="primary"` por pantalla; `variant="feature"` es la acción **estrella** de una pantalla (degradado diagonal del acento + halo de `--sdm-accent-soft`) y convive con una `primary` porque son roles distintos — **una sola `feature` por pantalla** (hoy: «Explícamelo en lenguaje claro», spec 006); `disabledReason` siempre que esté deshabilitado; `hint` (ayuda breve como `title` nativo cuando está activo) para acciones cuyo efecto no es obvio por el rótulo; `primary` escribe `text-fg-onAccent`, nunca `text-white` |
+| `Icon` (v3) | símbolo de línea que hereda `currentColor` | uno de los 17 del sprite (`sparkles` marca la ayuda con IA); `label` **obligatorio** si es el único portador de significado, si no `aria-hidden`; mapas semánticos en `$lib/design/icons.ts` |
 | `Sparkline` (v3) | trazo de serie sin ejes ni etiqueta | un **`path` curvo** (spline monótona, `rutaSuave`) por tramo continuo, **nunca interpola** un hueco; `vector-effect="non-scaling-stroke"`. Por defecto es contexto; con `interactivo` gana el cursor de lectura (ratón + teclado) y el globo `ChartTip`, igual que `TimeSeriesChart` — lo usa `MetricCard`, no el fondo decorativo de `HeroPanel`/`DiskCard` |
 | `HeroPanel` (v3) | dato dominante del panel con su serie de fondo | componente de pantalla (como `DiskCard`); la elección del disco protagonista vive en `selectHeroDisk()`, no en el componente; velo de legibilidad entre la curva y el texto |
 | `OnboardingArt` (v3) | ilustración plana decorativa del asistente inicial | cuatro escenas (`welcome` / `disks` / `alerts` / `done`); solo `currentColor` y `var(--sdm-*)`, correcta en ambos temas sin condicionales; `aria-hidden` siempre (ADR-039); **solo se usa en `/onboarding`** |
@@ -7242,12 +7306,18 @@ Errores que se cometen aunque las reglas de arriba estén leídas:
   (`SegmentedControl`, `FilterBar`) realzan el fondo del segmento inactivo con `hover:bg-glass-2`
   además del texto. El riel (`Sidebar`) y las opciones de `RadioGroup` ya realzaban con `bg-glass-3`
   / `bg-glass`.
-- **Indicador de navegación.** `AppShell` pinta una barra fina (2 px) pegada al borde superior de la
-  ventana mientras `navigating` (de `$app/state`) sea no nulo: `role="progressbar"`, color
-  `bg-accent`, con un `animation-delay` de ~150 ms para que una navegación instantánea no la haga
+- **Indicador de navegación / operación global.** `AppShell` pinta una barra fina (2 px) pegada al
+  borde superior de la ventana mientras `navigating` (de `$app/state`) sea no nulo **o** mientras la
+  prop `busy` esté activa (el refresco manual de datos la usa): `role="progressbar"`, color
+  `bg-accent`, con un `animation-delay` de ~150 ms para que una operación instantánea no la haga
   parpadear (bajo `prefers-reduced-motion` el retardo sigue vigente; solo se anula el avance). Es la
-  red de seguridad para cuando un `load` tarda —no sustituye a que la interfaz responda al instante,
-  que es lo normal tras ADR-042—.
+  red de seguridad para cuando un `load` o un comando largo tarda —no sustituye a que la interfaz
+  responda al instante, que es lo normal tras ADR-042; el comando largo corre en un hilo bloqueante
+  del backend, nunca en el hilo principal—.
+- **`Select size="sm"`** es la variante compacta (misma altura que un `Button size="sm"`) para
+  usarlo **en línea junto a botones** —p. ej. la duración del silencio en el detalle de una alerta—.
+  No pinta el rótulo ni el `hint` visibles, pero conserva `aria-label={label}`: el nombre accesible
+  no se pierde.
 - **`ConfirmDialog` con `dismissible`** muestra una cruz de cerrar en la esquina. Se usa solo en
   diálogos **informativos** (Acerca de), donde cerrar y «cancelar» son lo mismo; una confirmación
   real de escritura/carga no la lleva — se decide con sus botones.
@@ -8972,7 +9042,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "common.unsupported": "No compatible",
   "common.noData": "Sin datos",
   "common.sourceError": "Fuente con error",
-  "common.refresh": "Actualizar",
+  "common.refresh": "Refrescar",
   "common.cancel": "Cancelar",
   "common.close": "Cerrar",
   "common.continue": "Continuar",

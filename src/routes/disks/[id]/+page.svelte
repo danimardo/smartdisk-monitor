@@ -384,15 +384,17 @@
       {/each}
 
       {#if ia.activa && disk.counters.length > 0}
-        <Button
-          size="sm"
-          variant="secondary"
-          full={false}
-          disabled={ia.estaEnCurso(`smart:${disk.id}`)}
-          onclick={explicarSmart}
-        >
-          {t("alerts.explainCta")}
-        </Button>
+        <div>
+          <Button
+            variant="feature"
+            full={false}
+            disabled={ia.estaEnCurso(`smart:${disk.id}`)}
+            onclick={explicarSmart}
+          >
+            <Icon name="sparkles" />
+            {t("alerts.explainCta")}
+          </Button>
+        </div>
       {/if}
     </Card>
   </div>

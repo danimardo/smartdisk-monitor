@@ -11,6 +11,7 @@
     DataRow,
     EmptyState,
     ExplicacionModal,
+    Icon,
     Select,
     SegmentedControl,
     StatusPill
@@ -260,15 +261,17 @@
         </div>
 
         {#if ia.activa}
-          <Button
-            size="sm"
-            variant="secondary"
-            full={false}
-            disabled={detail !== null && ia.estaEnCurso(`alerta:${detail.id}`)}
-            onclick={explicarAlerta}
-          >
-            {t("alerts.explainCta")}
-          </Button>
+          <div>
+            <Button
+              variant="feature"
+              full={false}
+              disabled={detail !== null && ia.estaEnCurso(`alerta:${detail.id}`)}
+              onclick={explicarAlerta}
+            >
+              <Icon name="sparkles" />
+              {t("alerts.explainCta")}
+            </Button>
+          </div>
         {/if}
 
         {#if esAlertaSmart}
@@ -308,6 +311,7 @@
           {/if}
           {#if puedeSilenciar}
             <Select
+              size="sm"
               label={t("alerts.mute.duration")}
               value={muteMinutes}
               options={[

@@ -1313,6 +1313,18 @@ conserva la semántica de «el refresco manual espera al ciclo en curso» sin re
 - Sin comando nuevo, sin permiso de Tauri, sin dependencia. `.claude/rules/backend-rust.md` recoge
   la trampa.
 
+### Corrección (2026-09-09)
+
+ADR-042 quitó la contención del candado, pero `refresh_now` seguía siendo un `#[tauri::command]`
+**síncrono**: la doc de Tauri v2 dice que un comando no asíncrono se ejecuta **en el hilo
+principal**, así que el botón «Refrescar» congelaba toda la interfaz durante la relectura de
+inventario + la cascada de `smartctl` (minutos si un disco falla lento). Se pasa `refresh_now` a
+`pub async fn` que delega en `tauri::async_runtime::spawn_blocking` —el mismo patrón que
+`iniciar_planificador`—, con el cuerpo síncrono extraído a `refresh_now_sync`. El frontend refleja
+el trabajo en curso (spinner en el botón + la barra superior de `AppShell` vía prop `busy`). Sin
+esto, la nota de `ui-design.md` Apéndice B «la interfaz responde al instante tras ADR-042» no era
+cierta para el refresco manual.
+
 ## ADR-043 — El instalador añade la excepción de Control de acceso a carpetas para `smartctl.exe`
 
 Estado: aceptada. Fecha: 2026-09-07.
@@ -1699,3 +1711,49 @@ constitucional 1.9.0 (principio XVI) que la autoriza:
 - Documentos actualizados en consecuencia: principio XVI (enmienda 1.9.0), `docs/data-model.md`
   (cuarta clave de `settings.ai`), `docs/ui-contract.md` (comando `establecer_envio_sin_revision`,
   campos nuevos en `EstadoIaWire` y `ExplicacionIaWire`), `docs/open-questions.md` (X.4).
+
+## ADR-048 — Botón destacado y icono de IA para la ayuda con IA
+
+Estado: aceptada. Fecha: 2026-09-09.
+
+### El problema
+
+«Explícamelo en lenguaje claro» (spec 005/006) es la capacidad más visible del producto, pero en la
+interfaz era un `Button variant="secondary"` de contorno plano, del mismo peso visual que «Ver
+detalle técnico» o «Reconocer», y estirado a todo el ancho de la tarjeta por el contenedor
+`flex-col`. No se distinguía como lo que es.
+
+### La decisión
+
+- **Variante `feature` de `Button`**: relleno con degradado diagonal del acento
+  (`linear-gradient(135deg, --sdm-accent-hi, --sdm-accent)`), texto `--sdm-on-accent`, y un **halo**
+  compuesto por un anillo translúcido de `--sdm-accent-soft` (4 px) + una sombra suave del mismo
+  token + el brillo interior de 1 px que ya usa `primary`. Todo con `var(--sdm-*)`; los `rgba()`
+  literales van precedidos de `_` (sintaxis de valor arbitrario de Tailwind), igual que `primary`
+  hoy, así `pnpm verify:tokens` no los marca.
+- **Convive con `primary`**: son roles distintos (`primary` = acción principal de la barra o del
+  formulario; `feature` = la capacidad estrella de la pantalla). Regla: **una sola `feature` por
+  pantalla**, igual que con `primary`.
+- **Icono `sparkles`** nuevo en el sprite (`IconSprite.svelte`, ADR-034): dos estrellas de cuatro
+  puntas rellenas. Es la convención de facto para «IA». Marca solo esta acción; entra en
+  `$lib/design/icons.ts` como el 17.º símbolo.
+- El botón deja de estar estirado (envuelto en un `<div>` para que su `inline-flex` mande el ancho).
+
+### Alternativas descartadas
+
+- **Hacerlo `variant="primary"`.** Choca con «una sola `primary` por pantalla» (la barra ya tiene
+  «Refrescar»; el detalle de alerta, «Reconocer»).
+- **`primary` + `size="lg"` a secas.** Más grande, pero no más *distinto*: sigue siendo el mismo
+  tratamiento que la acción principal, y el usuario pidió que **llamara la atención** como algo
+  aparte.
+- **Un componente nuevo (`FeatureButton`).** La regla de las ≥3 pantallas no se cumple y todo el
+  comportamiento (tamaño, foco, `loading`, `hint`) es el de `Button`; una variante basta.
+- **Un icono de sprite de terceros o un emoji.** El sprite es cerrado y de estilo propio (ADR-034);
+  un emoji no hereda `currentColor` ni el tema.
+
+### Consecuencias
+
+- El catálogo gana una variante y el sprite un símbolo; `docs/ui-design.md` §0/§3 y Apéndice B lo
+  recogen, e `icons.test.ts` pasa a esperar 17.
+- Cualquier pantalla futura con una capacidad estrella tiene ya el tratamiento; hay que vigilar que
+  no haya dos `feature` compitiendo en la misma pantalla (revisión visual, §8).

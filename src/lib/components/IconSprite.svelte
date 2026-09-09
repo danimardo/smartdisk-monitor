@@ -1,5 +1,5 @@
 <script lang="ts">
-  /** Sprite de iconos de línea (v3, ADR-034). Define los 16 `<symbol id="i-…">` que `<Icon>`
+  /** Sprite de iconos de línea (v3, ADR-034). Define los 17 `<symbol id="i-…">` que `<Icon>`
    *  referencia con `<use>`. Se monta **una sola vez** en `src/routes/+layout.svelte`, fuera de
    *  `AppShell`, para que los iconos también estén disponibles en rutas sin chrome como el asistente
    *  inicial (`/onboarding`): antes vivía dentro de `AppShell` y en esa ruta los `<use>` no
@@ -190,6 +190,21 @@
         stroke="currentColor"
         stroke-width="1.7"
         stroke-linecap="round"
+      ></path></symbol
+    >
+    <symbol id="i-sparkles" viewBox="0 0 24 24"
+      ><path
+        d="M9.5 3c0 4.5 1 5.5 6.5 6.5-5.5 1-6.5 2-6.5 6.5 0-4.5-1-5.5-6.5-6.5C8.5 8.5 9.5 7.5 9.5 3Z"
+        fill="currentColor"
+        stroke="currentColor"
+        stroke-width="1.1"
+        stroke-linejoin="round"
+      ></path><path
+        d="M17.5 13c0 2 .5 2.5 3 3-2.5.5-3 1-3 3 0-2-.5-2.5-3-3 2.5-.5 3-1 3-3Z"
+        fill="currentColor"
+        stroke="currentColor"
+        stroke-width="1.1"
+        stroke-linejoin="round"
       ></path></symbol
     >
   </defs>

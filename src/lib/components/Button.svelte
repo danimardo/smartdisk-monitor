@@ -1,10 +1,12 @@
 <script lang="ts">
   /** Botón cápsula. Primary lleva degradado vertical del acento del sistema y brillo interior de 1px;
    *  secondary y ghost son material translúcido. Una sola primary por pantalla.
+   *  `feature`: la acción **estrella** de una pantalla (degradado diagonal del acento + halo).
+   *  Convive con una `primary` porque son roles distintos; una sola `feature` por pantalla.
    *  Toda acción que escriba datos o genere carga abre ConfirmDialog antes (spec §12).
    *  `hint`: ayuda breve como `title` nativo cuando el botón está activo; si está desactivado,
    *  manda `disabledReason`. */
-  type Variant = "primary" | "secondary" | "ghost" | "danger";
+  type Variant = "primary" | "feature" | "secondary" | "ghost" | "danger";
   type Size = "sm" | "md" | "lg";
 
   let {
@@ -29,6 +31,11 @@
       "border border-transparent text-fg-onAccent " +
       "bg-[linear-gradient(180deg,var(--sdm-accent-hi),var(--sdm-accent))] " +
       "shadow-[inset_0_1px_0_rgba(255,255,255,.35),0_1px_2px_rgba(0,0,0,.14)] hover:brightness-[1.06]",
+    feature:
+      "border border-transparent text-fg-onAccent " +
+      "bg-[linear-gradient(135deg,var(--sdm-accent-hi),var(--sdm-accent))] " +
+      "shadow-[0_0_0_4px_var(--sdm-accent-soft),0_6px_18px_-6px_var(--sdm-accent-soft),inset_0_1px_0_rgba(255,255,255,.4)] " +
+      "hover:brightness-[1.06]",
     secondary: "border border-hairline bg-glass-2 text-fg shadow-edge backdrop-blur-card hover:bg-glass",
     ghost: "border border-transparent bg-transparent text-fg-dim hover:bg-glass-3 hover:text-fg",
     danger: "border border-crit bg-crit-soft text-crit hover:brightness-105"

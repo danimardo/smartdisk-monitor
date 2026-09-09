@@ -10,7 +10,7 @@
 
 import type { HealthState } from "./types";
 
-/** Los 15 símbolos del sprite. El `id` en el sprite es `i-{name}`. */
+/** Los 17 símbolos del sprite. El `id` en el sprite es `i-{name}`. */
 export type IconName =
   | "temp"
   | "wear"
@@ -27,7 +27,9 @@ export type IconName =
   | "diskStack"
   | "check"
   | "tag"
-  | "close";
+  | "close"
+  /** Marca la ayuda con IA (spec 005/006): la acción «Explícamelo en lenguaje claro». */
+  | "sparkles";
 
 /** Todos los `IconName`, para pruebas y para validar el sprite. */
 export const ICON_NAMES: readonly IconName[] = [
@@ -46,7 +48,8 @@ export const ICON_NAMES: readonly IconName[] = [
   "diskStack",
   "check",
   "tag",
-  "close"
+  "close",
+  "sparkles"
 ];
 
 /** Estado de salud → icono. `unknown` usa `usb` porque el 90 % de los casos reales son puentes USB

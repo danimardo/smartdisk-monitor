@@ -2502,17 +2502,36 @@ fn post_procesar_ciclo(
 /// (Historias 3 y 4); mientras tanto no son parte del contrato de `refresh_now`, así que no hay
 /// ninguna rama `not_implemented` que mantener para ellos aquí.
 #[tauri::command]
-pub fn refresh_now(
+pub async fn refresh_now(
     app: tauri::AppHandle,
-    state: State<AppState>,
     scope: String,
     device_id: Option<String>,
 ) -> AppResult<()> {
+    // Fuera del hilo principal (spec 004 lo dejó a medias): un `#[tauri::command]` síncrono se
+    // ejecuta en el hilo principal y bloquea todo el bucle de eventos mientras dura la relectura de
+    // inventario y la cascada de `smartctl` (minutos si un disco falla lento). `spawn_blocking` lo
+    // manda a un hilo bloqueante propio —mismo patrón que `iniciar_planificador`—, y la interfaz
+    // sigue respondiendo. Un panic del bloque llega como error, no tumba el proceso.
+    tauri::async_runtime::spawn_blocking(move || refresh_now_sync(&app, &scope, device_id))
+        .await
+        .map_err(|e| {
+            Box::new(
+                AppError::new("app.refresh_failed", "error.unexpected").with_detail(e.to_string()),
+            )
+        })?
+}
+
+fn refresh_now_sync(
+    app: &tauri::AppHandle,
+    scope: &str,
+    device_id: Option<String>,
+) -> AppResult<()> {
+    let state = app.state::<AppState>();
     // Todo o nada, a propósito (`open-questions.md` J.39): un error en cualquier paso aborta el
     // resto y no se emite nada salvo la bandeja — es la semántica que ya esperaban sus pruebas y
     // el botón manual "actualizar ahora" antes de esta historia. El bucle en segundo plano
     // (`ejecutar_ciclo`) es más tolerante porque sus trabajos son independientes entre sí.
-    let resultado: AppResult<ResultadoCicloPost> = (|| match scope.as_str() {
+    let resultado: AppResult<ResultadoCicloPost> = (|| match scope {
         "all" => {
             // Cada `refresh_*` toma y suelta el candado de la conexión él mismo, y **nunca** lo
             // retiene mientras corre un proceso externo (spec `004`). El orden inventario → eventos
@@ -2568,8 +2587,8 @@ pub fn refresh_now(
     })();
 
     match &resultado {
-        Ok(r) => post_procesar_ciclo(&app, &state, r),
-        Err(_) => crate::platform::bandeja::actualizar(&app),
+        Ok(r) => post_procesar_ciclo(app, &state, r),
+        Err(_) => crate::platform::bandeja::actualizar(app),
     }
     resultado.map(|_| ())
 }
