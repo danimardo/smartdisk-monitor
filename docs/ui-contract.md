@@ -478,9 +478,10 @@ invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplica
 type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null };
 type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
 type OrigenExplicacion = {
-  tipo: "alerta" | "smart";
+  tipo: "alerta" | "smart" | "evento";
   deviceId: string | null;        // obligatorio si tipo === "smart"
   alertGroupId: string | null;    // obligatorio si tipo === "alerta"
+  eventId: string | null;         // obligatorio si tipo === "evento" (ADR-049)
   idioma: "es" | "en";
   revision: "ninguna" | "enviar_igual" | "quitar_fragmentos";
   previewConfirmada: boolean;

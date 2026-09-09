@@ -1757,3 +1757,55 @@ detalle técnico» o «Reconocer», y estirado a todo el ancho de la tarjeta por
   recogen, e `icons.test.ts` pasa a esperar 17.
 - Cualquier pantalla futura con una capacidad estrella tiene ya el tratamiento; hay que vigilar que
   no haya dos `feature` compitiendo en la misma pantalla (revisión visual, §8).
+
+## ADR-049 — La ayuda con IA se extiende al detalle de un evento de Windows
+
+Estado: aceptada. Fecha: 2026-09-09.
+
+### El problema
+
+La spec 005 (FR-025) ofreció «Explícamelo en lenguaje claro» solo en el detalle de una alerta y en
+el detalle SMART de un disco, y dejó **a propósito** las demás vistas «fuera de la primera
+versión». Pero la pantalla de Eventos muestra, en el panel de detalle, el mensaje del suceso y su
+**XML original** (`CodeOutput`): información igual de técnica que la de una alerta, y que el público
+objetivo no sabe leer.
+
+### La decisión
+
+Se añade el botón «Explícamelo en lenguaje claro» al panel de detalle de un evento (pantalla
+Eventos), para **cualquier** evento seleccionado (Error, Aviso o Info — que decida la persona).
+
+- **Se reutiliza toda la maquinaria de la feature 006**: `domain::ia::extraer_contenido_suceso`
+  (mensaje + campos `<EventData>`, sin el bloque `<System>`), la anonimización en capas
+  (`redactar_identificadores`: SID, rutas `\Device\`, WWN hex), el modal y su máquina de estados.
+- **Contrato**: `OrigenExplicacion` gana `tipo: "evento"` y `eventId: string | null`;
+  `domain::ia::Detalle` gana la variante `Evento`. `reunir_datos_explicacion` gana una rama que
+  carga el evento por id (`repo_varios::get_event_by_id`), extrae su contenido y compone la
+  consulta.
+- **Contenido enviado**: mensaje + `EventData` (anonimizados) y, **si el evento tiene disco
+  asociado** (`system_events.device_id`), el contexto de ese disco (marca, modelo, tipo). **Sin**
+  volcado `smartctl`.
+- El modal pasa a titularse de forma genérica («Explicación en lenguaje claro»).
+
+### Alternativas descartadas
+
+- **Incluir el volcado `smartctl` del disco asociado.** Un evento de Windows a menudo no va de
+  SMART (una corrupción de NTFS, un reintento del controlador); adjuntar 6–35 KB de volcado sería
+  ruido y gasto de cuota. El contexto mínimo del disco (marca/modelo) basta para situar la
+  explicación.
+- **Mostrar el botón solo en eventos de nivel Error/Aviso.** Un «Info: el volumen es correcto» no
+  necesita traducción, pero se prefirió no decidir por la persona: el botón aparece siempre y ella
+  elige si le interesa.
+- **Una spec SpecKit completa.** La maquinaria y sus garantías (anonimización, revisión, principio
+  XVI) ya están especificadas en la 006; esto solo añade una superficie de entrada. Basta este ADR
+  y la actualización del contrato.
+
+### Consecuencias
+
+- El principio XVI (enmendado en 1.9.0) ya autoriza enviar «el mensaje y los campos de datos» de un
+  suceso de Windows; se añade una **precisión** a la viñeta «detalle técnico visible» para nombrar
+  también el detalle de un evento como origen, no solo la alerta que nació de él.
+- `TipoOrigen` deja de ser un par: cualquier `match` sobre él en el backend gana una rama (hoy solo
+  `componer_consulta` y `reunir_datos_explicacion`).
+- El caso «evento sin mensaje ni `EventData` legibles» (evento corrupto, muy raro) devuelve
+  `event.not_found`; no se añade código de error nuevo.

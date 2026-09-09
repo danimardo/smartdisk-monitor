@@ -45,10 +45,10 @@ El producto debe ayudar a responder:
 - Español e inglés, seleccionados inicialmente según el idioma del sistema.
 - Tema claro, oscuro o automático según el sistema.
 - Instalador manual y desinstalador.
-- **Ayuda con IA opcional** (spec `005-explicacion-ia`, ampliada por `006-explicacion-ia-contexto-crudo`,
-  principio XVI): si la persona configura una clave de API de OpenRouter, puede pedir que se le
-  traduzca a lenguaje llano el detalle técnico de una alerta o del detalle SMART de un disco, con
-  posibles pasos a seguir. Apagada de fábrica; sin clave, la aplicación no hace ninguna conexión a
+- **Ayuda con IA opcional** (spec `005-explicacion-ia`, ampliada por `006-explicacion-ia-contexto-crudo`
+  y ADR-049, principio XVI): si la persona configura una clave de API de OpenRouter, puede pedir que
+  se le traduzca a lenguaje llano el detalle técnico de una alerta, del detalle SMART de un disco o
+  de un evento del registro de Windows, con posibles pasos a seguir. Apagada de fábrica; sin clave, la aplicación no hace ninguna conexión a
   Internet. La consulta lleva el volcado técnico completo del disco y, en alertas de sucesos de
   Windows, el contenido de ese suceso; todo se anonimiza en capas antes de salir del equipo
   (número de serie, WWN, nombre de equipo y usuario, SID, rutas de dispositivo) y la persona ve el

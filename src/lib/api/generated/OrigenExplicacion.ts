@@ -16,6 +16,11 @@ deviceId: string | null,
  */
 alertGroupId: string | null, 
 /**
+ * Obligatorio si `tipo == Evento` (spec 006/ADR-049: explicar un suceso del registro de
+ * Windows desde la pantalla de Eventos).
+ */
+eventId: string | null, 
+/**
  * `"es"` o `"en"`; el backend lo revalida contra `settings.appearance.language`.
  */
 idioma: string, revision: RevisionEnvio, previewConfirmada: boolean, };

@@ -30,7 +30,8 @@ class Explicacion {
   #revision: Revision = "ninguna";
 
   get #clave(): string {
-    return `${this.#origen?.tipo}:${this.#origen?.alertGroupId ?? this.#origen?.deviceId}`;
+    const o = this.#origen;
+    return `${o?.tipo}:${o?.alertGroupId ?? o?.deviceId ?? o?.eventId}`;
   }
 
   /** Punto de entrada: abre el modal y pide la explicación desde cero. */

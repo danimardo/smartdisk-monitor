@@ -57,6 +57,7 @@
       tipo: "smart",
       deviceId: disk.id,
       alertGroupId: null,
+      eventId: null,
       idioma: i18n.locale
     });
   }

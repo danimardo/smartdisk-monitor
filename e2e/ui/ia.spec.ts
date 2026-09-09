@@ -5,6 +5,7 @@ import {
   detalleAlertaActiva,
   estadoIaActiva,
   estadoIaDesactivada,
+  eventos,
   explicacionOk
 } from "./fixtures/respuestas";
 import { instalarIpcFalso, llamadas } from "./ipc-falso";
@@ -223,5 +224,29 @@ test.describe("ayuda con IA — modo «enviar sin revisar» (006, US4)", () => {
 
     const llamada = (await llamadas(page)).find((l) => l.comando === "establecer_envio_sin_revision");
     expect(llamada?.args).toMatchObject({ activar: true });
+  });
+});
+
+test.describe("ayuda con IA — explicar un evento de Windows (ADR-049)", () => {
+  test("con la IA activada, el detalle del evento ofrece «Explícamelo» y abre el modal", async ({ page }) => {
+    await instalarIpcFalso(page, { ...RESPUESTAS, estado_ia: estadoIaActiva });
+    await page.goto("/events");
+
+    await page.getByText(eventos[1].message).click();
+    await page.getByRole("button", { name: es["alerts.explainCta"] }).click();
+
+    const dialogo = page.getByRole("dialog");
+    await expect(dialogo.getByText(es["ai.modal.disclaimer"])).toBeVisible();
+
+    const llamada = (await llamadas(page)).find((l) => l.comando === "explicar_detalle_tecnico");
+    expect(llamada?.args).toMatchObject({ origen: { tipo: "evento", eventId: eventos[1].id } });
+  });
+
+  test("con la IA desactivada, el detalle del evento no muestra el botón", async ({ page }) => {
+    await instalarIpcFalso(page, { ...RESPUESTAS, estado_ia: estadoIaDesactivada });
+    await page.goto("/events");
+
+    await page.getByText(eventos[1].message).click();
+    await expect(page.getByRole("button", { name: es["alerts.explainCta"] })).toHaveCount(0);
   });
 });

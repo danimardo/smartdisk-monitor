@@ -122,6 +122,7 @@
       tipo: "alerta",
       deviceId: null,
       alertGroupId: detail.id,
+      eventId: null,
       idioma: i18n.locale
     });
   }

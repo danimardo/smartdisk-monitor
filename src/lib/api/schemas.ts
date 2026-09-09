@@ -360,9 +360,10 @@ export const revisionAnonimizacion = z.object({
 /** Entrada de `explicar_detalle_tecnico`. `deviceId` solo para el caso SMART; en el de alerta el
  *  disco sale del grupo. */
 export const origenExplicacion = z.object({
-  tipo: z.enum(["alerta", "smart"]),
+  tipo: z.enum(["alerta", "smart", "evento"]),
   deviceId: z.string().nullable(),
   alertGroupId: z.string().nullable(),
+  eventId: z.string().nullable(),
   idioma: z.enum(["es", "en"]),
   revision: z.enum(["ninguna", "enviar_igual", "quitar_fragmentos"]),
   previewConfirmada: z.boolean()

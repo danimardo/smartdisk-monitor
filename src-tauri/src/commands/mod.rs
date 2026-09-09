@@ -912,6 +912,7 @@ fn guardar_validez_ia(state: &AppState, valida: Option<bool>) {
 }
 
 /// Datos que el comando de explicación necesita de la base, recogidos con el candado breve.
+#[derive(Debug)]
 struct DatosExplicacion {
     system: String,
     user_crudo: String,
@@ -1149,6 +1150,77 @@ fn reunir_datos_explicacion(
                 sin_suceso: false,
                 serie_volcado,
                 wwn_volcado,
+            })
+        }
+        ia::TipoOrigen::Evento => {
+            let raw = origen.event_id.as_deref().ok_or_else(|| {
+                Box::new(
+                    AppError::new("ipc.schema_mismatch", "error.schemaMismatch")
+                        .with_detail("eventId es obligatorio para tipo \"evento\""),
+                )
+            })?;
+            let id: i64 = raw.parse().map_err(|_| {
+                Box::new(
+                    AppError::new("ipc.schema_mismatch", "error.schemaMismatch")
+                        .with_detail("eventId no es un número"),
+                )
+            })?;
+            let ev = repo_varios::get_event_by_id(conn, id)
+                .map_err(rusqlite_err_to_app_error)?
+                .ok_or_else(|| Box::new(AppError::new("event.not_found", "error.eventNotFound")))?;
+
+            let contenido =
+                ia::extraer_contenido_suceso(ev.message.as_deref(), ev.raw_xml.as_deref())
+                    .ok_or_else(|| {
+                        Box::new(AppError::new("event.not_found", "error.eventNotFound"))
+                    })?;
+
+            // Contexto del disco solo si el suceso lo tiene asociado; si no, `modelo` vacío hace que
+            // `componer_consulta` omita el bloque.
+            let disp = match ev.device_id.as_deref() {
+                Some(did) => {
+                    repo_inventario::get_device(conn, did).map_err(rusqlite_err_to_app_error)?
+                }
+                None => None,
+            };
+            let ctx = ia::ContextoDisco {
+                modelo: disp.as_ref().map(|d| d.model.as_str()).unwrap_or(""),
+                tipo: disp
+                    .as_ref()
+                    .map(|d| tipo_disco_legible(&d.device_type))
+                    .unwrap_or(""),
+                bus: disp.as_ref().and_then(|d| d.bus_type.as_deref()),
+                firmware: disp.as_ref().and_then(|d| d.firmware.as_deref()),
+                antiguedad_meses: disp.as_ref().and_then(|d| meses_desde(&d.first_seen_at)),
+            };
+            let nivel = match ev.level {
+                crate::domain::tipos::EventLevel::Critical => "crítico",
+                crate::domain::tipos::EventLevel::Error => "error",
+                crate::domain::tipos::EventLevel::Warning => "aviso",
+                crate::domain::tipos::EventLevel::Information => "informativo",
+            };
+            let det = ia::DetalleEvento {
+                proveedor: &ev.provider,
+                event_id: ev.event_id,
+                nivel,
+            };
+            let (system, user_crudo) = ia::componer_consulta(
+                &ia::Detalle::Evento(det),
+                &ctx,
+                ia::Idioma::de_codigo(&origen.idioma),
+                None,
+                Some(&contenido),
+            );
+            Ok(DatosExplicacion {
+                system,
+                user_crudo,
+                modelo,
+                preview_ack,
+                send_without_review,
+                sin_volcado: false,
+                sin_suceso: false,
+                serie_volcado: None,
+                wwn_volcado: None,
             })
         }
     }
@@ -7150,6 +7222,7 @@ mod tests_comandos_alertas {
             tipo: crate::domain::ia::TipoOrigen::Alerta,
             device_id: None,
             alert_group_id: Some(gid.to_string()),
+            event_id: None,
             idioma: "es".to_string(),
             revision: crate::domain::ia::RevisionEnvio::Ninguna,
             preview_confirmada: false,
@@ -7225,6 +7298,87 @@ mod tests_comandos_alertas {
         let datos = reunir_datos_explicacion(&conn, &origen_alerta(&gid)).unwrap();
         assert!(datos.sin_suceso);
         assert!(!datos.sin_volcado, "una regla de suceso no espera volcado");
+    }
+
+    // ---------------------------------------------- ADR-049: explicar un evento desde la pantalla de Eventos
+
+    fn origen_evento(event_id: &str) -> crate::domain::ia::OrigenExplicacion {
+        crate::domain::ia::OrigenExplicacion {
+            tipo: crate::domain::ia::TipoOrigen::Evento,
+            device_id: None,
+            alert_group_id: None,
+            event_id: Some(event_id.to_string()),
+            idioma: "es".to_string(),
+            revision: crate::domain::ia::RevisionEnvio::Ninguna,
+            preview_confirmada: false,
+        }
+    }
+
+    fn insertar_evento(
+        conn: &rusqlite::Connection,
+        record_id: i64,
+        device_id: Option<&str>,
+    ) -> i64 {
+        let ev = crate::domain::tipos::SystemEvent {
+            id: 0,
+            channel: "System".to_string(),
+            record_id,
+            occurred_at_utc: "2026-09-09T08:28:00Z".to_string(),
+            provider: "disk".to_string(),
+            event_id: 51,
+            level: crate::domain::tipos::EventLevel::Error,
+            message: Some("Error detectado en el dispositivo \\Device\\Harddisk1\\DR18.".to_string()),
+            raw_xml: Some(
+                "<Event><System><Computer>Ryzen</Computer></System><EventData><Data>\\Device\\Harddisk1\\DR18</Data></EventData></Event>"
+                    .to_string(),
+            ),
+            device_id: device_id.map(str::to_string),
+            volume_id: None,
+            mapping_confidence: crate::domain::tipos::MappingConfidence::Unknown,
+            dedup_hash: format!("hash-{record_id}"),
+        };
+        repo_varios::insert_event_returning_new_id(conn, &ev)
+            .unwrap()
+            .unwrap()
+    }
+
+    #[test]
+    fn reunir_datos_evento_con_disco_asociado_incluye_su_contexto() {
+        let conn = conn_de_prueba();
+        let eid = insertar_evento(&conn, 5001, Some("d1"));
+
+        let datos = reunir_datos_explicacion(&conn, &origen_evento(&eid.to_string())).unwrap();
+        assert!(datos
+            .user_crudo
+            .contains("Suceso del registro de eventos de Windows"));
+        assert!(datos
+            .user_crudo
+            .contains("Error detectado en el dispositivo"));
+        assert!(
+            datos.user_crudo.contains("Disco: modelo Modelo"),
+            "d1 aporta contexto"
+        );
+        assert!(
+            !datos.user_crudo.contains("<Computer>"),
+            "el bloque <System> no viaja"
+        );
+    }
+
+    #[test]
+    fn reunir_datos_evento_sin_disco_no_lleva_bloque_de_disco() {
+        let conn = conn_de_prueba();
+        let eid = insertar_evento(&conn, 5002, None);
+
+        let datos = reunir_datos_explicacion(&conn, &origen_evento(&eid.to_string())).unwrap();
+        assert!(datos.user_crudo.contains("Suceso del registro"));
+        assert!(!datos.user_crudo.contains("Disco: modelo"));
+    }
+
+    #[test]
+    fn reunir_datos_evento_id_inexistente_da_event_not_found() {
+        let conn = conn_de_prueba();
+        let err = reunir_datos_explicacion(&conn, &origen_evento("99999")).unwrap_err();
+        assert_eq!(err.code, "event.not_found");
     }
 
     #[test]

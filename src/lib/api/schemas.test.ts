@@ -344,6 +344,47 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
     expect(S.resultadoExplicacion.safeParse({ estado: "otro", markdown: "x" }).success).toBe(false);
   });
 
+  it("origenExplicacion acepta el tipo `evento` con `eventId`", () => {
+    expect(
+      S.origenExplicacion.safeParse({
+        tipo: "evento",
+        deviceId: null,
+        alertGroupId: null,
+        eventId: "42",
+        idioma: "es",
+        revision: "ninguna",
+        previewConfirmada: false
+      }).success
+    ).toBe(true);
+  });
+
+  it("origenExplicacion RECHAZA `eventId` ausente (cambio de contrato del backend)", () => {
+    expect(
+      S.origenExplicacion.safeParse({
+        tipo: "evento",
+        deviceId: null,
+        alertGroupId: null,
+        idioma: "es",
+        revision: "ninguna",
+        previewConfirmada: false
+      }).success
+    ).toBe(false);
+  });
+
+  it("origenExplicacion RECHAZA un tipo que no existe", () => {
+    expect(
+      S.origenExplicacion.safeParse({
+        tipo: "informe",
+        deviceId: null,
+        alertGroupId: null,
+        eventId: null,
+        idioma: "es",
+        revision: "ninguna",
+        previewConfirmada: false
+      }).success
+    ).toBe(false);
+  });
+
   it("revisionAnonimizacion RECHAZA un fragmento sin motivoKey", () => {
     expect(
       S.revisionAnonimizacion.safeParse({

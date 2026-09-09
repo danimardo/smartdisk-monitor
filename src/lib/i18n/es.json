@@ -316,7 +316,7 @@
   "alerts.actions.unignore.hint": "Devuelve la alerta a la vigilancia normal. Si la condición se sigue cumpliendo, volverá a Activas en el próximo ciclo.",
   "alerts.viewTechnicalDetail": "Ver detalle técnico",
   "alerts.explainCta": "Explícamelo en lenguaje claro",
-  "ai.modal.title": "Explicación de la alerta",
+  "ai.modal.title": "Explicación en lenguaje claro",
   "ai.modal.progress": "Pensando la explicación…",
   "ai.modal.retry": "Reintentar",
   "ai.modal.model": "Generado por el modelo {model}",

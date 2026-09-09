@@ -2,11 +2,23 @@
   /** Registro de eventos de Windows (US-021): lista virtualizada con filtros de nivel y
    *  proveedor, detalle con el XML original. El texto del mensaje llega en el idioma de Windows
    *  y se renderiza **como texto, jamás como HTML** (`docs/ui-contract.md` §3.5). */
-  import { CodeOutput, EmptyState, EventRow, FilterBar, StatusPill, VirtualList } from "$lib/components";
+  import {
+    Button,
+    CodeOutput,
+    EmptyState,
+    EventRow,
+    ExplicacionModal,
+    FilterBar,
+    Icon,
+    StatusPill,
+    VirtualList
+  } from "$lib/components";
   import { getEventRawXml, getSystemEvents, toAppError } from "$lib/api";
   import { formatDateTime } from "$lib/design/format";
   import { eventLevelIcon } from "$lib/design/icons";
-  import { t } from "$lib/i18n";
+  import { i18n, t } from "$lib/i18n";
+  import { ia } from "$lib/stores/ia.svelte";
+  import { explicacion } from "$lib/stores/explicacion.svelte";
   import type { AppError, HealthState } from "$lib/design/types";
   import type { SystemEvent } from "$lib/api";
   import type { PageData } from "./$types";
@@ -137,6 +149,19 @@
       xmlError = toAppError(cause);
     }
   }
+
+  /** «Explícamelo en lenguaje claro» sobre un evento (ADR-049): manda el mensaje + los campos de
+   *  datos del suceso, anonimizados, y el disco asociado si lo hay. Sin volcado SMART. */
+  function explicarEvento() {
+    if (!seleccionado) return;
+    void explicacion.lanzar({
+      tipo: "evento",
+      deviceId: null,
+      alertGroupId: null,
+      eventId: seleccionado.id,
+      idioma: i18n.locale
+    });
+  }
 </script>
 
 <div class="flex h-full gap-5">
@@ -197,6 +222,19 @@
           {seleccionado.provider} · {seleccionado.eventId} · {formatDateTime(seleccionado.occurredAt)}
         </p>
         <p class="m-0 text-sm" style="text-wrap: pretty">{seleccionado.message}</p>
+        {#if ia.activa}
+          <div>
+            <Button
+              variant="feature"
+              full={false}
+              disabled={ia.estaEnCurso(`evento:${seleccionado.id}`)}
+              onclick={explicarEvento}
+            >
+              <Icon name="sparkles" />
+              {t("alerts.explainCta")}
+            </Button>
+          </div>
+        {/if}
         {#if xmlError}
           <p class="m-0 text-xs" style="color: var(--sdm-crit)">
             {t(xmlError.messageKey, xmlError.messageVars)}
@@ -209,3 +247,22 @@
     {/if}
   </div>
 </div>
+
+<ExplicacionModal
+  open={explicacion.open}
+  fase={explicacion.fase}
+  markdown={explicacion.markdown}
+  modeloUsado={explicacion.modeloUsado}
+  detalleRecortado={explicacion.detalleRecortado}
+  sinVolcado={explicacion.sinVolcado}
+  sinSuceso={explicacion.sinSuceso}
+  error={explicacion.error}
+  textoRevision={explicacion.textoRevision}
+  fragmentos={explicacion.fragmentos}
+  onclose={explicacion.cerrar}
+  oncancel={explicacion.cerrar}
+  onretry={() => void explicacion.reintentar()}
+  onconfirmar={() => void explicacion.confirmarPreview()}
+  onenviarigual={() => void explicacion.enviarIgual()}
+  onquitarfragmentos={() => void explicacion.quitarFragmentos()}
+/>

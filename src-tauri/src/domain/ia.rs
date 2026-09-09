@@ -108,6 +108,9 @@ pub struct OrigenExplicacion {
     pub device_id: Option<String>,
     /// Obligatorio si `tipo == Alerta`.
     pub alert_group_id: Option<String>,
+    /// Obligatorio si `tipo == Evento` (spec 006/ADR-049: explicar un suceso del registro de
+    /// Windows desde la pantalla de Eventos).
+    pub event_id: Option<String>,
     /// `"es"` o `"en"`; el backend lo revalida contra `settings.appearance.language`.
     pub idioma: String,
     pub revision: RevisionEnvio,
@@ -120,6 +123,7 @@ pub struct OrigenExplicacion {
 pub enum TipoOrigen {
     Alerta,
     Smart,
+    Evento,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -437,11 +441,22 @@ pub struct ContadorSmart<'a> {
     pub significativo: bool,
 }
 
-/// Qué se le pide explicar: una alerta o los contadores SMART de un disco.
+/// Un suceso del registro de eventos de Windows que se va a explicar (ADR-049). El contenido
+/// legible del suceso viaja aparte, en el parámetro `suceso` de [`componer_consulta`].
+#[derive(Debug, Clone, Copy)]
+pub struct DetalleEvento<'a> {
+    pub proveedor: &'a str,
+    pub event_id: i64,
+    /// `"error"` | `"warning"` | `"information"` | `"critical"`.
+    pub nivel: &'a str,
+}
+
+/// Qué se le pide explicar: una alerta, los contadores SMART de un disco, o un suceso de Windows.
 #[derive(Debug, Clone, Copy)]
 pub enum Detalle<'a> {
     Alerta(DetalleAlerta<'a>),
     Smart(&'a [ContadorSmart<'a>]),
+    Evento(DetalleEvento<'a>),
 }
 
 const SYSTEM_ES: &str = "Eres un asistente que explica el estado de un disco de ordenador a una \
@@ -518,22 +533,31 @@ pub fn componer_consulta(
                 user.push('\n');
             }
         }
+        Detalle::Evento(e) => {
+            user.push_str(&format!(
+                "Suceso del registro de eventos de Windows: proveedor {}, id {}, nivel {}\n",
+                e.proveedor, e.event_id, e.nivel
+            ));
+        }
     }
 
-    user.push_str("Disco: modelo ");
-    user.push_str(disco.modelo);
-    user.push_str(", tipo ");
-    user.push_str(disco.tipo);
-    if let Some(bus) = disco.bus {
-        user.push_str(&format!(", conexión {bus}"));
+    // Un suceso sin disco asociado no lleva el bloque de disco (`modelo` vacío = «no hay disco»).
+    if !disco.modelo.is_empty() {
+        user.push_str("Disco: modelo ");
+        user.push_str(disco.modelo);
+        user.push_str(", tipo ");
+        user.push_str(disco.tipo);
+        if let Some(bus) = disco.bus {
+            user.push_str(&format!(", conexión {bus}"));
+        }
+        if let Some(fw) = disco.firmware {
+            user.push_str(&format!(", firmware {fw}"));
+        }
+        if let Some(meses) = disco.antiguedad_meses {
+            user.push_str(&format!(", antigüedad aproximada {meses} meses"));
+        }
+        user.push('\n');
     }
-    if let Some(fw) = disco.firmware {
-        user.push_str(&format!(", firmware {fw}"));
-    }
-    if let Some(meses) = disco.antiguedad_meses {
-        user.push_str(&format!(", antigüedad aproximada {meses} meses"));
-    }
-    user.push('\n');
 
     if let Some(v) = volcado {
         let v = v.trim();
@@ -1228,6 +1252,53 @@ mod tests {
         );
         assert!(!user.contains("Volcado técnico"));
         assert!(!user.contains("suceso de Windows"));
+    }
+
+    #[test]
+    fn componer_consulta_evento_lleva_cabecera_de_suceso_y_omite_disco_si_no_hay() {
+        let ev = DetalleEvento {
+            proveedor: "disk",
+            event_id: 51,
+            nivel: "error",
+        };
+        let sin_disco = ContextoDisco {
+            modelo: "",
+            tipo: "",
+            bus: None,
+            firmware: None,
+            antiguedad_meses: None,
+        };
+        let (_, user) = componer_consulta(
+            &Detalle::Evento(ev),
+            &sin_disco,
+            Idioma::Es,
+            None,
+            Some("Error detectado en el dispositivo \\Device\\Harddisk1\\DR18."),
+        );
+        assert!(user.contains("Suceso del registro de eventos de Windows: proveedor disk, id 51"));
+        assert!(
+            !user.contains("Disco: modelo"),
+            "sin disco no lleva bloque de disco"
+        );
+        assert!(user.contains("Contenido del suceso"));
+        assert!(user.contains("DR18"));
+    }
+
+    #[test]
+    fn componer_consulta_evento_con_disco_asociado_si_lo_lleva() {
+        let ev = DetalleEvento {
+            proveedor: "disk",
+            event_id: 51,
+            nivel: "error",
+        };
+        let (_, user) = componer_consulta(
+            &Detalle::Evento(ev),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            Some("algo"),
+        );
+        assert!(user.contains("Disco: modelo Samsung SSD 990 PRO 2TB"));
     }
 
     #[test]
