@@ -1809,3 +1809,84 @@ Eventos), para **cualquier** evento seleccionado (Error, Aviso o Info — que de
   `componer_consulta` y `reunir_datos_explicacion`).
 - El caso «evento sin mensaje ni `EventData` legibles» (evento corrupto, muy raro) devuelve
   `event.not_found`; no se añade código de error nuevo.
+
+## ADR-050 — Consulta PDH persistente y ventana deslizante para la actividad de disco
+
+Estado: aceptada. Fecha: 2026-09-09. Spec: `007-actividad-disco-representativa`.
+
+### El problema
+
+`activity_percent` salía de `collectors::perf_counters::leer`, que **abría** una consulta PDH,
+tomaba una ventana de 1 s, la **cerraba**, y solo se ejecutaba en el trabajo `METRICAS_RAPIDAS`
+(30 s por defecto). Era una fotografía de 1 segundo tomada una vez cada 30. Usando la aplicación
+contra hardware real, el usuario veía 0–1 % de actividad con el disco claramente trabajando: el
+instante de muestreo caía en un hueco entre operaciones, o llegaba 25 s después de la ráfaga. El
+número no representaba el intervalo que decía representar. La cabecera del propio módulo ya lo
+marcaba como provisional («…porque el planificador en segundo plano todavía no existe para mantener
+una consulta abierta»). Ese planificador ya existe (`iniciar_planificador`, bucle de 1 s).
+
+El Administrador de tareas de Windows usa **el mismo contador** (`% Idle Time`) y **la misma
+fórmula** (`100 − idle`); su única diferencia es que mantiene la consulta abierta y muestrea de
+forma continua. No hay ninguna fuente «más en tiempo real» a la que acceder.
+
+### La decisión
+
+Una **consulta PDH persistente** (`ConsultaActividad`) abierta durante toda la ejecución, con un
+contador `% Idle Time` por disco físico monitorizado, muestreada en **cada tick** del bucle en
+segundo plano (1 s en red; 1 de cada 4 ticks → 4 s en batería, coherente con D.2). Con una consulta
+viva, `% Idle Time` entre dos `PdhCollectQueryData` ya da el valor del intervalo: no hace falta el
+`sleep(1 s)` que pagaba `leer()` por ser autónoma.
+
+Por cada disco se mantiene una **ventana deslizante** en memoria (`domain::actividad::VentanaActividad`,
+pura y probada test-first) del tamaño de la cadencia de métricas rápidas, de la que se derivan
+**media** y **pico**. El agregado (`ActividadDisco`) se publica cada tick en
+`AppState.actividad` y lo leen `get_devices` / `get_device_detail` / `emitir_metrics_updated`.
+
+- **Panel general**: muestra el **pico** de la ventana (la señal más directa de «¿ha estado ocupado
+  este disco hace poco?»).
+- **Detalle de disco**: **media y pico**, con la ayuda contextual explicando que es un agregado de
+  los últimos ~30 s.
+- **Serie histórica** `activity_percent`: una fila por ciclo de métricas rápidas con **la media** de
+  la ventana; **ninguna fila** si en ese ciclo la ventana aún no cubre la cadencia → hueco en la
+  gráfica, dibujado como hueco (E.1). `perf_counters::leer` deja de leer y de persistir la
+  actividad; sigue con el caudal y las latencias.
+- **Contrato**: `DiskSummary.activity_percent: Option<f64>` → `activity: ActividadDisco`
+  (`{ estado: valido|parcial|no_disponible, mediaPercent, picoPercent, muestras, ventanaSegundos }`).
+  Regenera `ts-rs`; esquema Zod `actividadDisco` con su prueba de rechazo; `docs/ui-contract.md`
+  §3.2. Sin marca de tiempo ni procedencia en el tipo: el agregado es actual por construcción y la
+  procedencia es siempre «contadores de rendimiento» (rótulo fijo en la interfaz).
+- **Estado en memoria, no persistido** (como `paused`, `source_health`): un reinicio arranca con la
+  ventana vacía → primeros ~30 s en `parcial`/`no_disponible`, nunca un `0` inventado (principio I).
+- Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
+  todos los discos (`parcial` ≤ una cadencia): compromiso aceptado para no gestionar contadores PDH
+  vivos uno a uno.
+
+Valores adoptados (intervalo de muestreo, tamaño de ventana, umbral de hueco, batería): registrados
+en `docs/open-questions.md` D.4.
+
+### Alternativas descartadas
+
+- **Modo «en vivo»** (refresco de 1–2 s en la interfaz mientras el detalle está abierto): se
+  descartó en la clarificación de la spec. El envío a la interfaz sigue siendo el evento
+  `metrics:updated` de siempre (~30 s), con el agregado de la ventana en vez de una instantánea. No
+  se añade evento ni se toca el contrato de eventos (ADR-015).
+- **`Get-Counter` de PowerShell en subproceso**: mismos contadores, más coste (arranque de proceso)
+  y arrastra la trampa de la ventana de consola (`backend-rust.md` J.57).
+- **Gestión incremental de contadores PDH** (`PdhRemoveCounter` / añadir en caliente): más código y
+  más estados por probar para ahorrar ~30 s de `parcial` en un evento infrecuente (principio II.5).
+- **Persistir también el pico** (dos series): cambia el modelo de datos y la retención; se deja como
+  ampliación aditiva futura. Igual para llevar caudal y latencias a la ventana continua.
+
+### Consecuencias
+
+- **Sin dependencia nueva** (`Cargo.toml` intacto) y **sin permiso de Tauri nuevo**: la llamada PDH
+  es backend puro y la FFI a `pdh.dll` ya existía; solo se añaden constantes `PDH_CSTATUS_*`.
+- El coste de CPU añadido es una lectura de contador por segundo y por disco —lo que hace el
+  Administrador de tareas de forma continua—, imperceptible en reposo. El muestreo **no** loguea por
+  tick (principio XV); un fallo del contador se registra `warn` una vez por flanco, como
+  `source_health`.
+- `MetricaAyudable` de la interfaz: la actividad deja de ser un número suelto; `metricHelp` gana el
+  caso `parcial` y una firma con el agregado. `MetricCard` gana una prop opcional `secondary` para
+  el «Pico N %».
+- La actividad deja de apagarse cuando falta una lectura SMART fresca: sigue su propio `estado`, a
+  diferencia de temperatura y desgaste.

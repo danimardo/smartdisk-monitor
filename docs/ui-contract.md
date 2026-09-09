@@ -78,7 +78,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 
 Los que ya viven en `src/lib/design/types.ts` no se repiten aquí: `HealthState`,
 `Severity`, `AlertStatus`, `TestStatus`, `MetricSource`, `MetricQuality`, `UnknownReason`,
-`Provenance`, `DiskSummary`, `VolumeSummary`, `AlertGroup`.
+`Provenance`, `DiskSummary`, `VolumeSummary`, `AlertGroup`, `ActividadDisco`, `EstadoActividad`.
 
 ```ts
 type Resolution = "raw" | "five_minutes" | "hourly";
@@ -187,6 +187,22 @@ genérico, con las claves `settings.appearance.theme`, `settings.appearance.lang
 apariencia ni `settings.onboarding.completedAt`.
 
 ### 3.2 Inventario
+
+`DiskSummary.activity` (spec `007-actividad-disco-representativa`, ADR-050) sustituye al antiguo
+`activityPercent: number | null`. Es el agregado de una ventana deslizante alimentada por muestreo
+continuo de los contadores de rendimiento; no lleva marca de tiempo (siempre es actual por
+construcción) ni procedencia (siempre «contadores de rendimiento»):
+
+```ts
+type EstadoActividad = "valido" | "parcial" | "no_disponible";
+interface ActividadDisco {
+  estado: EstadoActividad;          // "valido": la ventana cubre la cadencia; "parcial": aún no; "no_disponible": vacía
+  mediaPercent: number | null;      // null solo con estado "no_disponible"
+  picoPercent: number | null;       // el panel muestra el pico; el detalle, media y pico
+  muestras: number;                 // cuántas muestras respaldan la ventana ahora
+  ventanaSegundos: number;          // periodo que la ventana pretende cubrir (= cadencia de métricas rápidas)
+}
+```
 
 ```ts
 invoke<DeviceListResponse>("get_devices")

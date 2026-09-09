@@ -30,7 +30,9 @@
     ayuda = undefined as AyudaMetrica | undefined,
     provenance = "",
     /** Marca de dato obsoleto, p. ej. "hace 12 min". Se muestra junto a la procedencia. */
-    age = null as string | null
+    age = null as string | null,
+    /** Cifra secundaria bajo la principal, p. ej. "Pico 80 %" en la actividad (spec 007). */
+    secondary = null as string | null
   } = $props();
 
   const missing = $derived(value === null || value === "");
@@ -73,6 +75,9 @@
     <span class="sdm-num sdm-display truncate text-metric" style="color: {cifraColor}" title={value}>
       {value}
     </span>
+    {#if secondary}
+      <span class="sdm-num truncate text-2xs text-fg-dim">{secondary}</span>
+    {/if}
     {#if hayCurva}
       <Sparkline
         points={series}

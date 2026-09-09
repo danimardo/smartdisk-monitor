@@ -18,7 +18,7 @@ function discoBase(overrides: Partial<DiskSummary> = {}): DiskSummary {
     state: "ok",
     temperatureC: 44,
     percentageUsed: 3,
-    activityPercent: 8,
+    activity: { estado: "valido", mediaPercent: 8, picoPercent: 22, muestras: 30, ventanaSegundos: 30 },
     powerOnHours: 500,
     unknownReason: null,
     lastReadAt: "2026-09-06T10:00:00Z",

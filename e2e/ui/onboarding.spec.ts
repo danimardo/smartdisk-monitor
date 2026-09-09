@@ -17,7 +17,7 @@ const inventarioLimpio = {
       state: "ok",
       temperatureC: 41,
       percentageUsed: 3,
-      activityPercent: 12,
+      activity: { estado: "valido", mediaPercent: 12, picoPercent: 44, muestras: 30, ventanaSegundos: 30 },
       powerOnHours: 100,
       lastReadAt: "2026-09-06T10:00:00Z",
       volumes: [
@@ -91,7 +91,11 @@ test.describe("asistente inicial", () => {
     expect((await llamadas(page)).some((l) => l.comando === "set_setting")).toBe(true);
     await page.getByRole("button", { name: es["common.continue"] }).click();
 
-    // Paso 4: terminar.
+    // Paso 4: ayuda con IA (opcional, spec 005) — se deja en blanco y se continúa.
+    await expect(page.getByRole("heading", { name: es["onboarding.ai.title"] })).toBeVisible();
+    await page.getByRole("button", { name: es["onboarding.ai.cta.skip"] }).click();
+
+    // Paso 5: terminar.
     await expect(page.getByRole("heading", { name: es["onboarding.done.title"] })).toBeVisible();
     await page.getByRole("button", { name: es["onboarding.done.cta"] }).click();
 

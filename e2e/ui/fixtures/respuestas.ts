@@ -32,7 +32,7 @@ export const inventario = {
       state: "ok",
       temperatureC: 41,
       percentageUsed: 3,
-      activityPercent: 12,
+      activity: { estado: "valido", mediaPercent: 12, picoPercent: 44, muestras: 30, ventanaSegundos: 30 },
       powerOnHours: 1840,
       lastReadAt: AHORA,
       volumes: [
@@ -56,7 +56,13 @@ export const inventario = {
       state: "unknown",
       temperatureC: null,
       percentageUsed: null,
-      activityPercent: null,
+      activity: {
+        estado: "no_disponible",
+        mediaPercent: null,
+        picoPercent: null,
+        muestras: 0,
+        ventanaSegundos: 30
+      },
       powerOnHours: null,
       unknownReason: "unsupported",
       lastReadAt: AHORA,

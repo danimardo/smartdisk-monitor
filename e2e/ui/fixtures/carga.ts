@@ -17,7 +17,13 @@ export function generarInventarioDeCarga(n: number): z.infer<typeof S.deviceList
     state: "ok" as const,
     temperatureC: 35 + (i % 20),
     percentageUsed: i % 100,
-    activityPercent: i % 100,
+    activity: {
+      estado: "valido" as const,
+      mediaPercent: i % 100,
+      picoPercent: (i % 100) + 1,
+      muestras: 30,
+      ventanaSegundos: 30
+    },
     powerOnHours: 1000 + i,
     lastReadAt: AHORA,
     volumes: []

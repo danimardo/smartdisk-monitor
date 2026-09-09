@@ -35,7 +35,7 @@
     maskSerial
   } from "$lib/design/format";
   import { classifyAgainstThresholds, temperatureThresholds } from "$lib/design/health";
-  import { ayudaMetrica } from "$lib/design/metricHelp";
+  import { actividadDetalle, ayudaMetrica } from "$lib/design/metricHelp";
   import { i18n, t } from "$lib/i18n";
   import { ia } from "$lib/stores/ia.svelte";
   import { explicacion } from "$lib/stores/explicacion.svelte";
@@ -84,9 +84,10 @@
     wearCritPct: settings.alerts.wearCritPercent
   });
   const ayudaTemp = $derived(ayudaMetrica("temperature", disk.temperatureC, ctxAyuda));
-  const ayudaActividad = $derived(ayudaMetrica("activity", disk.activityPercent, ctxAyuda));
+  const ayudaActividad = $derived(ayudaMetrica("activity", null, ctxAyuda, disk.activity));
   const ayudaDesgaste = $derived(ayudaMetrica("wear", disk.percentageUsed, ctxAyuda));
   const ayudaHoras = $derived(ayudaMetrica("powerOnHours", disk.powerOnHours, ctxAyuda));
+  const actividad = $derived(actividadDetalle(disk.activity));
 
   /** Un disco "unreadable" que no sea NVMe puede deberse a que Windows Defender bloquea el comando
    *  de bajo nivel que `smartctl` necesita (J.56/ADR-043) — se comprueba solo en ese caso, nunca en
@@ -305,7 +306,8 @@
     <MetricCard
       label={t("disk.activity")}
       icon="pulse"
-      value={disk.activityPercent !== null ? formatPercent(disk.activityPercent) : null}
+      value={actividad.valor}
+      secondary={actividad.secundario}
       series={mini["activity_percent"] ?? []}
       unidad="%"
       ayuda={ayudaActividad}

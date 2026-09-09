@@ -5,6 +5,7 @@
 //! `docs/engineering-conventions.md`): recibe datos y devuelve decisiones. Es lo que permite
 //! probar el motor de alertas y las reglas de estado con fixtures y sin hardware.
 
+pub mod actividad;
 pub mod ajustes;
 pub mod capacidad;
 pub mod correlacion;

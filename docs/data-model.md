@@ -218,9 +218,13 @@
 - `write_bytes_per_second`
 - `read_latency_ms`
 - `write_latency_ms`
-- `activity_percent` — porcentaje de tiempo con al menos una operación en curso, derivado de
-  `PhysicalDisk\% Idle Time` y acotado a 0–100. **No** se usa `% Disk Time` directamente, que en
-  discos con varias operaciones simultáneas supera el 100 % y no es un porcentaje real.
+- `activity_percent` — **media de una ventana deslizante** de actividad del tamaño de la cadencia de
+  métricas rápidas (30 s por defecto), alimentada por muestreo continuo de `PhysicalDisk\% Idle Time`
+  (derivado a `100 − idle`, acotado a 0–100; **no** se usa `% Disk Time`). Una fila por ciclo de
+  métricas rápidas, **omitida** cuando en ese ciclo la ventana aún no cubre la cadencia (arranque,
+  reanudación) → hueco en la serie, nunca un valor parcial presentado como del ciclo. La ventana
+  vive solo en memoria (`AppState.actividad`), no en SQLite (spec 007, ADR-050, `open-questions.md`
+  D.4). El pico de la ventana se muestra en la interfaz pero **no** se persiste en esta entrega.
 - `volume_free_bytes`
 - `volume_free_percent`
 - `smart_query_ok` — 1.0 si `smartctl` pudo leer el disco ese ciclo, 0.0 si la consulta falló o

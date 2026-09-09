@@ -12,7 +12,7 @@ const disk = (id: string, over: Partial<DiskSummary> = {}): DiskSummary => ({
   state: "ok",
   temperatureC: 40,
   percentageUsed: 5,
-  activityPercent: 0,
+  activity: { estado: "valido", mediaPercent: 0, picoPercent: 0, muestras: 30, ventanaSegundos: 30 },
   powerOnHours: 100,
   volumes: [],
   ...over

@@ -95,6 +95,15 @@ pub struct AppState {
     /// rechazada. **No se persiste**: es una pista para la interfaz, no un dato de verdad — el
     /// proveedor es quien decide, y un reinicio simplemente la vuelve a `None`.
     pub ia_clave_valida: std::sync::Mutex<Option<bool>>,
+    /// Agregado vivo de la ventana deslizante de actividad por disco (spec
+    /// `007-actividad-disco-representativa`, ADR-050). Lo escribe el bucle en segundo plano tras
+    /// cada muestreo de los contadores de rendimiento; lo leen `get_devices`, `get_device_detail`
+    /// y `emitir_metrics_updated` para rellenar `DiskSummary.activity`. **No se persiste**: una
+    /// ventana de 30 s no debe sobrevivir a un reinicio (constitución §V); al arrancar está vacía y
+    /// cada disco se muestra como `no disponible` hasta que su ventana se llena (FR-004).
+    pub actividad: std::sync::Mutex<
+        std::collections::HashMap<String, crate::domain::actividad::ActividadDisco>,
+    >,
 }
 
 impl AppState {
@@ -111,6 +120,7 @@ impl AppState {
             aviso_bandeja_mostrado: std::sync::atomic::AtomicBool::new(false),
             recoleccion_smart: std::sync::Mutex::new(()),
             ia_clave_valida: std::sync::Mutex::new(None),
+            actividad: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 }

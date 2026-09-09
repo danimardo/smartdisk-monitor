@@ -75,6 +75,22 @@ describe("MetricCard", () => {
     expect(container.querySelector('[aria-live="polite"]')?.textContent).toContain("°C");
   });
 
+  it("cifra secundaria: se muestra bajo la principal (p. ej. «Pico 80 %» en la actividad, spec 007)", async () => {
+    await render(MetricCard, {
+      props: { label: "Actividad", value: "30 %", secondary: "Pico 80 %" }
+    });
+    await expect.element(page.getByText("30 %")).toBeInTheDocument();
+    await expect.element(page.getByText("Pico 80 %")).toBeInTheDocument();
+  });
+
+  it("sin cifra secundaria no deja hueco: no aparece nada entre la cifra y la sparkline", async () => {
+    const { container } = await render(MetricCard, {
+      props: { label: "Actividad", value: "30 %" }
+    });
+    // Solo la cifra principal, ninguna línea secundaria.
+    expect(container.querySelectorAll(".sdm-num").length).toBe(1);
+  });
+
   it("con `ayuda`, la cabecera es un disparador enfocable: al enfocar sale el tooltip, Escape lo cierra", async () => {
     const { container } = await render(MetricCard, {
       props: {

@@ -12,6 +12,7 @@
   import { getMetricSeries, getSettings, getSystemEvents, refreshNow } from "$lib/api";
   import { estadoConAlertas, healthToken, selectHeroDisk } from "$lib/design/health";
   import { healthIcon } from "$lib/design/icons";
+  import { picoActividadPanel } from "$lib/design/metricHelp";
   import { formatHours, formatPercent, formatSpanShort } from "$lib/design/format";
   import { ultimoTramoVisible, type Punto } from "$lib/design/series";
   import { t } from "$lib/i18n";
@@ -65,8 +66,10 @@
         icon: "wear" as const
       },
       {
+        // La actividad sigue su propio estado (ventana deslizante), no la frescura de SMART:
+        // `picoActividadPanel` devuelve null cuando no hay dato (spec 007).
         label: t("disk.activity"),
-        value: smart(heroDisk.activityPercent !== null ? formatPercent(heroDisk.activityPercent) : null),
+        value: picoActividadPanel(heroDisk.activity),
         icon: "pulse" as const
       },
       {

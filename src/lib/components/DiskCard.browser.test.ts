@@ -22,7 +22,13 @@ function discoBase(overrides: Partial<DiskSummary> = {}): DiskSummary {
     state: "ok",
     temperatureC: 42,
     percentageUsed: 5,
-    activityPercent: 12,
+    activity: {
+      estado: "valido",
+      mediaPercent: 12,
+      picoPercent: 38,
+      muestras: 30,
+      ventanaSegundos: 30
+    },
     powerOnHours: 1000,
     unknownReason: null,
     lastReadAt: "2026-09-04T10:00:00Z",
@@ -81,7 +87,13 @@ describe("DiskCard", () => {
           unknownReason: "unreadable",
           temperatureC: 41,
           percentageUsed: 3,
-          activityPercent: 0
+          activity: {
+            estado: "no_disponible",
+            mediaPercent: null,
+            picoPercent: null,
+            muestras: 0,
+            ventanaSegundos: 30
+          }
         }),
         href: "/disks/d1"
       }
@@ -94,7 +106,17 @@ describe("DiskCard", () => {
   it("un dato ausente se muestra como «—» discreto, nunca como 0 ni vacío", async () => {
     await render(DiskCard, {
       props: {
-        disk: discoBase({ temperatureC: null, percentageUsed: null, activityPercent: null }),
+        disk: discoBase({
+          temperatureC: null,
+          percentageUsed: null,
+          activity: {
+            estado: "no_disponible",
+            mediaPercent: null,
+            picoPercent: null,
+            muestras: 0,
+            ventanaSegundos: 30
+          }
+        }),
         href: "/disks/d1"
       }
     });
@@ -148,5 +170,56 @@ describe("DiskCard", () => {
   it("el alias, cuando existe, sustituye al modelo como título de la tarjeta", async () => {
     await render(DiskCard, { props: { disk: discoBase({ alias: "Disco de trabajo" }), href: "/disks/d1" } });
     await expect.element(page.getByText("Disco de trabajo")).toBeInTheDocument();
+  });
+
+  // ---- actividad: pico de la ventana con sus tres estados (spec 007, FR-012 / FR-014) ----
+
+  const actividad = (
+    estado: "valido" | "parcial" | "no_disponible",
+    pico: number | null
+  ): DiskSummary["activity"] => ({
+    estado,
+    mediaPercent: pico === null ? null : Math.round(pico / 2),
+    picoPercent: pico,
+    muestras: estado === "no_disponible" ? 0 : 20,
+    ventanaSegundos: 30
+  });
+
+  it("actividad `valido`: el panel muestra el pico de la ventana", async () => {
+    await render(DiskCard, {
+      props: { disk: discoBase({ activity: actividad("valido", 73) }), href: "/disks/d1" }
+    });
+    await expect.element(page.getByText("73 %")).toBeInTheDocument();
+  });
+
+  it("actividad `parcial`: el pico va con la marca «~» de que la ventana aún no está completa", async () => {
+    await render(DiskCard, {
+      props: { disk: discoBase({ activity: actividad("parcial", 40) }), href: "/disks/d1" }
+    });
+    await expect.element(page.getByText("~40 %")).toBeInTheDocument();
+  });
+
+  it("actividad `no_disponible`: «—» discreto, nunca 0 %", async () => {
+    const { container } = await render(DiskCard, {
+      props: { disk: discoBase({ activity: actividad("no_disponible", null) }), href: "/disks/d1" }
+    });
+    await expect.element(page.getByText("—").first()).toBeInTheDocument();
+    expect(container.textContent).not.toContain("0 %");
+  });
+
+  it("la actividad no se apaga por falta de lectura SMART fresca: sigue su propio estado", async () => {
+    await render(DiskCard, {
+      props: {
+        disk: discoBase({
+          state: "unknown",
+          unknownReason: "unreadable",
+          temperatureC: 41,
+          activity: actividad("valido", 66)
+        }),
+        href: "/disks/d1"
+      }
+    });
+    // Temperatura y desgaste sí se ocultan; la actividad no.
+    await expect.element(page.getByText("66 %")).toBeInTheDocument();
   });
 });

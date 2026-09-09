@@ -25,6 +25,24 @@ export type MetricQuality = "exact" | "inferred" | "vendor_specific" | "stale";
 
 export type ThemePreference = "light" | "dark" | "system";
 
+/** Estado del agregado de actividad de disco (spec 007). `valido` = la ventana cubre la cadencia;
+ *  `parcial` = hay datos pero aún no la cubren (arranque, tras un hueco); `no_disponible` = ventana
+ *  vacía. Nunca se muestra un `parcial` como si fuera fiable ni un hueco como `0` (principio I). */
+export type EstadoActividad = "valido" | "parcial" | "no_disponible";
+
+/** Media y pico de la ventana deslizante de actividad, alimentada por muestreo continuo de los
+ *  contadores de rendimiento (spec 007, ADR-050). Sustituye al antiguo `activityPercent`.
+ *  `mediaPercent`/`picoPercent` son `null` solo cuando `estado === "no_disponible"`. */
+export interface ActividadDisco {
+  estado: EstadoActividad;
+  mediaPercent: number | null;
+  picoPercent: number | null;
+  /** Nº de muestras que respaldan la ventana en este instante. */
+  muestras: number;
+  /** Periodo que la ventana pretende cubrir, en segundos (= cadencia de métricas rápidas). */
+  ventanaSegundos: number;
+}
+
 export interface Provenance {
   source: MetricSource;
   quality: MetricQuality;
@@ -59,7 +77,8 @@ export interface DiskSummary {
   /** null = no disponible. Nunca 0 inventado. */
   temperatureC: number | null;
   percentageUsed: number | null;
-  activityPercent: number | null;
+  /** Agregado de la ventana deslizante de actividad (spec 007). Sustituye a `activityPercent`. */
+  activity: ActividadDisco;
   powerOnHours: number | null;
   vendorTempLimitC?: number | null;
   /** Umbral crítico del fabricante, si lo declara; por debajo de él manda el configurado en ajustes. */

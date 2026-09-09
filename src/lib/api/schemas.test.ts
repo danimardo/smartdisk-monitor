@@ -6,6 +6,14 @@ import * as S from "./schemas";
  *  debe rechazar, porque de eso depende que un cambio de contrato en el backend se detecte en vez
  *  de convertirse en `undefined` mostrado como dato válido. */
 
+const actividadValida = {
+  estado: "valido",
+  mediaPercent: 12,
+  picoPercent: 38,
+  muestras: 30,
+  ventanaSegundos: 30
+};
+
 const discoValido = {
   id: "dev-1",
   model: "Samsung 990 PRO 2TB",
@@ -13,7 +21,7 @@ const discoValido = {
   state: "ok",
   temperatureC: 47,
   percentageUsed: 3,
-  activityPercent: 12,
+  activity: actividadValida,
   powerOnHours: 1200,
   volumes: []
 };
@@ -24,7 +32,18 @@ describe("diskSummary", () => {
   });
 
   it("acepta null en toda métrica opcional: un dato ausente es null explícito", () => {
-    const sinDatos = { ...discoValido, temperatureC: null, percentageUsed: null, activityPercent: null };
+    const sinDatos = {
+      ...discoValido,
+      temperatureC: null,
+      percentageUsed: null,
+      activity: {
+        estado: "no_disponible",
+        mediaPercent: null,
+        picoPercent: null,
+        muestras: 0,
+        ventanaSegundos: 30
+      }
+    };
     expect(S.diskSummary.safeParse(sinDatos).success).toBe(true);
   });
 
@@ -54,6 +73,45 @@ describe("diskSummary", () => {
     expect(S.diskSummary.safeParse({ ...discoValido, smartHealthPassed: true }).success).toBe(true);
     expect(S.diskSummary.safeParse({ ...discoValido, smartHealthPassed: null }).success).toBe(true);
     expect(S.diskSummary.safeParse({ ...discoValido, smartHealthPassed: 1 }).success).toBe(false);
+  });
+
+  it("RECHAZA `activity` como número suelto (el contrato viejo, spec 007 FR-012a)", () => {
+    const r = S.diskSummary.safeParse({ ...discoValido, activity: 12 });
+    expect(r.success).toBe(false);
+  });
+
+  it("RECHAZA un `estado` de actividad fuera del enum", () => {
+    const r = S.diskSummary.safeParse({
+      ...discoValido,
+      activity: { ...actividadValida, estado: "desconocido" }
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("RECHAZA una actividad sin `ventanaSegundos`, y dice cuál falta", () => {
+    const { ventanaSegundos: _fuera, ...sinVentana } = actividadValida;
+    const r = S.diskSummary.safeParse({ ...discoValido, activity: sinVentana });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0].path).toContain("ventanaSegundos");
+  });
+});
+
+describe("actividadDisco", () => {
+  it("acepta media y pico null solo con estado no_disponible", () => {
+    expect(
+      S.actividadDisco.safeParse({
+        estado: "no_disponible",
+        mediaPercent: null,
+        picoPercent: null,
+        muestras: 0,
+        ventanaSegundos: 30
+      }).success
+    ).toBe(true);
+  });
+
+  it("RECHAZA `muestras` negativas y `ventanaSegundos` de cero", () => {
+    expect(S.actividadDisco.safeParse({ ...actividadValida, muestras: -1 }).success).toBe(false);
+    expect(S.actividadDisco.safeParse({ ...actividadValida, ventanaSegundos: 0 }).success).toBe(false);
   });
 });
 

@@ -83,7 +83,13 @@ pub struct DiskSummary {
     pub state: HealthState,
     pub temperature_c: Option<f64>,
     pub percentage_used: Option<f64>,
-    pub activity_percent: Option<f64>,
+    /// Actividad de disco: media y pico de una ventana deslizante alimentada por muestreo continuo
+    /// de los contadores de rendimiento (spec `007-actividad-disco-representativa`, ADR-050).
+    /// Sustituye al antiguo `activity_percent: Option<f64>` (FR-012a). El valor lo pone la ventana
+    /// en memoria `AppState.actividad`, no una muestra persistida: `enrich_with_smart_data` deja
+    /// aquí `no_disponible` y los comandos que tienen `AppState` lo sobrescriben con el agregado
+    /// vivo.
+    pub activity: crate::domain::actividad::ActividadDisco,
     pub power_on_hours: Option<f64>,
     pub vendor_temp_limit_c: Option<f64>,
     pub vendor_temp_critical_c: Option<f64>,
@@ -264,6 +270,29 @@ pub struct AlertDetail {
     pub related_events: Vec<serde_json::Value>,
 }
 
+/// La cadencia de «métricas rápidas» por defecto (`docs/open-questions.md` D.1), en segundos. Se
+/// usa como `ventana_segundos` del `ActividadDisco::no_disponible` placeholder; el valor real (que
+/// puede haber cambiado el usuario) lo trae el agregado vivo de `AppState.actividad` cuando existe.
+fn cadencia_metricas_rapidas_defecto() -> u32 {
+    crate::collectors::planificador::METRICAS_RAPIDAS
+        .por_defecto
+        .as_secs() as u32
+}
+
+/// Sobrescribe el campo `activity` de cada resumen con el agregado vivo de la ventana deslizante
+/// (`AppState.actividad`), si existe para ese disco. Los comandos que tienen `AppState` lo llaman
+/// tras `enrich_with_smart_data`, que solo sabe dejar el placeholder `no_disponible`.
+fn aplicar_actividad_viva(
+    resumenes: &mut [DiskSummary],
+    actividad: &std::collections::HashMap<String, crate::domain::actividad::ActividadDisco>,
+) {
+    for resumen in resumenes {
+        if let Some(agregado) = actividad.get(&resumen.id) {
+            resumen.activity = *agregado;
+        }
+    }
+}
+
 /// Un `Device` de dominio, presentado como `DiskSummary` **sin** enriquecer con salud: siempre
 /// `unknown` con `not-yet-sampled`. Es la base neutra que `enrich_with_smart_data` completa con
 /// las muestras reales; no se usa sola salvo cuando de verdad no hay ninguna lectura que mostrar.
@@ -276,7 +305,9 @@ fn device_to_summary(d: &Device) -> DiskSummary {
         state: HealthState::Unknown,
         temperature_c: None,
         percentage_used: None,
-        activity_percent: None,
+        activity: crate::domain::actividad::ActividadDisco::no_disponible(
+            cadencia_metricas_rapidas_defecto(),
+        ),
         power_on_hours: None,
         vendor_temp_limit_c: None,
         vendor_temp_critical_c: None,
@@ -1910,6 +1941,15 @@ pub fn get_devices(state: State<AppState>) -> AppResult<DeviceListResponse> {
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
     let mut respuesta = get_devices_impl(&conn)?;
 
+    {
+        let actividad = state
+            .actividad
+            .lock()
+            .expect("el mutex de actividad no se envenena: sin pánicos dentro");
+        aplicar_actividad_viva(&mut respuesta.devices, &actividad);
+        aplicar_actividad_viva(&mut respuesta.excluded, &actividad);
+    }
+
     let pausado_desde = state
         .paused
         .lock()
@@ -2007,14 +2047,10 @@ fn enrich_with_smart_data(conn: &rusqlite::Connection, d: &Device) -> AppResult<
     let limite_fabricante =
         repo_metricas::latest_device_sample(conn, &d.id, "vendor_temp_limit_celsius")
             .map_err(rusqlite_err_to_app_error)?;
-    // Los contadores de rendimiento son un colector aparte, con su propia cadencia
-    // (`METRICAS_RAPIDAS`, independiente de `SMART_COMPLETO`): se refleja aunque todavía no haya
-    // llegado ninguna lectura SMART, en vez de esperar a `temperatura` como el resto de campos de
-    // aquí abajo. Antes de esto, `activity_percent` nunca se leía y se quedaba en "no disponible"
-    // para siempre, aunque el dato ya estuviera guardado.
-    let actividad = repo_metricas::latest_device_sample(conn, &d.id, "activity_percent")
-        .map_err(rusqlite_err_to_app_error)?;
-    resumen.activity_percent = actividad.as_ref().and_then(|m| m.value_real);
+    // La actividad ya **no** sale de una muestra persistida: es un agregado de una ventana
+    // deslizante en memoria (`AppState.actividad`, spec 007). `device_to_summary` deja aquí el
+    // placeholder `no_disponible`; el comando que tenga `AppState` lo sobrescribe con
+    // `aplicar_actividad_viva`. Este enriquecedor solo tiene la conexión, así que no lo toca.
 
     let Some(principal) = &temperatura else {
         // `not-yet-sampled` es el motivo por defecto que ya trae `device_to_summary`.
@@ -2166,7 +2202,17 @@ pub fn get_device_detail(state: State<AppState>, device_id: String) -> AppResult
         .conn
         .lock()
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
-    get_device_detail_impl(&conn, &device_id)
+    let mut detalle = get_device_detail_impl(&conn, &device_id)?;
+    {
+        let actividad = state
+            .actividad
+            .lock()
+            .expect("el mutex de actividad no se envenena: sin pánicos dentro");
+        if let Some(agregado) = actividad.get(&detalle.summary.id) {
+            detalle.summary.activity = *agregado;
+        }
+    }
+    Ok(detalle)
 }
 
 fn set_device_monitoring_impl(
@@ -2556,7 +2602,11 @@ fn post_procesar_ciclo(
             .source_health
             .lock()
             .expect("el mutex de estado de fuentes no se envenena: sin pánicos dentro");
-        emitir_metrics_updated(app, &conn, &source_health);
+        let actividad = state
+            .actividad
+            .lock()
+            .expect("el mutex de actividad no se envenena: sin pánicos dentro");
+        emitir_metrics_updated(app, &conn, &source_health, &actividad);
     }
 
     crate::platform::bandeja::actualizar(app);
@@ -2620,6 +2670,7 @@ fn refresh_now_sync(
                 &state.conn,
                 None,
                 &state.source_health,
+                &state.actividad,
             )?);
             let mut transiciones = r.transiciones;
             transiciones.extend(transiciones_capacidad);
@@ -2645,6 +2696,7 @@ fn refresh_now_sync(
                 &state.conn,
                 Some(&id),
                 &state.source_health,
+                &state.actividad,
             )?);
             Ok(ResultadoCicloPost {
                 transiciones: r.transiciones,
@@ -2721,7 +2773,12 @@ fn ejecutar_ciclo(
     }
 
     if trabajos.contains(&TipoTrabajo::MetricasRapidas) {
-        match refresh_metricas_rendimiento(&state.conn, None, &state.source_health) {
+        match refresh_metricas_rendimiento(
+            &state.conn,
+            None,
+            &state.source_health,
+            &state.actividad,
+        ) {
             Ok(degradadas) => {
                 resultado.degradadas.extend(degradadas);
                 resultado.hubo_metrica = true;
@@ -2764,6 +2821,174 @@ fn leer_configuracion_trabajos(
     }
 }
 
+/// Los discos que el muestreo de actividad vigila: monitorizados y con ruta `smartctl` de la que
+/// se deriva el número de disco físico que pide PDH. Mismo filtro que la fase 1 de
+/// `refresh_metricas_rendimiento`.
+fn objetivos_actividad(conn: &rusqlite::Connection) -> Vec<(String, i64)> {
+    repo_inventario::list_present_devices(conn)
+        .unwrap_or_default()
+        .iter()
+        .filter(|d| d.monitoring_enabled)
+        .filter_map(|d| {
+            d.smartctl_path
+                .as_deref()
+                .and_then(disk_number_from_smartctl_path)
+                .map(|n| (d.id.clone(), n))
+        })
+        .collect()
+}
+
+/// Intervalo de muestreo de la actividad en red eléctrica: un muestreo por tick del bucle
+/// (`docs/open-questions.md` D.4).
+const INTERVALO_MUESTREO_ACTIVIDAD: std::time::Duration = std::time::Duration::from_secs(1);
+/// En batería, 1 de cada 4 ticks (coherente con el ×4 de `docs/open-questions.md` D.2).
+const FACTOR_BATERIA_ACTIVIDAD: u64 = 4;
+
+/// Estado del muestreo continuo de actividad, vivo entre ticks del bucle en segundo plano. Su
+/// consulta PDH persistente y sus ventanas **no cruzan de hilo**: viven aquí, en el hilo del
+/// planificador (spec `007-actividad-disco-representativa`, ADR-050).
+struct MuestreadorActividad {
+    consulta: Option<crate::collectors::perf_counters::ConsultaActividad>,
+    ventanas: std::collections::HashMap<String, crate::domain::actividad::VentanaActividad>,
+    objetivos: Vec<(String, i64)>,
+    tick: u64,
+    /// Tamaño de ventana con el que se construyeron las ventanas y la consulta.
+    cadencia: std::time::Duration,
+    ultimo_refresco_objetivos: Option<std::time::Instant>,
+}
+
+impl MuestreadorActividad {
+    fn nuevo() -> Self {
+        Self {
+            consulta: None,
+            ventanas: std::collections::HashMap::new(),
+            objetivos: Vec::new(),
+            tick: 0,
+            cadencia: std::time::Duration::ZERO,
+            ultimo_refresco_objetivos: None,
+        }
+    }
+
+    /// Publica el agregado por disco en `AppState.actividad`.
+    fn publicar(&self, state: &AppState, ahora: std::time::Instant, cadencia: std::time::Duration) {
+        let mut mapa = state
+            .actividad
+            .lock()
+            .expect("el mutex de actividad no se envenena: sin pánicos dentro");
+        mapa.clear();
+        let ventana_seg = cadencia.as_secs() as u32;
+        for (id, _n) in &self.objetivos {
+            let agregado = match self.ventanas.get(id) {
+                Some(w) => w.agregado(ahora),
+                None => crate::domain::actividad::ActividadDisco::no_disponible(ventana_seg),
+            };
+            mapa.insert(id.clone(), agregado);
+        }
+    }
+
+    /// Un tick con la recopilación **pausada**: no se muestrea, pero se siguen publicando los
+    /// agregados, que decaen solos a `no disponible` conforme las muestras salen de la ventana
+    /// (FR-018).
+    fn en_pausa(&mut self, state: &AppState, ahora: std::time::Instant) {
+        let cadencia = if self.cadencia.is_zero() {
+            std::time::Duration::from_secs(u64::from(cadencia_metricas_rapidas_defecto()))
+        } else {
+            self.cadencia
+        };
+        self.publicar(state, ahora, cadencia);
+    }
+
+    /// Un tick con la recopilación activa: refresca objetivos (como mucho 1×/cadencia), reconstruye
+    /// la consulta si el conjunto cambió, muestrea y publica.
+    fn en_marcha(
+        &mut self,
+        state: &AppState,
+        en_bateria: bool,
+        cadencia: std::time::Duration,
+        ahora: std::time::Instant,
+    ) {
+        self.tick = self.tick.wrapping_add(1);
+        if en_bateria && self.tick % FACTOR_BATERIA_ACTIVIDAD != 0 {
+            return;
+        }
+        let intervalo = if en_bateria {
+            INTERVALO_MUESTREO_ACTIVIDAD * FACTOR_BATERIA_ACTIVIDAD as u32
+        } else {
+            INTERVALO_MUESTREO_ACTIVIDAD
+        };
+        let umbral_hueco = intervalo * 3;
+
+        let toca_refrescar = self
+            .ultimo_refresco_objetivos
+            .map_or(true, |t| ahora.saturating_duration_since(t) >= cadencia);
+        if toca_refrescar {
+            let nuevos = {
+                let conn = state
+                    .conn
+                    .lock()
+                    .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+                objetivos_actividad(&conn)
+            };
+            self.ultimo_refresco_objetivos = Some(ahora);
+            self.objetivos = nuevos;
+        }
+
+        let conjunto_actual: std::collections::BTreeSet<(String, i64)> =
+            self.objetivos.iter().cloned().collect();
+        let conjunto_consulta: std::collections::BTreeSet<(String, i64)> = self
+            .consulta
+            .as_ref()
+            .map(|c| c.discos().into_iter().collect())
+            .unwrap_or_default();
+
+        if self.consulta.is_none()
+            || conjunto_actual != conjunto_consulta
+            || self.cadencia != cadencia
+        {
+            match crate::collectors::perf_counters::ConsultaActividad::reconstruir(&self.objetivos)
+            {
+                Ok(c) => {
+                    self.consulta = Some(c);
+                    self.cadencia = cadencia;
+                    // Reconstruir la consulta reinicia brevemente la ventana de todos los discos
+                    // (compromiso aceptado, `research.md` R2).
+                    self.ventanas.clear();
+                }
+                Err(e) => {
+                    tracing::warn!(error = ?e, "no se pudo abrir la consulta de actividad; se reintenta el próximo tick");
+                    self.consulta = None;
+                    self.publicar(state, ahora, cadencia);
+                    return;
+                }
+            }
+        }
+
+        if let Some(consulta) = self.consulta.as_mut() {
+            use crate::collectors::perf_counters::MuestreoDisco;
+            for (id, resultado) in consulta.muestrear() {
+                match resultado {
+                    MuestreoDisco::Valor(v) => {
+                        self.ventanas
+                            .entry(id)
+                            .or_insert_with(|| {
+                                crate::domain::actividad::VentanaActividad::nueva(cadencia)
+                            })
+                            .registrar(ahora, v, umbral_hueco);
+                    }
+                    MuestreoDisco::AunNoLista => {}
+                    MuestreoDisco::Fallo(e) => {
+                        tracing::debug!(disco = %id, error = ?e, "muestreo de actividad fallido en este tick")
+                    }
+                }
+            }
+        }
+
+        self.ventanas
+            .retain(|id, _| self.objetivos.iter().any(|(oid, _)| oid == id));
+        self.publicar(state, ahora, cadencia);
+    }
+}
+
 /// El bucle en segundo plano de verdad (T020): sondea cada 1 s (`open-questions.md` J.34), sin
 /// tocar nada mientras esté pausado, y se para cuando `AppState.detener_planificador` se marca
 /// (`lib.rs`, al recibir `RunEvent::Exit`/`ExitRequested`). Vive en un hilo bloqueante propio
@@ -2772,6 +2997,7 @@ fn leer_configuracion_trabajos(
 pub fn iniciar_planificador(app: tauri::AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         let mut estado_planificador = crate::collectors::planificador::EstadoPlanificador::nuevo();
+        let mut muestreador_actividad = MuestreadorActividad::nuevo();
         loop {
             let state = app.state::<AppState>();
             if state
@@ -2787,6 +3013,9 @@ pub fn iniciar_planificador(app: tauri::AppHandle) {
                 .expect("el mutex de pausa no se envenena: sin pánicos dentro")
                 .is_some();
 
+            let ahora = std::time::Instant::now();
+            let en_bateria = crate::platform::energia::en_bateria();
+
             if !pausado {
                 let config = {
                     let conn = state
@@ -2795,8 +3024,9 @@ pub fn iniciar_planificador(app: tauri::AppHandle) {
                         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
                     leer_configuracion_trabajos(&conn)
                 };
-                let en_bateria = crate::platform::energia::en_bateria();
-                let ahora = std::time::Instant::now();
+                // Muestreo continuo de actividad: cada tick, antes de los trabajos periódicos.
+                muestreador_actividad.en_marcha(&state, en_bateria, config.metricas_rapidas, ahora);
+
                 let debidos = crate::collectors::planificador::trabajos_debidos(
                     &estado_planificador,
                     &config,
@@ -2809,6 +3039,8 @@ pub fn iniciar_planificador(app: tauri::AppHandle) {
                         estado_planificador.marcar_ejecutado(*tipo, ahora);
                     }
                 }
+            } else {
+                muestreador_actividad.en_pausa(&state, ahora);
             }
 
             std::thread::sleep(std::time::Duration::from_secs(1));
@@ -3278,8 +3510,10 @@ fn persist_perf_reading(
         MetricQuality, MetricSample, MetricSource, MetricTarget, Resolution,
     };
 
+    // `activity_percent` ya no se persiste desde aquí: lo escribe `refresh_metricas_rendimiento`
+    // con la media de la ventana deslizante, solo si esa ventana ya es representativa (spec 007,
+    // FR-010a).
     for (metric_key, unidad, valor) in [
-        ("activity_percent", "percent", lectura.activity_percent),
         (
             "read_bytes_per_second",
             "bytes_per_second",
@@ -3602,6 +3836,9 @@ fn refresh_metricas_rendimiento(
     conn: &std::sync::Mutex<rusqlite::Connection>,
     solo_device_id: Option<&str>,
     source_health: &std::sync::Mutex<std::collections::HashMap<MetricSource, SourceHealth>>,
+    actividad: &std::sync::Mutex<
+        std::collections::HashMap<String, crate::domain::actividad::ActividadDisco>,
+    >,
 ) -> AppResult<Vec<SourceHealth>> {
     // Fase 1 (bloqueo breve): objetivos y `ahora`.
     let (ahora, objetivos): (String, Vec<(String, i64)>) = {
@@ -3682,6 +3919,39 @@ fn refresh_metricas_rendimiento(
                             .retryable(),
                     );
                 }
+            }
+        }
+
+        // Actividad: la media de la ventana deslizante, y **solo** si esa ventana ya es
+        // representativa del intervalo (`EstadoActividad::Valido`). Con `Parcial`/`NoDisponible` no
+        // se escribe fila → hueco en la serie, dibujado como hueco (spec 007, FR-010a). La ventana
+        // la mantiene el bucle en segundo plano; aquí solo se vuelca su estado actual.
+        let agregados = actividad
+            .lock()
+            .expect("el mutex de actividad no se envenena: sin pánicos dentro");
+        for (id, _n) in &objetivos {
+            let Some(agregado) = agregados.get(id) else {
+                continue;
+            };
+            if agregado.estado != crate::domain::actividad::EstadoActividad::Valido {
+                continue;
+            }
+            let Some(media) = agregado.media_percent else {
+                continue;
+            };
+            let muestra = crate::domain::tipos::MetricSample {
+                target: crate::domain::tipos::MetricTarget::Device(id.clone()),
+                metric_key: "activity_percent".to_string(),
+                value_real: Some(media),
+                value_integer: None,
+                unit: "percent".to_string(),
+                sampled_at_utc: ahora.clone(),
+                source: MetricSource::PerformanceCounter,
+                quality: crate::domain::tipos::MetricQuality::Exact,
+                resolution: crate::domain::tipos::Resolution::Raw,
+            };
+            if let Err(e) = repo_metricas::insert_sample(&guard, &muestra) {
+                tracing::warn!(disco = %id, error = ?e, "no se pudo guardar la media de actividad");
             }
         }
     }
@@ -4262,13 +4532,18 @@ fn emitir_metrics_updated(
     app: &tauri::AppHandle,
     conn: &rusqlite::Connection,
     source_health: &std::collections::HashMap<MetricSource, SourceHealth>,
+    actividad: &std::collections::HashMap<String, crate::domain::actividad::ActividadDisco>,
 ) {
-    let devices = match repo_inventario::list_present_devices(conn) {
-        Ok(todos) => todos
-            .iter()
-            .filter(|d| d.monitoring_enabled)
-            .filter_map(|d| enrich_with_smart_data(conn, d).ok())
-            .collect(),
+    let devices: Vec<DiskSummary> = match repo_inventario::list_present_devices(conn) {
+        Ok(todos) => {
+            let mut resumenes: Vec<DiskSummary> = todos
+                .iter()
+                .filter(|d| d.monitoring_enabled)
+                .filter_map(|d| enrich_with_smart_data(conn, d).ok())
+                .collect();
+            aplicar_actividad_viva(&mut resumenes, actividad);
+            resumenes
+        }
         Err(e) => {
             tracing::warn!(error = ?e, "no se pudo listar dispositivos para metrics:updated");
             return;
@@ -6552,34 +6827,41 @@ mod tests_salud {
     }
 
     #[test]
-    fn la_actividad_de_rendimiento_se_refleja_aunque_todavia_no_haya_lectura_smart() {
-        // Bug real (encontrado usando la aplicación contra hardware real): `activity_percent`
-        // nunca se leía aquí y se quedaba en "no disponible" para siempre, aunque el colector de
-        // rendimiento ya lo hubiera guardado. Además, al venir de un colector con cadencia propia
-        // (`METRICAS_RAPIDAS`), debe reflejarse aunque la lectura SMART (`SMART_COMPLETO`, más
-        // lenta) todavía no haya llegado — no solo cuando ambas ya existen.
+    fn aplicar_actividad_viva_sobrescribe_el_placeholder_con_el_agregado_de_la_ventana() {
+        // La actividad ya no sale de una muestra persistida (spec 007): `enrich_with_smart_data`
+        // deja `no_disponible` y el comando la sobrescribe con el agregado vivo de
+        // `AppState.actividad`. Debe reflejarse aunque no haya ninguna lectura SMART todavía.
+        use crate::domain::actividad::{ActividadDisco, EstadoActividad};
+
         let conn = conn_de_prueba();
         let d = dispositivo_con_ruta("d1", Some(r"\.\PhysicalDrive0"));
         repo_inventario::upsert_device(&conn, &d).unwrap();
 
-        let ahora = time::OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
-            .unwrap();
-        let lectura = crate::collectors::perf_counters::LecturaRendimiento {
-            activity_percent: Some(17.0),
-            read_bytes_per_second: None,
-            write_bytes_per_second: None,
-            read_latency_ms: None,
-            write_latency_ms: None,
-        };
-        persist_perf_reading(&conn, "d1", &lectura, &ahora).unwrap();
+        let mut resumenes = vec![get_device_detail_impl(&conn, "d1").unwrap().summary];
+        assert_eq!(
+            resumenes[0].activity.estado,
+            EstadoActividad::NoDisponible,
+            "sin ventana viva, el placeholder es no disponible"
+        );
 
-        let resumen = get_device_detail_impl(&conn, "d1").unwrap();
+        let mut mapa = std::collections::HashMap::new();
+        mapa.insert(
+            "d1".to_string(),
+            ActividadDisco {
+                estado: EstadoActividad::Valido,
+                media_percent: Some(17.0),
+                pico_percent: Some(41.0),
+                muestras: 30,
+                ventana_segundos: 30,
+            },
+        );
+        aplicar_actividad_viva(&mut resumenes, &mapa);
 
-        assert_eq!(resumen.summary.activity_percent, Some(17.0));
-        // Sin lectura SMART todavía, el resto sigue en su estado por defecto: la actividad no
-        // debe forzar un estado "correcto" que la temperatura no ha confirmado.
-        assert_eq!(resumen.summary.state, HealthState::Unknown);
+        assert_eq!(resumenes[0].activity.estado, EstadoActividad::Valido);
+        assert_eq!(resumenes[0].activity.media_percent, Some(17.0));
+        assert_eq!(resumenes[0].activity.pico_percent, Some(41.0));
+        // Sin lectura SMART todavía, el resto sigue en su estado por defecto.
+        assert_eq!(resumenes[0].state, HealthState::Unknown);
     }
 
     #[test]
@@ -6691,7 +6973,6 @@ mod tests_salud {
         repo_inventario::upsert_device(&conn, &d).unwrap();
 
         let lectura = LecturaRendimiento {
-            activity_percent: Some(42.0),
             read_bytes_per_second: Some(1024.0),
             write_bytes_per_second: None,
             read_latency_ms: None,
@@ -6699,10 +6980,13 @@ mod tests_salud {
         };
         persist_perf_reading(&conn, "d1", &lectura, "2026-09-04T10:00:00Z").unwrap();
 
-        let actividad = repo_metricas::latest_device_sample(&conn, "d1", "activity_percent")
-            .unwrap()
-            .unwrap();
-        assert_eq!(actividad.value_real, Some(42.0));
+        // `activity_percent` ya no lo escribe `persist_perf_reading` (spec 007): esa serie la
+        // alimenta `refresh_metricas_rendimiento` con la media de la ventana.
+        assert!(
+            repo_metricas::latest_device_sample(&conn, "d1", "activity_percent")
+                .unwrap()
+                .is_none()
+        );
 
         let lectura_bytes =
             repo_metricas::latest_device_sample(&conn, "d1", "read_bytes_per_second")
@@ -6803,6 +7087,12 @@ mod tests_refresh_now {
         std::sync::Mutex::new(std::collections::HashMap::new())
     }
 
+    fn actividad_de_prueba(
+    ) -> std::sync::Mutex<std::collections::HashMap<String, crate::domain::actividad::ActividadDisco>>
+    {
+        std::sync::Mutex::new(std::collections::HashMap::new())
+    }
+
     /// Prepara los dispositivos y devuelve la conexión ya envuelta en `Mutex`, como la recibe hoy
     /// `refresh_smart` (spec `004`).
     fn conn_con(dispositivos: &[Device]) -> std::sync::Mutex<rusqlite::Connection> {
@@ -6865,8 +7155,13 @@ mod tests_refresh_now {
     #[test]
     fn refresh_metricas_rendimiento_para_un_dispositivo_inexistente_falla_con_device_not_found() {
         let conn = conn_con(&[]);
-        let err = refresh_metricas_rendimiento(&conn, Some("no-existe"), &fuentes_de_prueba())
-            .unwrap_err();
+        let err = refresh_metricas_rendimiento(
+            &conn,
+            Some("no-existe"),
+            &fuentes_de_prueba(),
+            &actividad_de_prueba(),
+        )
+        .unwrap_err();
         assert_eq!(err.code, "device.not_found");
     }
 
@@ -6874,11 +7169,59 @@ mod tests_refresh_now {
     fn refresh_metricas_rendimiento_sin_ruta_smartctl_no_falla_y_no_registra_intentos() {
         let conn = conn_con(&[dispositivo("d1")]);
         let fuentes = fuentes_de_prueba();
-        assert!(refresh_metricas_rendimiento(&conn, None, &fuentes).is_ok());
+        assert!(
+            refresh_metricas_rendimiento(&conn, None, &fuentes, &actividad_de_prueba()).is_ok()
+        );
         assert!(!fuentes
             .lock()
             .unwrap()
             .contains_key(&MetricSource::PerformanceCounter));
+    }
+
+    #[test]
+    fn refresh_metricas_rendimiento_persiste_la_media_de_actividad_solo_si_la_ventana_es_valida() {
+        use crate::domain::actividad::{ActividadDisco, EstadoActividad};
+
+        // Dos discos monitorizados con ruta smartctl (para que entren en `objetivos`).
+        let conn = conn_con(&[
+            dispositivo_con_ruta("valido", "/dev/pd0"),
+            dispositivo_con_ruta("parcial", "/dev/pd1"),
+        ]);
+        let actividad = actividad_de_prueba();
+        actividad.lock().unwrap().insert(
+            "valido".to_string(),
+            ActividadDisco {
+                estado: EstadoActividad::Valido,
+                media_percent: Some(42.0),
+                pico_percent: Some(90.0),
+                muestras: 30,
+                ventana_segundos: 30,
+            },
+        );
+        actividad.lock().unwrap().insert(
+            "parcial".to_string(),
+            ActividadDisco {
+                estado: EstadoActividad::Parcial,
+                media_percent: Some(55.0),
+                pico_percent: Some(70.0),
+                muestras: 4,
+                ventana_segundos: 30,
+            },
+        );
+
+        refresh_metricas_rendimiento(&conn, None, &fuentes_de_prueba(), &actividad).unwrap();
+
+        let guard = conn.lock().unwrap();
+        let del_valido = repo_metricas::latest_device_sample(&guard, "valido", "activity_percent")
+            .unwrap()
+            .expect("la ventana válida sí escribe fila");
+        assert_eq!(del_valido.value_real, Some(42.0));
+        assert!(
+            repo_metricas::latest_device_sample(&guard, "parcial", "activity_percent")
+                .unwrap()
+                .is_none(),
+            "una ventana parcial no escribe fila: hueco en la serie (FR-010a)"
+        );
     }
 
     // ---- fases de refresh_smart (spec 004) ----

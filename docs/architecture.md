@@ -94,10 +94,18 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
 
 - Obtiene salud complementaria y topología mediante las APIs disponibles.
 - Lee capacidad y estado del sistema de archivos por volumen.
-- Lee actividad, rendimiento y latencias de los contadores `PhysicalDisk`: `% Idle Time` (del que se
-  deriva la actividad, acotada a 0–100), `Disk Read Bytes/sec`, `Disk Write Bytes/sec`,
-  `Avg. Disk sec/Read` y `Avg. Disk sec/Write`. No se usa `% Disk Time`, que supera el 100 % con
-  varias operaciones simultáneas y no es un porcentaje real.
+- Lee rendimiento y latencias de los contadores `PhysicalDisk` una vez por ciclo de métricas
+  rápidas: `Disk Read Bytes/sec`, `Disk Write Bytes/sec`, `Avg. Disk sec/Read` y
+  `Avg. Disk sec/Write`.
+- La **actividad** (`% Idle Time`, del que se deriva `activity_percent = 100 − idle`, acotado a
+  0–100; no se usa `% Disk Time`, que supera el 100 % con varias operaciones simultáneas) se lee
+  desde una **consulta PDH persistente** abierta durante toda la ejecución y muestreada en cada tick
+  del bucle en segundo plano (1 s; 4 s en batería). Por cada disco se mantiene una **ventana
+  deslizante** en memoria del tamaño de la cadencia de métricas rápidas, de la que se derivan
+  **media** y **pico**; el panel muestra el pico, el detalle media y pico, y la serie histórica
+  guarda la media —sin fila cuando la ventana aún no cubre la cadencia—. Estado en memoria, no
+  persistido: un reinicio arranca con la ventana vacía (spec `007-actividad-disco-representativa`,
+  ADR-050, `docs/open-questions.md` D.4).
 - La instancia del contador (`"0 C: D:"`) se asocia al dispositivo por su número de disco físico,
   no por la letra de unidad, que puede cambiar.
 - Mantiene cada fuente separada para poder indicar procedencia y confianza.

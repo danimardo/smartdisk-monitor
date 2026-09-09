@@ -1306,10 +1306,18 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
 
 - Obtiene salud complementaria y topología mediante las APIs disponibles.
 - Lee capacidad y estado del sistema de archivos por volumen.
-- Lee actividad, rendimiento y latencias de los contadores `PhysicalDisk`: `% Idle Time` (del que se
-  deriva la actividad, acotada a 0–100), `Disk Read Bytes/sec`, `Disk Write Bytes/sec`,
-  `Avg. Disk sec/Read` y `Avg. Disk sec/Write`. No se usa `% Disk Time`, que supera el 100 % con
-  varias operaciones simultáneas y no es un porcentaje real.
+- Lee rendimiento y latencias de los contadores `PhysicalDisk` una vez por ciclo de métricas
+  rápidas: `Disk Read Bytes/sec`, `Disk Write Bytes/sec`, `Avg. Disk sec/Read` y
+  `Avg. Disk sec/Write`.
+- La **actividad** (`% Idle Time`, del que se deriva `activity_percent = 100 − idle`, acotado a
+  0–100; no se usa `% Disk Time`, que supera el 100 % con varias operaciones simultáneas) se lee
+  desde una **consulta PDH persistente** abierta durante toda la ejecución y muestreada en cada tick
+  del bucle en segundo plano (1 s; 4 s en batería). Por cada disco se mantiene una **ventana
+  deslizante** en memoria del tamaño de la cadencia de métricas rápidas, de la que se derivan
+  **media** y **pico**; el panel muestra el pico, el detalle media y pico, y la serie histórica
+  guarda la media —sin fila cuando la ventana aún no cubre la cadencia—. Estado en memoria, no
+  persistido: un reinicio arranca con la ventana vacía (spec `007-actividad-disco-representativa`,
+  ADR-050, `docs/open-questions.md` D.4).
 - La instancia del contador (`"0 C: D:"`) se asocia al dispositivo por su número de disco físico,
   no por la letra de unidad, que puede cambiar.
 - Mantiene cada fuente separada para poder indicar procedencia y confianza.
@@ -1701,9 +1709,13 @@ Fichero de origen: `docs/data-model.md`
 - `write_bytes_per_second`
 - `read_latency_ms`
 - `write_latency_ms`
-- `activity_percent` — porcentaje de tiempo con al menos una operación en curso, derivado de
-  `PhysicalDisk\% Idle Time` y acotado a 0–100. **No** se usa `% Disk Time` directamente, que en
-  discos con varias operaciones simultáneas supera el 100 % y no es un porcentaje real.
+- `activity_percent` — **media de una ventana deslizante** de actividad del tamaño de la cadencia de
+  métricas rápidas (30 s por defecto), alimentada por muestreo continuo de `PhysicalDisk\% Idle Time`
+  (derivado a `100 − idle`, acotado a 0–100; **no** se usa `% Disk Time`). Una fila por ciclo de
+  métricas rápidas, **omitida** cuando en ese ciclo la ventana aún no cubre la cadencia (arranque,
+  reanudación) → hueco en la serie, nunca un valor parcial presentado como del ciclo. La ventana
+  vive solo en memoria (`AppState.actividad`), no en SQLite (spec 007, ADR-050, `open-questions.md`
+  D.4). El pico de la ventana se muestra en la interfaz pero **no** se persiste en esta entrega.
 - `volume_free_bytes`
 - `volume_free_percent`
 - `smart_query_ok` — 1.0 si `smartctl` pudo leer el disco ese ciclo, 0.0 si la consulta falló o
@@ -2130,7 +2142,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 
 Los que ya viven en `src/lib/design/types.ts` no se repiten aquí: `HealthState`,
 `Severity`, `AlertStatus`, `TestStatus`, `MetricSource`, `MetricQuality`, `UnknownReason`,
-`Provenance`, `DiskSummary`, `VolumeSummary`, `AlertGroup`.
+`Provenance`, `DiskSummary`, `VolumeSummary`, `AlertGroup`, `ActividadDisco`, `EstadoActividad`.
 
 ```ts
 type Resolution = "raw" | "five_minutes" | "hourly";
@@ -2239,6 +2251,22 @@ genérico, con las claves `settings.appearance.theme`, `settings.appearance.lang
 apariencia ni `settings.onboarding.completedAt`.
 
 #### 3.2 Inventario
+
+`DiskSummary.activity` (spec `007-actividad-disco-representativa`, ADR-050) sustituye al antiguo
+`activityPercent: number | null`. Es el agregado de una ventana deslizante alimentada por muestreo
+continuo de los contadores de rendimiento; no lleva marca de tiempo (siempre es actual por
+construcción) ni procedencia (siempre «contadores de rendimiento»):
+
+```ts
+type EstadoActividad = "valido" | "parcial" | "no_disponible";
+interface ActividadDisco {
+  estado: EstadoActividad;          // "valido": la ventana cubre la cadencia; "parcial": aún no; "no_disponible": vacía
+  mediaPercent: number | null;      // null solo con estado "no_disponible"
+  picoPercent: number | null;       // el panel muestra el pico; el detalle, media y pico
+  muestras: number;                 // cuántas muestras respaldan la ventana ahora
+  ventanaSegundos: number;          // periodo que la ventana pretende cubrir (= cadencia de métricas rápidas)
+}
+```
 
 ```ts
 invoke<DeviceListResponse>("get_devices")
@@ -5552,6 +5580,87 @@ Eventos), para **cualquier** evento seleccionado (Error, Aviso o Info — que de
 - El caso «evento sin mensaje ni `EventData` legibles» (evento corrupto, muy raro) devuelve
   `event.not_found`; no se añade código de error nuevo.
 
+### ADR-050 — Consulta PDH persistente y ventana deslizante para la actividad de disco
+
+Estado: aceptada. Fecha: 2026-09-09. Spec: `007-actividad-disco-representativa`.
+
+#### El problema
+
+`activity_percent` salía de `collectors::perf_counters::leer`, que **abría** una consulta PDH,
+tomaba una ventana de 1 s, la **cerraba**, y solo se ejecutaba en el trabajo `METRICAS_RAPIDAS`
+(30 s por defecto). Era una fotografía de 1 segundo tomada una vez cada 30. Usando la aplicación
+contra hardware real, el usuario veía 0–1 % de actividad con el disco claramente trabajando: el
+instante de muestreo caía en un hueco entre operaciones, o llegaba 25 s después de la ráfaga. El
+número no representaba el intervalo que decía representar. La cabecera del propio módulo ya lo
+marcaba como provisional («…porque el planificador en segundo plano todavía no existe para mantener
+una consulta abierta»). Ese planificador ya existe (`iniciar_planificador`, bucle de 1 s).
+
+El Administrador de tareas de Windows usa **el mismo contador** (`% Idle Time`) y **la misma
+fórmula** (`100 − idle`); su única diferencia es que mantiene la consulta abierta y muestrea de
+forma continua. No hay ninguna fuente «más en tiempo real» a la que acceder.
+
+#### La decisión
+
+Una **consulta PDH persistente** (`ConsultaActividad`) abierta durante toda la ejecución, con un
+contador `% Idle Time` por disco físico monitorizado, muestreada en **cada tick** del bucle en
+segundo plano (1 s en red; 1 de cada 4 ticks → 4 s en batería, coherente con D.2). Con una consulta
+viva, `% Idle Time` entre dos `PdhCollectQueryData` ya da el valor del intervalo: no hace falta el
+`sleep(1 s)` que pagaba `leer()` por ser autónoma.
+
+Por cada disco se mantiene una **ventana deslizante** en memoria (`domain::actividad::VentanaActividad`,
+pura y probada test-first) del tamaño de la cadencia de métricas rápidas, de la que se derivan
+**media** y **pico**. El agregado (`ActividadDisco`) se publica cada tick en
+`AppState.actividad` y lo leen `get_devices` / `get_device_detail` / `emitir_metrics_updated`.
+
+- **Panel general**: muestra el **pico** de la ventana (la señal más directa de «¿ha estado ocupado
+  este disco hace poco?»).
+- **Detalle de disco**: **media y pico**, con la ayuda contextual explicando que es un agregado de
+  los últimos ~30 s.
+- **Serie histórica** `activity_percent`: una fila por ciclo de métricas rápidas con **la media** de
+  la ventana; **ninguna fila** si en ese ciclo la ventana aún no cubre la cadencia → hueco en la
+  gráfica, dibujado como hueco (E.1). `perf_counters::leer` deja de leer y de persistir la
+  actividad; sigue con el caudal y las latencias.
+- **Contrato**: `DiskSummary.activity_percent: Option<f64>` → `activity: ActividadDisco`
+  (`{ estado: valido|parcial|no_disponible, mediaPercent, picoPercent, muestras, ventanaSegundos }`).
+  Regenera `ts-rs`; esquema Zod `actividadDisco` con su prueba de rechazo; `docs/ui-contract.md`
+  §3.2. Sin marca de tiempo ni procedencia en el tipo: el agregado es actual por construcción y la
+  procedencia es siempre «contadores de rendimiento» (rótulo fijo en la interfaz).
+- **Estado en memoria, no persistido** (como `paused`, `source_health`): un reinicio arranca con la
+  ventana vacía → primeros ~30 s en `parcial`/`no_disponible`, nunca un `0` inventado (principio I).
+- Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
+  todos los discos (`parcial` ≤ una cadencia): compromiso aceptado para no gestionar contadores PDH
+  vivos uno a uno.
+
+Valores adoptados (intervalo de muestreo, tamaño de ventana, umbral de hueco, batería): registrados
+en `docs/open-questions.md` D.4.
+
+#### Alternativas descartadas
+
+- **Modo «en vivo»** (refresco de 1–2 s en la interfaz mientras el detalle está abierto): se
+  descartó en la clarificación de la spec. El envío a la interfaz sigue siendo el evento
+  `metrics:updated` de siempre (~30 s), con el agregado de la ventana en vez de una instantánea. No
+  se añade evento ni se toca el contrato de eventos (ADR-015).
+- **`Get-Counter` de PowerShell en subproceso**: mismos contadores, más coste (arranque de proceso)
+  y arrastra la trampa de la ventana de consola (`backend-rust.md` J.57).
+- **Gestión incremental de contadores PDH** (`PdhRemoveCounter` / añadir en caliente): más código y
+  más estados por probar para ahorrar ~30 s de `parcial` en un evento infrecuente (principio II.5).
+- **Persistir también el pico** (dos series): cambia el modelo de datos y la retención; se deja como
+  ampliación aditiva futura. Igual para llevar caudal y latencias a la ventana continua.
+
+#### Consecuencias
+
+- **Sin dependencia nueva** (`Cargo.toml` intacto) y **sin permiso de Tauri nuevo**: la llamada PDH
+  es backend puro y la FFI a `pdh.dll` ya existía; solo se añaden constantes `PDH_CSTATUS_*`.
+- El coste de CPU añadido es una lectura de contador por segundo y por disco —lo que hace el
+  Administrador de tareas de forma continua—, imperceptible en reposo. El muestreo **no** loguea por
+  tick (principio XV); un fallo del contador se registra `warn` una vez por flanco, como
+  `source_health`.
+- `MetricaAyudable` de la interfaz: la actividad deja de ser un número suelto; `metricHelp` gana el
+  caso `parcial` y una firma con el agregado. `MetricCard` gana una prop opcional `secondary` para
+  el «Pico N %».
+- La actividad deja de apagarse cuando falta una lectura SMART fresca: sigue su propio `estado`, a
+  diferencia de temperatura y desgaste.
+
 
 ---
 
@@ -5782,6 +5891,37 @@ persiste entre reinicios: arrancar la aplicación siempre reanuda. Mientras est�
 
 *Por qué no se persiste:* una pausa olvidada es un monitor que no monitoriza y no lo dice. El coste
 de reanudar sin querer es mucho menor que el de no vigilar durante semanas.
+
+#### D.4 · Ventana continua de actividad de disco · `PROPUESTO` (2026-09-09)
+
+La actividad (`activity_percent`) dejaba de ser representativa: `perf_counters::leer` abría una
+consulta PDH, tomaba una ventana de 1 s y la cerraba, y solo corría en `METRICAS_RAPIDAS` (30 s por
+defecto). Una fotografía de 1 s de hace hasta 30 s marca 0–1 % aunque el disco esté trabajando.
+Spec `007-actividad-disco-representativa`, ADR-050.
+
+Se pasa a una **consulta PDH persistente** con **muestreo continuo** desde el bucle en segundo plano
+(`iniciar_planificador`, que ya despierta cada 1 s) y una **ventana deslizante** por disco de la que
+se derivan **media** y **pico**. Valores adoptados:
+
+| Parámetro | Valor | Nota |
+|---|---|---|
+| Intervalo de muestreo | **1 s** (un muestreo por tick del bucle) | En batería, 1 de cada 4 ticks → **4 s** (coherente con D.2). |
+| Tamaño de la ventana | **= `schedule.metrics_fast_seconds`** (30 s de fábrica; 10–300 s, D.1) | La cifra agrega «lo que va del último intervalo mostrado». |
+| Umbral de hueco | **> 3 × el intervalo de muestreo** (≈3 s en red, ≈12 s en batería) | Por encima, se descartan las muestras anteriores al hueco antes de agregar (suspensión, bloqueo del subsistema de rendimiento). A escala de muestreo reproduce el 2,5× de E.1. |
+| Estado del dato | `válido` si la muestra más antigua tiene ≥ el tamaño de la ventana de antigüedad; `parcial` con datos si aún no; `no disponible` si la ventana está vacía | Arranque, reanudación tras pausa y tras un hueco pasan por `parcial`, nunca por 0 (constitución §I). |
+
+Reglas asociadas:
+
+- **La ventana vive solo en memoria** del proceso (`AppState.actividad`), como `paused` o
+  `source_health`. Un reinicio arranca con la ventana vacía → primeros ~30 s en `parcial`.
+- **La serie histórica** `activity_percent` sigue con una fila por ciclo de `METRICAS_RAPIDAS`, con
+  **la media de la ventana**; **no se escribe fila** si en ese ciclo la ventana está `parcial` o
+  `no disponible` → hueco en la gráfica, dibujado como hueco (E.1), nunca interpolado.
+- **El caudal (bytes/s) y las latencias** siguen leyéndose una vez por ciclo (`perf_counters::leer`):
+  ya son tasas medidas sobre su propia ventana, y no entran en la ventana continua en esta entrega.
+- Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
+  todos los discos (estado `parcial` ≤ una cadencia): compromiso aceptado para no gestionar
+  contadores PDH vivos uno a uno.
 
 ---
 
@@ -8249,6 +8389,24 @@ export type MetricQuality = "exact" | "inferred" | "vendor_specific" | "stale";
 
 export type ThemePreference = "light" | "dark" | "system";
 
+/** Estado del agregado de actividad de disco (spec 007). `valido` = la ventana cubre la cadencia;
+ *  `parcial` = hay datos pero aún no la cubren (arranque, tras un hueco); `no_disponible` = ventana
+ *  vacía. Nunca se muestra un `parcial` como si fuera fiable ni un hueco como `0` (principio I). */
+export type EstadoActividad = "valido" | "parcial" | "no_disponible";
+
+/** Media y pico de la ventana deslizante de actividad, alimentada por muestreo continuo de los
+ *  contadores de rendimiento (spec 007, ADR-050). Sustituye al antiguo `activityPercent`.
+ *  `mediaPercent`/`picoPercent` son `null` solo cuando `estado === "no_disponible"`. */
+export interface ActividadDisco {
+  estado: EstadoActividad;
+  mediaPercent: number | null;
+  picoPercent: number | null;
+  /** Nº de muestras que respaldan la ventana en este instante. */
+  muestras: number;
+  /** Periodo que la ventana pretende cubrir, en segundos (= cadencia de métricas rápidas). */
+  ventanaSegundos: number;
+}
+
 export interface Provenance {
   source: MetricSource;
   quality: MetricQuality;
@@ -8283,7 +8441,8 @@ export interface DiskSummary {
   /** null = no disponible. Nunca 0 inventado. */
   temperatureC: number | null;
   percentageUsed: number | null;
-  activityPercent: number | null;
+  /** Agregado de la ventana deslizante de actividad (spec 007). Sustituye a `activityPercent`. */
+  activity: ActividadDisco;
   powerOnHours: number | null;
   vendorTempLimitC?: number | null;
   /** Umbral crítico del fabricante, si lo declara; por debajo de él manda el configurado en ajustes. */
@@ -9125,6 +9284,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "disk.wearShort": "Desg.",
   "disk.activity": "Actividad",
   "disk.activityShort": "Act.",
+  "disk.activityApprox": "~{value}",
+  "disk.activityPeak": "Pico {value}",
   "disk.powerOnHours": "Horas encendido",
   "disk.firmwareHealth": "Salud del firmware",
   "disk.firmwareHealthOk": "Correcta",
@@ -9143,8 +9304,9 @@ Fichero de origen: `src/lib/i18n/es.json`
   "metric.help.wear.verdict.warn": "Ahora: {value}. Desgaste alto (la aplicación avisa a partir del {warn} %). Ve planificando el reemplazo y mantén las copias de seguridad al día.",
   "metric.help.wear.verdict.crit": "Ahora: {value}. El disco está en el fin de su resistencia de escritura garantizada, o la ha superado. Sustitúyelo pronto y asegúrate de tener copias.",
   "metric.help.wear.verdict.unknown": "Este disco no informa del desgaste. Es lo normal en los discos SATA; solo los NVMe exponen este dato.",
-  "metric.help.activity.body": "Cuánto está trabajando el disco en este momento, medido por Windows (porcentaje de tiempo ocupado en lecturas o escrituras). Es un indicador de rendimiento, no de salud.",
-  "metric.help.activity.verdict.info": "Ahora mismo al {value}. Un valor alto solo indica que hay trabajo en curso; no es un problema.",
+  "metric.help.activity.body": "Cuánto ha estado trabajando el disco en los últimos segundos, medido por Windows (porcentaje de tiempo ocupado en lecturas o escrituras). Es un agregado de una ventana móvil —media y pico—, no una foto instantánea. Es un indicador de rendimiento, no de salud.",
+  "metric.help.activity.verdict.info": "Últimos {ventana} s: media {media}, pico {pico}. Un valor alto solo indica que hay trabajo en curso; no es un problema.",
+  "metric.help.activity.verdict.parcial": "Midiendo aún (la ventana de {ventana} s no está completa). De momento: media {media}, pico {pico}.",
   "metric.help.activity.verdict.unknown": "Ahora mismo no hay lectura de actividad.",
   "metric.help.powerOnHours.body": "Tiempo total que el disco ha estado encendido, contado por SMART. Es un dato informativo.",
   "metric.help.powerOnHours.verdict.info": "Ahora: {value} (unos {years} años en marcha). No hay un límite que deba preocuparte: un SSD no se gasta por el tiempo encendido, sino por lo que se escribe en él (mira «Desgaste»).",
@@ -9685,6 +9847,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "disk.wearShort": "Wear",
   "disk.activity": "Activity",
   "disk.activityShort": "Act.",
+  "disk.activityApprox": "~{value}",
+  "disk.activityPeak": "Peak {value}",
   "disk.powerOnHours": "Power-on hours",
   "disk.firmwareHealth": "Firmware health",
   "disk.firmwareHealthOk": "Passed",
@@ -9703,8 +9867,9 @@ Fichero de origen: `src/lib/i18n/en.json`
   "metric.help.wear.verdict.warn": "Now: {value}. Wear is high (the app warns from {warn} %). Start planning a replacement and keep your backups up to date.",
   "metric.help.wear.verdict.crit": "Now: {value}. The drive is at or past the end of its warranted write endurance. Replace it soon and make sure you have backups.",
   "metric.help.wear.verdict.unknown": "This drive does not report wear. That is normal for SATA drives; only NVMe drives expose this figure.",
-  "metric.help.activity.body": "How hard the drive is working right now, measured by Windows (the percentage of time busy with reads or writes). It is a performance indicator, not a health one.",
-  "metric.help.activity.verdict.info": "Currently at {value}. A high figure only means there is work in progress; it is not a problem.",
+  "metric.help.activity.body": "How hard the drive has been working over the last few seconds, measured by Windows (the percentage of time busy with reads or writes). It is an aggregate of a moving window — mean and peak — not an instantaneous snapshot. It is a performance indicator, not a health one.",
+  "metric.help.activity.verdict.info": "Last {ventana} s: mean {media}, peak {pico}. A high figure only means there is work in progress; it is not a problem.",
+  "metric.help.activity.verdict.parcial": "Still measuring (the {ventana} s window is not full yet). So far: mean {media}, peak {pico}.",
   "metric.help.activity.verdict.unknown": "There is no activity reading right now.",
   "metric.help.powerOnHours.body": "The total time the drive has been powered on, counted by SMART. It is informational.",
   "metric.help.powerOnHours.verdict.info": "Now: {value} (about {years} years running). There is no threshold to worry about: an SSD does not wear from time powered on, but from what is written to it (see \"Wear\").",

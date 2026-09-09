@@ -224,6 +224,37 @@ persiste entre reinicios: arrancar la aplicación siempre reanuda. Mientras est�
 *Por qué no se persiste:* una pausa olvidada es un monitor que no monitoriza y no lo dice. El coste
 de reanudar sin querer es mucho menor que el de no vigilar durante semanas.
 
+### D.4 · Ventana continua de actividad de disco · `PROPUESTO` (2026-09-09)
+
+La actividad (`activity_percent`) dejaba de ser representativa: `perf_counters::leer` abría una
+consulta PDH, tomaba una ventana de 1 s y la cerraba, y solo corría en `METRICAS_RAPIDAS` (30 s por
+defecto). Una fotografía de 1 s de hace hasta 30 s marca 0–1 % aunque el disco esté trabajando.
+Spec `007-actividad-disco-representativa`, ADR-050.
+
+Se pasa a una **consulta PDH persistente** con **muestreo continuo** desde el bucle en segundo plano
+(`iniciar_planificador`, que ya despierta cada 1 s) y una **ventana deslizante** por disco de la que
+se derivan **media** y **pico**. Valores adoptados:
+
+| Parámetro | Valor | Nota |
+|---|---|---|
+| Intervalo de muestreo | **1 s** (un muestreo por tick del bucle) | En batería, 1 de cada 4 ticks → **4 s** (coherente con D.2). |
+| Tamaño de la ventana | **= `schedule.metrics_fast_seconds`** (30 s de fábrica; 10–300 s, D.1) | La cifra agrega «lo que va del último intervalo mostrado». |
+| Umbral de hueco | **> 3 × el intervalo de muestreo** (≈3 s en red, ≈12 s en batería) | Por encima, se descartan las muestras anteriores al hueco antes de agregar (suspensión, bloqueo del subsistema de rendimiento). A escala de muestreo reproduce el 2,5× de E.1. |
+| Estado del dato | `válido` si la muestra más antigua tiene ≥ el tamaño de la ventana de antigüedad; `parcial` con datos si aún no; `no disponible` si la ventana está vacía | Arranque, reanudación tras pausa y tras un hueco pasan por `parcial`, nunca por 0 (constitución §I). |
+
+Reglas asociadas:
+
+- **La ventana vive solo en memoria** del proceso (`AppState.actividad`), como `paused` o
+  `source_health`. Un reinicio arranca con la ventana vacía → primeros ~30 s en `parcial`.
+- **La serie histórica** `activity_percent` sigue con una fila por ciclo de `METRICAS_RAPIDAS`, con
+  **la media de la ventana**; **no se escribe fila** si en ese ciclo la ventana está `parcial` o
+  `no disponible` → hueco en la gráfica, dibujado como hueco (E.1), nunca interpolado.
+- **El caudal (bytes/s) y las latencias** siguen leyéndose una vez por ciclo (`perf_counters::leer`):
+  ya son tasas medidas sobre su propia ventana, y no entran en la ventana continua en esta entrega.
+- Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
+  todos los discos (estado `parcial` ≤ una cadencia): compromiso aceptado para no gestionar
+  contadores PDH vivos uno a uno.
+
 ---
 
 ## E. Historial y gráficas

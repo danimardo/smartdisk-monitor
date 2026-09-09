@@ -76,6 +76,22 @@ export const volumeSummary = z.object({
   isSystemVolume: z.boolean()
 });
 
+/** Estado del agregado de actividad: `valido` = la ventana cubre la cadencia; `parcial` = hay
+ *  datos pero aún no cubren; `no_disponible` = ventana vacía (fuente degradada o recién arrancada).
+ *  Espejo de `EstadoActividad` (Rust, spec 007). */
+export const estadoActividad = z.enum(["valido", "parcial", "no_disponible"]);
+
+/** Media y pico de la ventana deslizante de actividad (spec 007, ADR-050). Sustituye al antiguo
+ *  `activityPercent: number | null`. `mediaPercent`/`picoPercent` son `null` solo cuando
+ *  `estado === "no_disponible"`. */
+export const actividadDisco = z.object({
+  estado: estadoActividad,
+  mediaPercent: nullableNumber,
+  picoPercent: nullableNumber,
+  muestras: z.number().int().nonnegative(),
+  ventanaSegundos: z.number().int().positive()
+});
+
 export const diskSummary = z.object({
   id: z.string(),
   alias: z.string().nullable().optional(),
@@ -84,7 +100,7 @@ export const diskSummary = z.object({
   state: healthState,
   temperatureC: nullableNumber,
   percentageUsed: nullableNumber,
-  activityPercent: nullableNumber,
+  activity: actividadDisco,
   powerOnHours: nullableNumber,
   vendorTempLimitC: nullableNumber.optional(),
   vendorTempCriticalC: nullableNumber.optional(),
@@ -455,6 +471,7 @@ export type ModeloIaShape = z.infer<typeof modeloIa>;
 export type ExplicacionIaShape = z.infer<typeof explicacionIa>;
 export type RevisionAnonimizacionShape = z.infer<typeof revisionAnonimizacion>;
 export type ResultadoExplicacionShape = z.infer<typeof resultadoExplicacion>;
+export type ActividadDiscoShape = z.infer<typeof actividadDisco>;
 export type DiskSummaryShape = z.infer<typeof diskSummary>;
 export type DeviceListResponseShape = z.infer<typeof deviceListResponse>;
 export type DeviceDetailShape = z.infer<typeof deviceDetail>;

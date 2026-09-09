@@ -13,7 +13,12 @@
   import StatusPill from "./StatusPill.svelte";
   import { healthToken } from "$lib/design/health";
   import { busIcon } from "$lib/design/icons";
-  import { ayudaMetrica, type AyudaMetrica, type MetricaAyudable } from "$lib/design/metricHelp";
+  import {
+    ayudaMetrica,
+    picoActividadPanel,
+    type AyudaMetrica,
+    type MetricaAyudable
+  } from "$lib/design/metricHelp";
   import { formatTemperature, formatPercent, formatBytes } from "$lib/design/format";
   import { t } from "$lib/i18n";
   import type { DiskSummary, HealthState } from "$lib/design/types";
@@ -55,6 +60,7 @@
       label: t("disk.temperatureShort"),
       value: disk?.temperatureC ?? null,
       text: disk ? formatTemperature(disk.temperatureC) : "",
+      ignoraSmartFresco: false,
       color: overTempLimit ? "var(--sdm-warn)" : "var(--sdm-text)"
     },
     {
@@ -63,14 +69,20 @@
       label: t("disk.wearShort"),
       value: disk?.percentageUsed ?? null,
       text: disk ? formatPercent(disk.percentageUsed) : "",
+      ignoraSmartFresco: false,
       color: "var(--sdm-text)"
     },
     {
       metrica: "activity" as MetricaAyudable,
       icon: "pulse" as const,
       label: t("disk.activityShort"),
-      value: disk?.activityPercent ?? null,
-      text: disk ? formatPercent(disk.activityPercent) : "",
+      // El panel muestra el **pico** de la ventana (spec 007, Q1 → A): la señal más directa de
+      // «¿ha estado ocupado este disco hace poco?».
+      value: disk?.activity?.picoPercent ?? null,
+      text: picoActividadPanel(disk?.activity) ?? "",
+      // La actividad tiene su propio estado (`no_disponible`/`parcial`/`valido`): no se apaga
+      // porque falte una lectura SMART fresca, a diferencia de temperatura y desgaste.
+      ignoraSmartFresco: true,
       color: "var(--sdm-text)"
     }
   ]);
@@ -93,8 +105,14 @@
     const r = cel.getBoundingClientRect();
     const cx = r.left + r.width / 2;
     const ali = cx < 170 ? "izq" : cx > window.innerWidth - 170 ? "der" : "centro";
+    const esActividad = m.metrica === "activity";
     tip = {
-      ...ayudaMetrica(m.metrica, sinSmartFresco ? null : m.value, ctxAyuda),
+      ...ayudaMetrica(
+        m.metrica,
+        sinSmartFresco && !esActividad ? null : m.value,
+        ctxAyuda,
+        esActividad ? disk?.activity : undefined
+      ),
       x: cel.offsetLeft + (ali === "izq" ? 0 : ali === "der" ? cel.offsetWidth : cel.offsetWidth / 2),
       y: cel.offsetTop,
       debajo: r.top < 180,
@@ -165,7 +183,7 @@
                    descuadre. Sin SMART fresco las tres van a «—» aunque quede una lectura vieja
                    o un contador en vivo (boceto §4): un dato caduco presentado como actual engaña. -->
               <span class="flex h-[26px] items-end">
-                {#if m.value === null || sinSmartFresco}
+                {#if m.value === null || (sinSmartFresco && !m.ignoraSmartFresco)}
                   <span class="text-xs text-fg-dim">—</span>
                 {:else}
                   <span class="sdm-num sdm-display text-xl" style="color: {m.color}">{m.text}</span>

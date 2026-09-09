@@ -28,10 +28,39 @@ describe("veredictoMetrica — clasificación (pura, sin i18n)", () => {
     expect(veredictoMetrica("wear", 90, ctx).estado).toBe("crit");
   });
 
-  it("actividad y horas encendido son informativas: siempre `ok`", () => {
-    expect(veredictoMetrica("activity", 99, {}).estado).toBe("ok");
-    expect(veredictoMetrica("activity", 99, {}).caso).toBe("info");
+  it("horas encendido es informativa: siempre `ok`", () => {
     expect(veredictoMetrica("powerOnHours", 50000, {}).estado).toBe("ok");
+  });
+
+  it("actividad: `valido` → `info`, `parcial` → `parcial`, ambos `ok` (es rendimiento, no salud)", () => {
+    const ventana = (estado: "valido" | "parcial") => ({
+      estado,
+      mediaPercent: 30,
+      picoPercent: 80,
+      muestras: 30,
+      ventanaSegundos: 30
+    });
+    const val = veredictoMetrica("activity", null, {}, ventana("valido"));
+    expect(val.estado).toBe("ok");
+    expect(val.caso).toBe("info");
+    expect(val.params).toMatchObject({ media: "30 %", pico: "80 %", ventana: 30 });
+
+    const par = veredictoMetrica("activity", null, {}, ventana("parcial"));
+    expect(par.estado).toBe("ok");
+    expect(par.caso).toBe("parcial");
+  });
+
+  it("actividad sin agregado o `no_disponible`: caso `unknown`", () => {
+    expect(veredictoMetrica("activity", null, {}).caso).toBe("unknown");
+    expect(
+      veredictoMetrica("activity", null, {}, {
+        estado: "no_disponible",
+        mediaPercent: null,
+        picoPercent: null,
+        muestras: 0,
+        ventanaSegundos: 30
+      }).caso
+    ).toBe("unknown");
   });
 
   it("sin valor: estado `unknown` y caso `unknown` para cualquier métrica", () => {
@@ -69,5 +98,7 @@ describe("ayudaMetrica — texto ya traducido", () => {
       expect(dict[`metric.help.${m}.verdict.info`]).toBeTruthy();
       expect(dict[`metric.help.${m}.verdict.unknown`]).toBeTruthy();
     }
+    // La actividad tiene además el caso `parcial` (ventana aún no completa, spec 007).
+    expect(dict["metric.help.activity.verdict.parcial"]).toBeTruthy();
   });
 });
