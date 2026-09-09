@@ -209,6 +209,14 @@ test.describe("entregable de rediseño @capturas", () => {
       await esperarListo(page);
       await page.getByRole("button", { name: es["nav.about"] }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
+      // La foto del autor (ADR-052) tiene que haber pintado antes de la captura.
+      await expect
+        .poll(async () =>
+          page
+            .getByRole("img", { name: es["about.photoAlt"] })
+            .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)
+        )
+        .toBe(true);
       await png(page, `estado-dialogo-acerca-de__${tema}`, false);
       await html(page, `estado-dialogo-acerca-de__${tema}`);
     });

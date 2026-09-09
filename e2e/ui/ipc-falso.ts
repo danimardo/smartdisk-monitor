@@ -57,7 +57,15 @@ export async function instalarIpcFalso(
           return Promise.resolve(a.handler);
         }
         if (cmd === "plugin:event|unlisten" || cmd === "plugin:event|emit") return Promise.resolve(null);
-        const valor = cmd in tabla ? tabla[cmd] : null;
+        // `get_metric_series` se pide con `metricKey` distinto para la misma pantalla (temperatura
+        // de fondo del Hero, actividad de la DiskCard). Un fixture `get_metric_series:<metricKey>`
+        // gana al genérico; así una serie puede ser una onda de 10 h y otra de 5 min.
+        const clave =
+          cmd === "get_metric_series" &&
+          `get_metric_series:${(args as { metricKey?: string } | null)?.metricKey}` in tabla
+            ? `get_metric_series:${(args as { metricKey?: string }).metricKey}`
+            : cmd;
+        const valor = clave in tabla ? tabla[clave] : null;
         // Un valor `{ __rechazar__: AppError }` hace que el comando **rechace** con ese error, para
         // probar el manejo de fallos (spec 005: la explicación con IA falla y la pantalla sigue).
         // Se envuelve en un `Error` con los campos del `AppError` copiados encima: `toAppError` de

@@ -169,21 +169,57 @@ export const detalleDisco0 = {
   removedAt: null
 };
 
-/** Serie de temperatura con un hueco explícito, para probar que la gráfica lo distingue de un
- *  valor real (`docs/open-questions.md` E.1). */
+/** Serie temporal de ~10 h con un hueco explícito, para probar que la gráfica lo distingue de un
+ *  valor real (`docs/open-questions.md` E.1) y para que las capturas del README muestren una onda
+ *  de verdad (fondo del `HeroPanel` y de la `DiskCard`, gráfica del detalle de disco). El IPC
+ *  simulado devuelve esta misma serie sea cual sea la métrica pedida. */
+const puntosSerie: { t: number; v: number | null }[] = (() => {
+  const inicio = new Date("2026-09-04T00:00:00Z").getTime();
+  const paso = 15 * 60 * 1000;
+  const out: { t: number; v: number | null }[] = [];
+  for (let i = 0; i < 40; i++) {
+    if (i >= 7 && i <= 12) continue; // la app estuvo parada ~1 h 30 min
+    if (i === 13) out.push({ t: inicio + 10 * paso, v: null }); // hueco explícito
+    const onda = 42 + 3 * Math.sin(i / 2.6) + 1.2 * Math.cos(i / 6) + (i > 27 ? 1.6 : 0);
+    out.push({ t: inicio + i * paso, v: Math.round(onda * 10) / 10 });
+  }
+  return out;
+})();
+
 export const serieTemperatura = {
   metricKey: "temperature_celsius",
   unit: "celsius",
   resolution: "raw",
   downsampled: false,
-  fromUtc: "2026-09-04T08:00:00Z",
+  fromUtc: "2026-09-04T00:00:00Z",
+  toUtc: AHORA,
+  expectedIntervalMs: 900_000,
+  points: puntosSerie,
+  vendorLimit: 70,
+  vendorCritical: null
+};
+
+/** Actividad de la ventana corta que va de fondo en la `DiskCard` (ADR-051): ~6 min de muestras
+ *  a 30 s, para que la onda de la tarjeta se llene en las capturas. `app.seedActivitySeries`
+ *  recorta a los últimos 5 min. */
+const puntosActividad: { t: number; v: number | null }[] = (() => {
+  const inicio = new Date("2026-09-04T09:53:30Z").getTime();
+  const paso = 30 * 1000;
+  return Array.from({ length: 13 }, (_, i) => ({
+    t: inicio + i * paso,
+    v: Math.round((38 + 26 * Math.sin(i / 1.7) + 8 * Math.cos(i / 3.5)) * 10) / 10
+  }));
+})();
+
+export const serieActividad = {
+  metricKey: "activity_percent",
+  unit: "percent",
+  resolution: "raw",
+  downsampled: false,
+  fromUtc: "2026-09-04T09:53:30Z",
   toUtc: AHORA,
   expectedIntervalMs: 30_000,
-  points: [
-    { t: new Date("2026-09-04T08:00:00Z").getTime(), v: 40 },
-    { t: new Date("2026-09-04T09:00:00Z").getTime(), v: null },
-    { t: new Date(AHORA).getTime(), v: 41 }
-  ],
+  points: puntosActividad,
   vendorLimit: null,
   vendorCritical: null
 };
@@ -353,6 +389,7 @@ export const RESPUESTAS: Record<string, unknown> = {
   get_devices: inventario,
   get_device_detail: detalleDisco0,
   get_metric_series: serieTemperatura,
+  "get_metric_series:activity_percent": serieActividad,
   get_alert_groups: alertas,
   get_alert_detail: detalleAlertaActiva,
   get_alert_smart_raw_json: '{"model_name":"Samsung SSD 990 PRO 2TB"}',
@@ -395,6 +432,7 @@ export function validar(): void {
   S.deviceListResponse.parse(inventario);
   S.deviceDetail.parse(detalleDisco0);
   S.metricSeries.parse(serieTemperatura);
+  S.metricSeries.parse(serieActividad);
   S.alertGroup.array().parse(alertas);
   S.alertDetail.parse(detalleAlertaActiva);
   S.alertGroup.array().parse([alertaIgnorable, alertaIgnorada]);
