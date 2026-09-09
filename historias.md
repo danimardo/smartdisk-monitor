@@ -121,6 +121,86 @@ Fuera de alcance a propósito (por ahora): servicio en segundo plano sin sesión
 remota, cuentas o roles, alertas por correo/mensajería, actualizaciones automáticas y telemetría.
 El detalle completo está en [`docs/product-specification.md`](docs/product-specification.md).
 
+### Capturas
+
+Generadas con la suite de interfaz (`pnpm test:e2e`, IPC simulado y datos de ejemplo). Cada imagen
+se adapta al tema —claro u oscuro— de quien la mira en GitHub.
+
+#### Panel general
+
+Estado de todos los discos de un vistazo: el disco protagonista con su serie de fondo, una tarjeta
+por disco, los últimos sucesos del sistema y el reparto de estados.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/panel-general-oscuro.png">
+  <img alt="Panel general de SmartDisk Monitor" src="docs/screenshots/panel-general-claro.png">
+</picture>
+
+#### Detalle de disco
+
+Temperatura, actividad (media y pico de la ventana), desgaste y horas de encendido, con la serie
+temporal y sus zonas de aviso y crítico sobre el propio gráfico, y los contadores SMART con delta.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/detalle-disco-oscuro.png">
+  <img alt="Detalle de un disco, con gráfica de temperatura y contadores" src="docs/screenshots/detalle-disco-claro.png">
+</picture>
+
+<details>
+<summary><b>Más pantallas</b> — alertas, eventos, pruebas, informes y ajustes</summary>
+
+#### Alertas
+
+Agrupadas por condición, con su cronología de ocurrencias, y las acciones de ciclo de vida
+(reconocer, silenciar, archivar). El color refleja siempre la peor alerta sin resolver.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/alertas-oscuro.png">
+  <img alt="Lista de alertas y el detalle de una alerta de desgaste" src="docs/screenshots/alertas-claro.png">
+</picture>
+
+#### Eventos del sistema
+
+Los eventos del registro de Windows relacionados con almacenamiento, correlacionados con el disco
+al que corresponden (exacta, inferida o desconocida), con su XML original a mano.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/eventos-oscuro.png">
+  <img alt="Eventos de Windows correlacionados con los discos" src="docs/screenshots/eventos-claro.png">
+</picture>
+
+#### Pruebas y diagnóstico
+
+Benchmark de lectura/escritura, `chkdsk /scan` y autotest SMART corto, bajo demanda y con su
+progreso en vivo. La prueba se detiene sola si el disco se calienta o el espacio libre baja.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/pruebas-oscuro.png">
+  <img alt="Pantalla de pruebas con un benchmark en curso" src="docs/screenshots/pruebas-claro.png">
+</picture>
+
+#### Informes
+
+Exportación a CSV, JSON y HTML imprimible, y el paquete ZIP de diagnóstico anonimizado por
+defecto — para compartir un incidente sin compartir números de serie.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/informes-oscuro.png">
+  <img alt="Pantalla de informes y exportación" src="docs/screenshots/informes-claro.png">
+</picture>
+
+#### Ajustes
+
+Apariencia, frecuencias de recopilación, perfiles y umbrales de alerta, retención del historial y
+la asistencia con IA (opcional, apagada de fábrica).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ajustes-oscuro.png">
+  <img alt="Pantalla de ajustes" src="docs/screenshots/ajustes-claro.png">
+</picture>
+
+</details>
+
 ### Descargar
 
 Instalador para Windows x64 en la [página de Releases](https://github.com/danimardo/smartdisk-monitor/releases).
