@@ -562,8 +562,9 @@ condiciones. Incumplir una es un defecto, no un matiz.
   es un cliente HTTP de propósito general: no puede alcanzar ninguna otra dirección.
 - **Solo el detalle técnico del suceso que se explica.** Se envía el detalle técnico de la alerta o
   del detalle SMART: su resumen, el volcado crudo de la herramienta de diagnóstico del disco
-  (`smartctl`) y, en alertas nacidas de un suceso de Windows, el mensaje y los campos de datos de
-  ese suceso. Todo ello es información que la persona puede abrir en la propia pantalla. Nunca el
+  (`smartctl`) y, en una alerta nacida de un suceso de Windows o en el detalle de un evento del
+  registro de Windows, el mensaje y los campos de datos de ese suceso. Todo ello es información que
+  la persona puede abrir en la propia pantalla. Nunca el
   inventario completo, el historial de otras métricas, la configuración, datos de otras pantallas
   ni de otros discos. El bloque de metadatos de sistema del suceso —nombre del equipo, principal de
   seguridad, identificadores de proceso— no se envía.
