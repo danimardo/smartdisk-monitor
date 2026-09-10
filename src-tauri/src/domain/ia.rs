@@ -30,6 +30,27 @@ pub struct EstadoIaWire {
     /// borrar la clave (FR-012).
     pub send_without_review: bool,
     pub clave_valida: Option<bool>,
+    /// ADR-054: este binario trae compilada una clave de demostración compartida. Computado, no se
+    /// persiste. `false` en un clon del repositorio (build sin `SDM_OPENROUTER_DEMO_KEY`).
+    pub clave_compartida_disponible: bool,
+    /// ADR-054: la credencial guardada **es** la clave de demostración compartida. Computado. La
+    /// interfaz lo usa para ofrecer «cambiar a una clave propia».
+    pub usando_clave_compartida: bool,
+}
+
+/// Decide los dos indicadores de clave compartida de [`EstadoIaWire`] (ADR-054). Puro: recibe la
+/// clave de demostración compilada y la credencial guardada ya leídas; el `option_env!` y el acceso
+/// al Administrador de credenciales viven en `platform::ia_clave_demo`.
+pub fn estado_clave_compartida(
+    clave_demo: Option<&str>,
+    credencial_guardada: Option<&str>,
+) -> (bool, bool) {
+    let disponible = clave_demo.is_some();
+    let usando = matches!(
+        (clave_demo, credencial_guardada),
+        (Some(demo), Some(guardada)) if demo == guardada
+    );
+    (disponible, usando)
 }
 
 /// Grupo `ai` de `SettingsWire` (`docs/data-model.md`). Cuatro datos: los tres de FR-024 de la 005
@@ -1091,6 +1112,37 @@ mod tests {
         assert_eq!(catalogo[1].id, "a/gratis");
         assert_eq!(catalogo[2].id, "z/pago");
         assert!(catalogo[2].es_de_pago);
+    }
+
+    // ---------------------------------------------------------------- clave compartida (ADR-054)
+
+    #[test]
+    fn sin_clave_demo_compilada_no_esta_disponible_ni_en_uso() {
+        assert_eq!(estado_clave_compartida(None, None), (false, false));
+        assert_eq!(
+            estado_clave_compartida(None, Some("sk-or-v1-propia")),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn con_clave_demo_disponible_pero_credencial_distinta_no_esta_en_uso() {
+        assert_eq!(
+            estado_clave_compartida(Some("sk-or-v1-demo"), None),
+            (true, false)
+        );
+        assert_eq!(
+            estado_clave_compartida(Some("sk-or-v1-demo"), Some("sk-or-v1-propia")),
+            (true, false)
+        );
+    }
+
+    #[test]
+    fn la_credencial_igual_a_la_clave_demo_cuenta_como_en_uso() {
+        assert_eq!(
+            estado_clave_compartida(Some("sk-or-v1-demo"), Some("sk-or-v1-demo")),
+            (true, true)
+        );
     }
 
     // ---------------------------------------------------------------- composición de la consulta

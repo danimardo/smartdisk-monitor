@@ -19,6 +19,7 @@
     TextField
   } from "$lib/components";
   import {
+    activarAyudaIaCompartida,
     getSettings,
     guardarClaveIa,
     refreshNow,
@@ -133,6 +134,19 @@
       ia.set(await guardarClaveIa(claveIa.trim()));
       claveIa = "";
       // No se avanza: se muestra el selector de modelo; el pie pasa a «Continuar».
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      activandoIa = false;
+    }
+  }
+
+  async function activarCompartida() {
+    activandoIa = true;
+    errorIa = null;
+    try {
+      ia.set(await activarAyudaIaCompartida());
+      claveIa = "";
     } catch (cause) {
       errorIa = toAppError(cause);
     } finally {
@@ -410,6 +424,16 @@
             claveIa = v;
           }}
         />
+        {#if ia.estado?.claveCompartidaDisponible && claveIa.trim().length === 0}
+          <div class="flex flex-col gap-1.5">
+            <Button variant="secondary" loading={activandoIa} onclick={activarCompartida}>
+              {t("onboarding.ai.cta.useShared")}
+            </Button>
+            <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">
+              {t("settings.ai.shared.hint")}
+            </p>
+          </div>
+        {/if}
       {/if}
       {#if errorIa && errorIa.detail}
         <details>

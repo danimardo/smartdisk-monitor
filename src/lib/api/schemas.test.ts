@@ -340,7 +340,9 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
         modelo: "openrouter/free",
         previewAcknowledged: false,
         sendWithoutReview: false,
-        claveValida: null
+        claveValida: null,
+        claveCompartidaDisponible: false,
+        usandoClaveCompartida: false
       }).success
     ).toBe(true);
   });
@@ -351,7 +353,36 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
         activa: true,
         modelo: "x",
         previewAcknowledged: false,
-        claveValida: "sí"
+        claveValida: "sí",
+        claveCompartidaDisponible: false,
+        usandoClaveCompartida: false
+      }).success
+    ).toBe(false);
+  });
+
+  it("estadoIa RECHAZA usandoClaveCompartida como cadena (ADR-054)", () => {
+    expect(
+      S.estadoIa.safeParse({
+        activa: true,
+        modelo: "openrouter/free",
+        previewAcknowledged: false,
+        sendWithoutReview: false,
+        claveValida: true,
+        claveCompartidaDisponible: true,
+        usandoClaveCompartida: "sí"
+      }).success
+    ).toBe(false);
+  });
+
+  it("estadoIa RECHAZA claveCompartidaDisponible ausente (cambio de contrato del backend)", () => {
+    expect(
+      S.estadoIa.safeParse({
+        activa: false,
+        modelo: "openrouter/free",
+        previewAcknowledged: false,
+        sendWithoutReview: false,
+        claveValida: null,
+        usandoClaveCompartida: false
       }).success
     ).toBe(false);
   });

@@ -49,7 +49,9 @@ El producto debe ayudar a responder:
   y ADR-049, principio XVI): si la persona configura una clave de API de OpenRouter, puede pedir que
   se le traduzca a lenguaje llano el detalle técnico de una alerta, del detalle SMART de un disco o
   de un evento del registro de Windows, con posibles pasos a seguir. Apagada de fábrica; sin clave, la aplicación no hace ninguna conexión a
-  Internet. La consulta lleva el volcado técnico completo del disco y, en alertas de sucesos de
+  Internet. El instalador puede traer una **clave de demostración compartida** —capada a modelos
+  gratuitos, declarada no secreta (ADR-054)— que se activa con un botón, sin cuenta; para uso
+  habitual conviene una propia. La consulta lleva el volcado técnico completo del disco y, en alertas de sucesos de
   Windows, el contenido de ese suceso; todo se anonimiza en capas antes de salir del equipo
   (número de serie, WWN, nombre de equipo y usuario, SID, rutas de dispositivo) y la persona ve el
   texto exacto la primera vez. Un ajuste opcional «enviar sin revisar», apagado de fábrica y con

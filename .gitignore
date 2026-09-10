@@ -13,6 +13,11 @@ coverage/
 # Datos locales de desarrollo (nunca ProgramData en dev, engineering-conventions §6)
 .dev-data/
 
+# Clave de demostración de la ayuda con IA para compilar en local (ADR-054). NUNCA se versiona:
+# `set SDM_OPENROUTER_DEMO_KEY=… && pnpm app:build`, o un fichero local que exporte la variable.
+src-tauri/.env.local
+.env.local
+
 # Editor y sistema
 .vscode/
 .idea/

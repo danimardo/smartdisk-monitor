@@ -63,6 +63,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
 | `app.refresh_failed` | el hilo de `refresh_now` terminó de forma anómala (panic); caso inesperado | sí |
 | `ia.no_key` | comando de IA sin clave de API configurada | no |
+| `ia.no_shared_key` | se pidió activar con la clave de demostración compartida y este binario no la trae compilada (ADR-054) | no |
 | `ia.invalid_key_format` | la clave de API no tiene el formato esperado | no |
 | `ia.unauthorized` | OpenRouter rechazó la clave (HTTP 401/403) | no |
 | `ia.rate_limited` | límite de uso de OpenRouter alcanzado (HTTP 402/429) | sí |
@@ -483,6 +484,7 @@ acciones de explicación no aparecen en la interfaz.
 ```ts
 invoke<EstadoIaWire>("estado_ia")                                    // sin red
 invoke<EstadoIaWire>("guardar_clave_ia", { clave: string })          // valida y guarda en el Administrador de credenciales
+invoke<EstadoIaWire>("activar_ayuda_ia_compartida")                  // activa con la clave de demostración compilada (ADR-054); `ia.no_shared_key` si el binario no la trae
 invoke<EstadoIaWire>("probar_clave_ia")                              // revalida la clave guardada
 invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado (incluye send_without_review)
 invoke<EstadoIaWire>("establecer_envio_sin_revision", { activar: boolean })   // modo «enviar sin revisar» (spec 006); el aviso de riesgo lo muestra Ajustes
@@ -491,7 +493,7 @@ invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplica
 ```
 
 ```ts
-type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null };
+type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null; claveCompartidaDisponible: boolean; usandoClaveCompartida: boolean };
 type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
 type OrigenExplicacion = {
   tipo: "alerta" | "smart" | "evento";
@@ -516,6 +518,12 @@ type ResultadoExplicacion =
 
 - La **clave de API no viaja por el contrato**: vive solo en el Administrador de credenciales de
   Windows. `estado_ia` expone únicamente si existe y si la última comprobación fue válida.
+- `claveCompartidaDisponible` (ADR-054): este binario trae compilada una clave de demostración
+  compartida —capada por OpenRouter a modelos gratuitos, declarada **no secreta**—. `false` en un
+  clon del repositorio. `usandoClaveCompartida`: la credencial guardada **es** esa clave; la
+  interfaz lo usa para ofrecer cambiar a una propia. `activar_ayuda_ia_compartida` la comprueba, la
+  copia al Administrador de credenciales y fija el modelo en el router automático; `borrar_clave_ia`
+  la elimina como a cualquier otra.
 - `explicar_detalle_tecnico` devuelve `{ estado: "revision" }` en dos casos: `fragmentos` vacío es
   la **vista previa** de FR-010 (primera vez); `fragmentos` no vacío es la **revisión** de FR-026
   (la anonimización no pudo garantizar que un fragmento esté limpio). En ambos, la interfaz vuelve

@@ -25,6 +25,16 @@ class IaState {
     return this.estado?.sendWithoutReview ?? false;
   }
 
+  /** `true` si este binario trae compilada la clave de demostración compartida (ADR-054). */
+  get claveCompartidaDisponible(): boolean {
+    return this.estado?.claveCompartidaDisponible ?? false;
+  }
+
+  /** `true` si la credencial en uso es la clave de demostración compartida (ADR-054). */
+  get usandoClaveCompartida(): boolean {
+    return this.estado?.usandoClaveCompartida ?? false;
+  }
+
   estaEnCurso(clave: string): boolean {
     return this.#enCurso.has(clave);
   }

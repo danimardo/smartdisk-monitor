@@ -56,6 +56,7 @@ pub fn run() {
             // ayuda con IA (spec 005-explicacion-ia)
             commands::estado_ia,
             commands::guardar_clave_ia,
+            commands::activar_ayuda_ia_compartida,
             commands::probar_clave_ia,
             commands::borrar_clave_ia,
             commands::establecer_envio_sin_revision,

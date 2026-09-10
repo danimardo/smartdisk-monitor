@@ -349,7 +349,9 @@ export const estadoIaActiva = {
   modelo: "openrouter/free",
   previewAcknowledged: true,
   sendWithoutReview: false,
-  claveValida: true
+  claveValida: true,
+  claveCompartidaDisponible: false,
+  usandoClaveCompartida: false
 };
 
 export const estadoIaDesactivada = {
@@ -357,7 +359,23 @@ export const estadoIaDesactivada = {
   modelo: "openrouter/free",
   previewAcknowledged: false,
   sendWithoutReview: false,
-  claveValida: null
+  claveValida: null,
+  claveCompartidaDisponible: false,
+  usandoClaveCompartida: false
+};
+
+/** Ayuda con IA desactivada en un binario que SÍ trae la clave de demostración compartida
+ *  (ADR-054): la interfaz ofrece el botón «Usar la clave de demostración». */
+export const estadoIaConClaveCompartida = {
+  ...estadoIaDesactivada,
+  claveCompartidaDisponible: true
+};
+
+/** Ayuda con IA activada mediante la clave de demostración compartida (ADR-054). */
+export const estadoIaUsandoClaveCompartida = {
+  ...estadoIaActiva,
+  claveCompartidaDisponible: true,
+  usandoClaveCompartida: true
 };
 
 export const explicacionOk = {
@@ -411,6 +429,7 @@ export const RESPUESTAS: Record<string, unknown> = {
   set_setting: null,
   estado_ia: estadoIaDesactivada,
   guardar_clave_ia: estadoIaActiva,
+  activar_ayuda_ia_compartida: estadoIaUsandoClaveCompartida,
   probar_clave_ia: estadoIaActiva,
   borrar_clave_ia: estadoIaDesactivada,
   listar_modelos_ia: catalogoModelos,
@@ -445,6 +464,8 @@ export function validar(): void {
   S.appInfo.parse(appInfoDePrueba);
   S.estadoIa.parse(estadoIaActiva);
   S.estadoIa.parse(estadoIaDesactivada);
+  S.estadoIa.parse(estadoIaConClaveCompartida);
+  S.estadoIa.parse(estadoIaUsandoClaveCompartida);
   S.resultadoExplicacion.parse(explicacionOk);
   S.modeloIa.array().parse(catalogoModelos);
 }

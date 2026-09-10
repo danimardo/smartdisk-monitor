@@ -193,6 +193,12 @@ capturarlos, no al usarlos.
 - Versionado semántico. Nombre y versión salen del manifiesto (ADR-011): no se escriben a mano en
   ningún otro sitio.
 - Las publicaciones son manuales en GitHub, sin actualizador automático (ADR-007).
+- La **clave de demostración de la ayuda con IA** (ADR-054) se pasa a la compilación por la variable
+  de entorno `SDM_OPENROUTER_DEMO_KEY` —secreto `OPENROUTER_DEMO_KEY` en el flujo de Release; en
+  local, `set SDM_OPENROUTER_DEMO_KEY=… && pnpm app:build`—. `build.rs` la lee, la ofusca y la
+  compila en el binario; sin la variable, el binario sale sin ella y la ayuda con IA sigue exigiendo
+  clave propia. La clave **nunca** se escribe en un fichero versionado (`.gitignore` cubre
+  `src-tauri/.env.local` por si se prefiere exportarla desde ahí a mano).
 
 ---
 

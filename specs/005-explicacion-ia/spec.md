@@ -190,6 +190,13 @@ el modal con la misma mecánica que en las alertas.
 - **FR-001**: El sistema DEBE ofrecer, en el asistente inicial, un paso opcional para activar la
   ayuda con IA introduciendo una clave de API de OpenRouter, con texto que explique para qué sirve,
   qué se enviará y a dónde.
+- **FR-001a** (ADR-054): Si el binario se compiló con una **clave de demostración compartida**
+  —capada por OpenRouter a modelos gratuitos, declarada no secreta—, el sistema DEBE ofrecer, tanto
+  en el paso del asistente como en la configuración, un botón «Usar la clave de demostración» que la
+  active con un solo gesto, sin teclear nada. Ese gesto es equivalente a introducir una clave propia
+  (FR-001/FR-003): la clave se comprueba contra el proveedor y se guarda en el almacén de
+  credenciales (FR-004). Un binario sin esa clave (un clon del repositorio) no muestra el botón y
+  FR-005 rige sin cambios.
 - **FR-002**: El sistema DEBE permitir omitir ese paso y terminar el asistente con la función
   desactivada.
 - **FR-003**: El sistema DEBE ofrecer un apartado propio en la configuración para añadir, cambiar,

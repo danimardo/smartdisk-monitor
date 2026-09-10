@@ -154,7 +154,8 @@
 - **Ayuda con IA** (spec `005-explicacion-ia` FR-024, ampliada por `006-explicacion-ia-contexto-crudo`
   FR-011). Exactamente **cuatro** claves; sin migración:
   - `settings.ai.enabled`: booleano, fábrica `false`. Espejo de «existe credencial». Lo escriben
-    solo `guardar_clave_ia` (→ `true`) y `borrar_clave_ia` (→ `false`), nunca `set_setting`.
+    solo `guardar_clave_ia` / `activar_ayuda_ia_compartida` (→ `true`) y `borrar_clave_ia`
+    (→ `false`), nunca `set_setting`.
   - `settings.ai.model`: identificador del modelo, fábrica `"openrouter/free"` (= «automático»).
     Se valida solo por forma (no vacío, ≤120, sin espacios), no contra el catálogo del proveedor.
   - `settings.ai.preview_acknowledged`: booleano, fábrica `false`. `true` cuando la persona ha
@@ -167,7 +168,13 @@
   - **La clave de API no está aquí.** Vive en el Administrador de credenciales de Windows
     (`CRED_TYPE_GENERIC`, `TargetName` `SmartDisk Monitor/OpenRouter`, `CRED_PERSIST_LOCAL_MACHINE`,
     blob UTF-8), fuera de SQLite y de cualquier fichero (FR-004). `reset_settings` en el ámbito
-    `"ai"` (o `"all"`) borra las cuatro claves **y** la credencial.
+    `"ai"` (o `"all"`) borra las cuatro claves **y** la credencial. La credencial puede ser ahora la
+    **clave de demostración compartida** (ADR-054): compilada en el binario, la copia al almacén el
+    comando `activar_ayuda_ia_compartida` y `borrar_clave_ia` / `reset_settings` la borran igual.
+  - **Los dos indicadores de clave compartida son computados, no persistidos.** `EstadoIaWire`
+    expone `claveCompartidaDisponible` (`= clave_demo().is_some()`, `false` en un clon del
+    repositorio) y `usandoClaveCompartida` (`= la credencial guardada es la clave de demostración`).
+    No hay clave nueva en `settings`.
   - Las entidades de una consulta de explicación (texto a enviar —resumen + volcado crudo de
     `smartctl` + contenido del suceso de Windows, anonimizados—, respuesta del modelo, catálogo de
     modelos) son **efímeras**: no se persisten en ninguna tabla (spec 006, ADR-047).

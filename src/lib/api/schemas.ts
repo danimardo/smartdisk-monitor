@@ -341,7 +341,12 @@ export const estadoIa = z.object({
   modelo: z.string(),
   previewAcknowledged: z.boolean(),
   sendWithoutReview: z.boolean(),
-  claveValida: z.boolean().nullable()
+  claveValida: z.boolean().nullable(),
+  /** ADR-054: este binario trae compilada la clave de demostración compartida. `false` en un clon
+   *  del repositorio. Computado por el backend, no se persiste. */
+  claveCompartidaDisponible: z.boolean(),
+  /** ADR-054: la credencial guardada es la clave de demostración compartida. */
+  usandoClaveCompartida: z.boolean()
 });
 
 /** Un modelo del catálogo del proveedor (`listar_modelos_ia`). */

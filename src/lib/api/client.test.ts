@@ -201,6 +201,7 @@ describe("la superficie completa del contrato", () => {
     openLogFolder: "open_log_folder",
     estadoIa: "estado_ia",
     guardarClaveIa: "guardar_clave_ia",
+    activarAyudaIaCompartida: "activar_ayuda_ia_compartida",
     probarClaveIa: "probar_clave_ia",
     borrarClaveIa: "borrar_clave_ia",
     establecerEnvioSinRevision: "establecer_envio_sin_revision",

@@ -10,4 +10,14 @@ export type EstadoIaWire = { activa: boolean, modelo: string, previewAcknowledge
  * FR-007 de la spec `006`: modo «enviar sin revisar» activo. Apagado de fábrica; se resetea al
  * borrar la clave (FR-012).
  */
-sendWithoutReview: boolean, claveValida: boolean | null, };
+sendWithoutReview: boolean, claveValida: boolean | null, 
+/**
+ * ADR-054: este binario trae compilada una clave de demostración compartida. Computado, no se
+ * persiste. `false` en un clon del repositorio (build sin `SDM_OPENROUTER_DEMO_KEY`).
+ */
+claveCompartidaDisponible: boolean, 
+/**
+ * ADR-054: la credencial guardada **es** la clave de demostración compartida. Computado. La
+ * interfaz lo usa para ofrecer «cambiar a una clave propia».
+ */
+usandoClaveCompartida: boolean, };

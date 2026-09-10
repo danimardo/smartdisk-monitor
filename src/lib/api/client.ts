@@ -256,6 +256,11 @@ export const estadoIa = () => call("estado_ia", S.estadoIa);
  *  clave inválida no se guarda (`AppError` `ia.unauthorized` / `ia.invalidKeyFormat`). */
 export const guardarClaveIa = (clave: string) => call("guardar_clave_ia", S.estadoIa, { clave });
 
+/** Activa la ayuda con la clave de demostración compartida compilada en el binario (ADR-054):
+ *  gesto explícito equivalente a pegar una propia. `AppError` `ia.noSharedKey` si esta versión no
+ *  la trae. */
+export const activarAyudaIaCompartida = () => call("activar_ayuda_ia_compartida", S.estadoIa);
+
 /** Comprueba la clave ya guardada sin cambiarla (botón «Probar»). */
 export const probarClaveIa = () => call("probar_clave_ia", S.estadoIa);
 

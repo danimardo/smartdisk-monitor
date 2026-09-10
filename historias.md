@@ -111,6 +111,10 @@ Responde a las preguntas que uno se hace cuando algo empieza a ir mal:
 - **Captura y correlación de eventos** relevantes del registro de eventos de Windows con el disco al
   que corresponden.
 - **Historial local en SQLite**, con retención configurable y sin ningún dato saliendo del equipo.
+- **Ayuda con IA opcional y apagada de fábrica**: si la activas, traduce a lenguaje claro el detalle
+  técnico de una alerta o un disco. El texto se anonimiza antes de salir del equipo y hay vista
+  previa. El instalador incluye una **clave de demostración** compartida y limitada a modelos
+  gratuitos para probarla con un clic; para uso habitual conviene crear una propia en openrouter.ai.
 - **Pruebas manuales bajo demanda**: benchmark de lectura/escritura, `chkdsk /scan` y autotest SMART
   corto, cuando el dispositivo lo soporte.
 - **Exportación e informes**: CSV, JSON y HTML imprimible, más un paquete ZIP de diagnóstico
@@ -373,7 +377,9 @@ El producto debe ayudar a responder:
   y ADR-049, principio XVI): si la persona configura una clave de API de OpenRouter, puede pedir que
   se le traduzca a lenguaje llano el detalle técnico de una alerta, del detalle SMART de un disco o
   de un evento del registro de Windows, con posibles pasos a seguir. Apagada de fábrica; sin clave, la aplicación no hace ninguna conexión a
-  Internet. La consulta lleva el volcado técnico completo del disco y, en alertas de sucesos de
+  Internet. El instalador puede traer una **clave de demostración compartida** —capada a modelos
+  gratuitos, declarada no secreta (ADR-054)— que se activa con un botón, sin cuenta; para uso
+  habitual conviene una propia. La consulta lleva el volcado técnico completo del disco y, en alertas de sucesos de
   Windows, el contenido de ese suceso; todo se anonimiza en capas antes de salir del equipo
   (número de serie, WWN, nombre de equipo y usuario, SID, rutas de dispositivo) y la persona ve el
   texto exacto la primera vez. Un ajuste opcional «enviar sin revisar», apagado de fábrica y con
@@ -1729,7 +1735,8 @@ Fichero de origen: `docs/data-model.md`
 - **Ayuda con IA** (spec `005-explicacion-ia` FR-024, ampliada por `006-explicacion-ia-contexto-crudo`
   FR-011). Exactamente **cuatro** claves; sin migración:
   - `settings.ai.enabled`: booleano, fábrica `false`. Espejo de «existe credencial». Lo escriben
-    solo `guardar_clave_ia` (→ `true`) y `borrar_clave_ia` (→ `false`), nunca `set_setting`.
+    solo `guardar_clave_ia` / `activar_ayuda_ia_compartida` (→ `true`) y `borrar_clave_ia`
+    (→ `false`), nunca `set_setting`.
   - `settings.ai.model`: identificador del modelo, fábrica `"openrouter/free"` (= «automático»).
     Se valida solo por forma (no vacío, ≤120, sin espacios), no contra el catálogo del proveedor.
   - `settings.ai.preview_acknowledged`: booleano, fábrica `false`. `true` cuando la persona ha
@@ -1742,7 +1749,13 @@ Fichero de origen: `docs/data-model.md`
   - **La clave de API no está aquí.** Vive en el Administrador de credenciales de Windows
     (`CRED_TYPE_GENERIC`, `TargetName` `SmartDisk Monitor/OpenRouter`, `CRED_PERSIST_LOCAL_MACHINE`,
     blob UTF-8), fuera de SQLite y de cualquier fichero (FR-004). `reset_settings` en el ámbito
-    `"ai"` (o `"all"`) borra las cuatro claves **y** la credencial.
+    `"ai"` (o `"all"`) borra las cuatro claves **y** la credencial. La credencial puede ser ahora la
+    **clave de demostración compartida** (ADR-054): compilada en el binario, la copia al almacén el
+    comando `activar_ayuda_ia_compartida` y `borrar_clave_ia` / `reset_settings` la borran igual.
+  - **Los dos indicadores de clave compartida son computados, no persistidos.** `EstadoIaWire`
+    expone `claveCompartidaDisponible` (`= clave_demo().is_some()`, `false` en un clon del
+    repositorio) y `usandoClaveCompartida` (`= la credencial guardada es la clave de demostración`).
+    No hay clave nueva en `settings`.
   - Las entidades de una consulta de explicación (texto a enviar —resumen + volcado crudo de
     `smartctl` + contenido del suceso de Windows, anonimizados—, respuesta del modelo, catálogo de
     modelos) son **efímeras**: no se persisten en ninguna tabla (spec 006, ADR-047).
@@ -2212,6 +2225,7 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `app.open_folder_failed` | no se pudo abrir el explorador de archivos en la carpeta de registro | sí |
 | `app.refresh_failed` | el hilo de `refresh_now` terminó de forma anómala (panic); caso inesperado | sí |
 | `ia.no_key` | comando de IA sin clave de API configurada | no |
+| `ia.no_shared_key` | se pidió activar con la clave de demostración compartida y este binario no la trae compilada (ADR-054) | no |
 | `ia.invalid_key_format` | la clave de API no tiene el formato esperado | no |
 | `ia.unauthorized` | OpenRouter rechazó la clave (HTTP 401/403) | no |
 | `ia.rate_limited` | límite de uso de OpenRouter alcanzado (HTTP 402/429) | sí |
@@ -2632,6 +2646,7 @@ acciones de explicación no aparecen en la interfaz.
 ```ts
 invoke<EstadoIaWire>("estado_ia")                                    // sin red
 invoke<EstadoIaWire>("guardar_clave_ia", { clave: string })          // valida y guarda en el Administrador de credenciales
+invoke<EstadoIaWire>("activar_ayuda_ia_compartida")                  // activa con la clave de demostración compilada (ADR-054); `ia.no_shared_key` si el binario no la trae
 invoke<EstadoIaWire>("probar_clave_ia")                              // revalida la clave guardada
 invoke<EstadoIaWire>("borrar_clave_ia")                              // borra credencial y limpia el estado (incluye send_without_review)
 invoke<EstadoIaWire>("establecer_envio_sin_revision", { activar: boolean })   // modo «enviar sin revisar» (spec 006); el aviso de riesgo lo muestra Ajustes
@@ -2640,7 +2655,7 @@ invoke<ResultadoExplicacion>("explicar_detalle_tecnico", { origen: OrigenExplica
 ```
 
 ```ts
-type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null };
+type EstadoIaWire = { activa: boolean; modelo: string; previewAcknowledged: boolean; sendWithoutReview: boolean; claveValida: boolean | null; claveCompartidaDisponible: boolean; usandoClaveCompartida: boolean };
 type ModeloIaWire = { id: string; nombre: string; esDePago: boolean };
 type OrigenExplicacion = {
   tipo: "alerta" | "smart" | "evento";
@@ -2665,6 +2680,12 @@ type ResultadoExplicacion =
 
 - La **clave de API no viaja por el contrato**: vive solo en el Administrador de credenciales de
   Windows. `estado_ia` expone únicamente si existe y si la última comprobación fue válida.
+- `claveCompartidaDisponible` (ADR-054): este binario trae compilada una clave de demostración
+  compartida —capada por OpenRouter a modelos gratuitos, declarada **no secreta**—. `false` en un
+  clon del repositorio. `usandoClaveCompartida`: la credencial guardada **es** esa clave; la
+  interfaz lo usa para ofrecer cambiar a una propia. `activar_ayuda_ia_compartida` la comprueba, la
+  copia al Administrador de credenciales y fija el modelo en el router automático; `borrar_clave_ia`
+  la elimina como a cualquier otra.
 - `explicar_detalle_tecnico` devuelve `{ estado: "revision" }` en dos casos: `fragmentos` vacío es
   la **vista previa** de FR-010 (primera vez); `fragmentos` no vacío es la **revisión** de FR-026
   (la anonimización no pudo garantizar que un fragmento esté limpio). En ambos, la interfaz vuelve
@@ -2917,6 +2938,12 @@ capturarlos, no al usarlos.
 - Versionado semántico. Nombre y versión salen del manifiesto (ADR-011): no se escriben a mano en
   ningún otro sitio.
 - Las publicaciones son manuales en GitHub, sin actualizador automático (ADR-007).
+- La **clave de demostración de la ayuda con IA** (ADR-054) se pasa a la compilación por la variable
+  de entorno `SDM_OPENROUTER_DEMO_KEY` —secreto `OPENROUTER_DEMO_KEY` en el flujo de Release; en
+  local, `set SDM_OPENROUTER_DEMO_KEY=… && pnpm app:build`—. `build.rs` la lee, la ofusca y la
+  compila en el binario; sin la variable, el binario sale sin ella y la ayuda con IA sigue exigiendo
+  clave propia. La clave **nunca** se escribe en un fichero versionado (`.gitignore` cubre
+  `src-tauri/.env.local` por si se prefiere exportarla desde ahí a mano).
 
 ---
 
@@ -5900,6 +5927,84 @@ navegador; se descarta). «Copiar información» no cambia: sigue copiando solo 
   `about.authorName`, `about.authorRole` y `about.photoAlt`.
 - `get_app_info` y los permisos de Tauri **no cambian**.
 
+### ADR-053 — Reservada
+
+Estado: reservada para la spec `008-benchmark-diskspd` (binario DiskSpd redistribuido). El número
+se asignó al planificar esa feature; su ADR se redacta al implementarla. ADR-054 se numeró después
+y se aceptó antes por orden de implementación.
+
+### ADR-054 — Clave de demostración compartida para la ayuda con IA
+
+Estado: aceptada. Fecha: 2026-09-10. Amplía el principio XVI (constitución 1.10.0). Spec:
+`005-explicacion-ia`, FR-001a.
+
+#### El problema
+
+La ayuda con IA (principio XVI, spec `005-explicacion-ia`) exige que cada persona cree una cuenta en
+OpenRouter y pegue su propia clave de API. Para quien no es técnico es una barrera que hace
+abandonar la función antes de verla funcionar. El dueño ha generado una clave **sin crédito y
+capada por OpenRouter a modelos gratuitos** y quiere incluirla para que la función se pueda probar
+con un clic, sin cuenta —pero **sin que la clave se suba a GitHub** y sí dentro del instalador, «no
+visible».
+
+#### La decisión
+
+- La clave de demostración se pasa a la compilación por la variable de entorno
+  `SDM_OPENROUTER_DEMO_KEY` (secreto de GitHub Actions en la Release; `set …` en local). `build.rs`
+  la **ofusca con XOR** contra un patrón fijo y corto —el patrón está en el repositorio, a la
+  vista— y la emite como `cargo:rustc-env=SDM_OPENROUTER_DEMO_KEY_OFUSCADA`. **No es cifrado**: solo
+  evita que `strings binario.exe | grep sk-or` la encuentre. La clave **nunca** se escribe en un
+  fichero del repositorio.
+- Un binario compilado sin la variable —un clon del repositorio— no la trae: `clave_demo()`
+  devuelve `None` y la función se comporta como hasta ahora (exige clave propia).
+- La activación es un **gesto explícito**: el botón «Usar la clave de demostración» (Ajustes y paso
+  4 del asistente), visible solo si `estado_ia().claveCompartidaDisponible`. Al pulsarlo, el comando
+  `activar_ayuda_ia_compartida` valida la clave contra OpenRouter y la copia al Administrador de
+  credenciales de Windows como cualquier otra; a partir de ahí rige todo el principio XVI (destino
+  único, disparo explícito, vista previa antes de la primera consulta, anonimización, degradación).
+  `borrar_clave_ia` la elimina igual.
+- Como la clave solo cubre modelos gratuitos, `activar_ayuda_ia_compartida` fija
+  `settings.ai.model` en el router automático (`openrouter/free`). Si luego la persona elige un
+  modelo de pago, OpenRouter rechazará la petición y se muestra el error `ia.*` habitual: no se
+  añade una validación que bloquee el cambio de modelo (más código para un caso que el proveedor ya
+  cubre).
+
+#### Por qué no rompe el principio XVI
+
+La invariante «sin clave en el Administrador de credenciales, no hay ninguna ruta de red» se
+conserva palabra por palabra: la clave de demostración no está ahí hasta que la persona pulsa el
+botón. Lo único que cambia es que existe una segunda forma de poner una clave, equivalente a pegar
+la propia. La constitución 1.10.0 recoge la enmienda; el principio XII se precisó en consecuencia
+(la clave de demostración es la única excepción a «no hay secretos», y se declara explícitamente
+**no secreta**).
+
+#### Alternativas descartadas
+
+- **Encendida de fábrica.** Rompería «apagada de fábrica» de forma real: habría ruta de red sin
+  que nadie la pida. Descartada de entrada.
+- **Un endpoint propio que sirva la clave.** Viola «un solo destino de red» del principio XVI y
+  añade infraestructura que mantener.
+- **La clave en el README o en un `.env` versionado.** La expone en GitHub, que es justo lo que el
+  dueño pide evitar.
+- **Cifrado de verdad en vez de ofuscación.** La clave hay que descifrarla en el propio binario,
+  así que la llave del cifrado viaja al lado: es teatro. El ADR prefiere declararla no secreta y
+  ser honesto sobre ello.
+
+#### Consecuencias
+
+- **La clave es extraíble del ejecutable** por cualquiera con ganas. Se asume: su valor es la
+  comodidad, no la confidencialidad.
+- **Riesgo de abuso** (usarla como proxy gratuito, agotar los límites de los modelos gratuitos).
+  OpenRouter puede limitarla o revocarla → la función degrada con su error `ia.*`, la aplicación
+  sigue. Mitigación de volumen desde la app: ninguna posible.
+- Cumplir los **términos de servicio de OpenRouter** sobre distribuir una clave en una aplicación
+  es responsabilidad del dueño.
+- `EstadoIaWire` suma dos campos computados (`claveCompartidaDisponible`, `usandoClaveCompartida`);
+  ningún ajuste nuevo en `settings`. Nuevo error de contrato `ia.no_shared_key`. Nuevo módulo
+  `platform::ia_clave_demo` y su fichero compartido `clave_demo_ofuscacion.rs` (incluido también por
+  `build.rs`). `.github/workflows/release.yml` pasa el secreto `OPENROUTER_DEMO_KEY`; sin él, la
+  Release sale sin clave de demostración (degradación limpia).
+
 
 ---
 
@@ -6428,6 +6533,7 @@ asunción del programador.
 | J.58 | Usando la aplicación real ya instalada, el usuario señaló cuatro cosas sueltas: (1) el icono del fondo del riel lateral no explica nada al pasar el ratón ni hace nada al pulsarlo; (2) el detalle de una alerta no dice a qué disco corresponde, aunque la lista de la izquierda sí lo hace; (3) la alerta `smart.error_log` ("el registro de errores del disco ha aumentado") solo enseña un contador que sube, sin ninguna pista de qué error es; (4) la leyenda "Duración del silencio" queda descuadrada respecto a los botones de al lado | Cuatro causas independientes, todas ya resueltas. **(1)** El icono es un indicador de estado pasivo (`role="status"`, misma fuente que la píldora de la `Toolbar`, que tampoco es clicable — coherente con el resto de la app) al que le faltaba el `title` que sí llevan los demás iconos del riel: añadido, sin hacerlo interactivo. **(2)** `detail.target` ya llegaba al frontend (`AlertDetail` hereda `target` de `AlertGroupWire`) pero nunca se pintaba en el panel de detalle: añadida una línea bajo el título, igual que ya se ve en la tarjeta de la lista. **(3)** SMART no da una descripción legible de cada error — el contador (`error_log_entries_total`) es el dato real; lo más parecido a "más información" es la tabla de errores completa que trae el JSON entero de `smartctl`, que **ya se genera hoy** dentro del paquete de diagnóstico pero no estaba enlazada desde la alerta. Nuevo comando `get_alert_smart_raw_json` (mismo patrón que `get_event_raw_xml` para las alertas de sucesos: se resuelve el `target_device_id` internamente en el backend, la ruta de `smartctl` nunca viaja al frontend) que consulta smartctl al momento y lo muestra con el mismo `CodeOutput` que ya usan `chkdsk` y el XML de eventos; solo se ofrece en alertas `smart.*`/`temp.*`/`nvme.*` (`docs/alert-rules.md`, columna "Fuente"), nunca en `capacity.*`/`events.*`/`device.*`, que no tienen ningún JSON de smartctl que mostrar. **(4)** Maquetación: `Select` es el único control de esa fila con su propia etiqueta encima, y centrar verticalmente toda la fila la descuadraba frente a los botones sin etiqueta — la fila pasa de `items-center` a `items-end` |
 | J.59 | **DECIDIDO** e implementado. El usuario ve «Desgaste 5 %» en una tarjeta de disco y no sabe qué significa ni si es preocupante; quiere un tooltip que lo explique al pasar el ratón, en el panel general y en el detalle de disco, con un veredicto sobre el valor actual | Se construye el componente **`Tooltip`** (que `ui-design.md` §3 ya tenía autorizado y pendiente) y un módulo `src/lib/design/metricHelp.ts` con `veredictoMetrica` (puro) + `ayudaMetrica` (texto traducido). El veredicto («normal» / «alto» / «demasiado alto») usa `classifyAgainstThresholds` y los umbrales de `settings.alerts`, así **nunca contradice** al color de la tarjeta ni a una alerta; actividad y horas de encendido son informativas (siempre `ok`), y un disco SATA sin desgaste lo explica. **Alcance**: 3 métricas de `DiskCard` (panel) + las 4 `MetricCard` (detalle); **no** la tabla «Contadores». **Panel: tooltip solo con el ratón**, porque la `DiskCard` es un `<a>` entero y no puede contener un elemento tabulable — con teclado, la versión completa (`Tooltip focusable`, `Escape`, `aria-describedby`, WCAG 1.4.13) está en el detalle. En la `DiskCard` el tooltip es **local y ligero** (no el componente `Tooltip`): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006, `e2e/ui/rendimiento.spec.ts`); el silencio `a11y_no_static_element_interactions` está en `known-issues.md` #4. El panel pide `settings` una vez sin bloquear el pintado; hasta que llega, `metricHelp` usa los umbrales de fábrica. Textos en `metric.help.{temperature,wear,activity,powerOnHours}.*` |
 | J.60 | **DECIDIDO** e implementado (ADR-045). Sobre la aplicación real, el usuario señaló que una alerta `smart.error_log` de su NVMe Crucial `CT2000P3SSD8` (contador en 2162) parecía un fallo de disco pero, al mirar el registro de errores, **todas** las entradas eran `"Invalid Field in Command"` (`status_code_type` 0, `status_code` 2) con `media_errors` 0, `critical_warning` 0, `smart_status.passed` verdadero y `percentage_used` 3 — no es daño, y aun así no se podía ignorar porque `smart.error_log` estaba en el conjunto vetado de ADR-044. «Quizá hemos sido demasiado radicales» | **`smart.error_log` sale de `REGLAS_NO_IGNORABLES`** (ADR-044 → seis reglas). En NVMe de consumo ese contador (`num_err_log_entries`) lo dominan rechazos de protocolo benignos: `smartctl` o Windows piden una página de log opcional que la controladora no implementa y esta apunta cada comando rechazado. El daño de medio real lo sigue cubriendo `smart.media_errors`, que **no** se toca y sigue vetada. Cambio de una línea en `alerts::reglas` + su prueba + `docs/alert-rules.md` §1 (los tres juntos, como pide ADR-044), más `ui-contract.md` §3.4 y `ui-design.md` §3. **Pendiente, spec propia**: afinar la regla para que solo dispare con entradas del registro de tipo «media/integridad» (NVMe `status_code_type == 2`) en vez del contador bruto — es el arreglo de raíz, toca el parser de `smartctl` y cambia comportamiento observable; poder ignorarla ya resuelve el caso mientras tanto |
+| J.61 | **DECIDIDO** (ADR-054). Al activar la ayuda con IA con la **clave de demostración compartida**, ¿qué modelo queda seleccionado, dado que esa clave solo cubre modelos gratuitos? | `activar_ayuda_ia_compartida` fija `settings.ai.model` en el **router automático** (`openrouter/free`). No se añade una validación que impida luego cambiar a un modelo de pago: si la persona lo hace, OpenRouter rechaza la petición y se muestra el error `ia.*` habitual — misma degradación que ya existe, sin código nuevo para un caso que el proveedor ya cubre. La ofuscación XOR de la clave (patrón fijo en `src-tauri/src/platform/clave_demo_ofuscacion.rs`, incluido también por `build.rs`) **no es cifrado** y así se declara: la clave es extraíble del ejecutable, su valor es la comodidad, no la confidencialidad |
 
 ---
 
@@ -9725,6 +9831,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "onboarding.ai.skipHint": "Puedes dejarlo en blanco y añadir la clave más tarde en Ajustes.",
   "onboarding.ai.cta.activate": "Activar y continuar",
   "onboarding.ai.cta.skip": "Continuar sin IA",
+  "onboarding.ai.cta.useShared": "Probar con la clave de demostración",
   "settings.onboarding.repeat": "Repetir la configuración inicial",
   "settings.onboarding.repeatHint": "Reabre el asistente con los valores actuales. No borra discos, alias ni umbrales.",
   "settings.ai.title": "Ayuda con IA",
@@ -9739,6 +9846,9 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.ai.cta.test": "Probar",
   "settings.ai.cta.change": "Cambiar clave",
   "settings.ai.cta.remove": "Desactivar",
+  "settings.ai.cta.useShared": "Usar la clave de demostración",
+  "settings.ai.shared.hint": "Clave compartida, capada a modelos gratuitos y con límites de uso. Para uso habitual, crea la tuya en openrouter.ai y pégala arriba.",
+  "settings.ai.shared.inUse": "Estás usando la clave de demostración compartida. Pulsa «Cambiar clave» para poner la tuya.",
   "settings.ai.model.change": "Modelo",
   "settings.ai.model.auto": "Modelo gratuito automático",
   "settings.ai.model.paidSuffix": "{name} (de pago)",
@@ -9968,6 +10078,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "error.pathInvalid": "La ruta no es válida para esta operación.",
   "error.exportWriteFailed": "No se pudo escribir el destino elegido.",
   "error.ia.noKey": "La ayuda con IA no está activada.",
+  "error.ia.noSharedKey": "Esta versión no incluye una clave de demostración. Pega tu propia clave de OpenRouter.",
   "error.ia.invalidKeyFormat": "Esa clave no tiene el formato que espera OpenRouter.",
   "error.ia.unauthorized": "OpenRouter ha rechazado la clave. Revísala en Ajustes.",
   "error.ia.rateLimited": "Has alcanzado el límite de uso de OpenRouter. Inténtalo más tarde.",
@@ -10294,6 +10405,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "onboarding.ai.skipHint": "You can leave this blank and add the key later in Settings.",
   "onboarding.ai.cta.activate": "Turn on and continue",
   "onboarding.ai.cta.skip": "Continue without AI",
+  "onboarding.ai.cta.useShared": "Try it with the demo key",
   "settings.onboarding.repeat": "Repeat the initial setup",
   "settings.onboarding.repeatHint": "Reopens the wizard with your current values. It does not delete disks, aliases or thresholds.",
   "settings.ai.title": "AI help",
@@ -10308,6 +10420,9 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.ai.cta.test": "Test",
   "settings.ai.cta.change": "Change key",
   "settings.ai.cta.remove": "Turn off",
+  "settings.ai.cta.useShared": "Use the demo key",
+  "settings.ai.shared.hint": "Shared key, capped to free models and rate-limited. For regular use, create your own at openrouter.ai and paste it above.",
+  "settings.ai.shared.inUse": "You're using the shared demo key. Press “Change key” to use your own.",
   "settings.ai.model.change": "Model",
   "settings.ai.model.auto": "Automatic free model",
   "settings.ai.model.paidSuffix": "{name} (paid)",
@@ -10537,6 +10652,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "error.pathInvalid": "The path isn't valid for this operation.",
   "error.exportWriteFailed": "The chosen destination couldn't be written.",
   "error.ia.noKey": "AI help isn't turned on.",
+  "error.ia.noSharedKey": "This build doesn't include a demo key. Paste your own OpenRouter key.",
   "error.ia.invalidKeyFormat": "That key isn't in the format OpenRouter expects.",
   "error.ia.unauthorized": "OpenRouter rejected the key. Check it in Settings.",
   "error.ia.rateLimited": "You've hit OpenRouter's usage limit. Try again later.",

@@ -20,6 +20,7 @@
     TextField
   } from "$lib/components";
   import {
+    activarAyudaIaCompartida,
     borrarClaveIa,
     deleteAllData,
     establecerEnvioSinRevision,
@@ -72,7 +73,7 @@
 
   let claveIa = $state("");
   let editandoClave = $state(false);
-  let accionIa = $state<"" | "guardar" | "probar" | "borrar" | "envioSinRevision">("");
+  let accionIa = $state<"" | "guardar" | "compartida" | "probar" | "borrar" | "envioSinRevision">("");
   let errorIa = $state<AppError | null>(null);
   let dialogoEnvioSinRevision = $state(false);
 
@@ -103,6 +104,20 @@
     errorIa = null;
     try {
       ia.set(await guardarClaveIa(claveIa.trim()));
+      claveIa = "";
+      editandoClave = false;
+    } catch (cause) {
+      errorIa = toAppError(cause);
+    } finally {
+      accionIa = "";
+    }
+  }
+
+  async function activarCompartida() {
+    accionIa = "compartida";
+    errorIa = null;
+    try {
+      ia.set(await activarAyudaIaCompartida());
       claveIa = "";
       editandoClave = false;
     } catch (cause) {
@@ -774,6 +789,11 @@
             {t("settings.ai.status.invalid")}
           </p>
         {/if}
+        {#if ia.estado.usandoClaveCompartida}
+          <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">
+            {t("settings.ai.shared.inUse")}
+          </p>
+        {/if}
 
         <AiModelSelect modelo={ia.estado.modelo} disabled={accionIa !== ""} onchange={cambiarModeloIa} />
 
@@ -835,6 +855,16 @@
           >
             {t("settings.ai.cta.activate")}
           </Button>
+          {#if ia.estado?.claveCompartidaDisponible}
+            <Button
+              variant="secondary"
+              loading={accionIa === "compartida"}
+              disabled={accionIa !== ""}
+              onclick={activarCompartida}
+            >
+              {t("settings.ai.cta.useShared")}
+            </Button>
+          {/if}
           {#if editandoClave}
             <Button
               variant="ghost"
@@ -849,6 +879,11 @@
             </Button>
           {/if}
         </div>
+        {#if ia.estado?.claveCompartidaDisponible}
+          <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">
+            {t("settings.ai.shared.hint")}
+          </p>
+        {/if}
       {/if}
 
       {#if errorIa}

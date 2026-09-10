@@ -2043,3 +2043,81 @@ navegador; se descarta). «Copiar información» no cambia: sigue copiando solo 
 - La clave i18n `about.body` se sustituye por `about.bio.p1/p2`, `about.credits`, `about.links`,
   `about.authorName`, `about.authorRole` y `about.photoAlt`.
 - `get_app_info` y los permisos de Tauri **no cambian**.
+
+## ADR-053 — Reservada
+
+Estado: reservada para la spec `008-benchmark-diskspd` (binario DiskSpd redistribuido). El número
+se asignó al planificar esa feature; su ADR se redacta al implementarla. ADR-054 se numeró después
+y se aceptó antes por orden de implementación.
+
+## ADR-054 — Clave de demostración compartida para la ayuda con IA
+
+Estado: aceptada. Fecha: 2026-09-10. Amplía el principio XVI (constitución 1.10.0). Spec:
+`005-explicacion-ia`, FR-001a.
+
+### El problema
+
+La ayuda con IA (principio XVI, spec `005-explicacion-ia`) exige que cada persona cree una cuenta en
+OpenRouter y pegue su propia clave de API. Para quien no es técnico es una barrera que hace
+abandonar la función antes de verla funcionar. El dueño ha generado una clave **sin crédito y
+capada por OpenRouter a modelos gratuitos** y quiere incluirla para que la función se pueda probar
+con un clic, sin cuenta —pero **sin que la clave se suba a GitHub** y sí dentro del instalador, «no
+visible».
+
+### La decisión
+
+- La clave de demostración se pasa a la compilación por la variable de entorno
+  `SDM_OPENROUTER_DEMO_KEY` (secreto de GitHub Actions en la Release; `set …` en local). `build.rs`
+  la **ofusca con XOR** contra un patrón fijo y corto —el patrón está en el repositorio, a la
+  vista— y la emite como `cargo:rustc-env=SDM_OPENROUTER_DEMO_KEY_OFUSCADA`. **No es cifrado**: solo
+  evita que `strings binario.exe | grep sk-or` la encuentre. La clave **nunca** se escribe en un
+  fichero del repositorio.
+- Un binario compilado sin la variable —un clon del repositorio— no la trae: `clave_demo()`
+  devuelve `None` y la función se comporta como hasta ahora (exige clave propia).
+- La activación es un **gesto explícito**: el botón «Usar la clave de demostración» (Ajustes y paso
+  4 del asistente), visible solo si `estado_ia().claveCompartidaDisponible`. Al pulsarlo, el comando
+  `activar_ayuda_ia_compartida` valida la clave contra OpenRouter y la copia al Administrador de
+  credenciales de Windows como cualquier otra; a partir de ahí rige todo el principio XVI (destino
+  único, disparo explícito, vista previa antes de la primera consulta, anonimización, degradación).
+  `borrar_clave_ia` la elimina igual.
+- Como la clave solo cubre modelos gratuitos, `activar_ayuda_ia_compartida` fija
+  `settings.ai.model` en el router automático (`openrouter/free`). Si luego la persona elige un
+  modelo de pago, OpenRouter rechazará la petición y se muestra el error `ia.*` habitual: no se
+  añade una validación que bloquee el cambio de modelo (más código para un caso que el proveedor ya
+  cubre).
+
+### Por qué no rompe el principio XVI
+
+La invariante «sin clave en el Administrador de credenciales, no hay ninguna ruta de red» se
+conserva palabra por palabra: la clave de demostración no está ahí hasta que la persona pulsa el
+botón. Lo único que cambia es que existe una segunda forma de poner una clave, equivalente a pegar
+la propia. La constitución 1.10.0 recoge la enmienda; el principio XII se precisó en consecuencia
+(la clave de demostración es la única excepción a «no hay secretos», y se declara explícitamente
+**no secreta**).
+
+### Alternativas descartadas
+
+- **Encendida de fábrica.** Rompería «apagada de fábrica» de forma real: habría ruta de red sin
+  que nadie la pida. Descartada de entrada.
+- **Un endpoint propio que sirva la clave.** Viola «un solo destino de red» del principio XVI y
+  añade infraestructura que mantener.
+- **La clave en el README o en un `.env` versionado.** La expone en GitHub, que es justo lo que el
+  dueño pide evitar.
+- **Cifrado de verdad en vez de ofuscación.** La clave hay que descifrarla en el propio binario,
+  así que la llave del cifrado viaja al lado: es teatro. El ADR prefiere declararla no secreta y
+  ser honesto sobre ello.
+
+### Consecuencias
+
+- **La clave es extraíble del ejecutable** por cualquiera con ganas. Se asume: su valor es la
+  comodidad, no la confidencialidad.
+- **Riesgo de abuso** (usarla como proxy gratuito, agotar los límites de los modelos gratuitos).
+  OpenRouter puede limitarla o revocarla → la función degrada con su error `ia.*`, la aplicación
+  sigue. Mitigación de volumen desde la app: ninguna posible.
+- Cumplir los **términos de servicio de OpenRouter** sobre distribuir una clave en una aplicación
+  es responsabilidad del dueño.
+- `EstadoIaWire` suma dos campos computados (`claveCompartidaDisponible`, `usandoClaveCompartida`);
+  ningún ajuste nuevo en `settings`. Nuevo error de contrato `ia.no_shared_key`. Nuevo módulo
+  `platform::ia_clave_demo` y su fichero compartido `clave_demo_ofuscacion.rs` (incluido también por
+  `build.rs`). `.github/workflows/release.yml` pasa el secreto `OPENROUTER_DEMO_KEY`; sin él, la
+  Release sale sin clave de demostración (degradación limpia).

@@ -30,6 +30,10 @@ Responde a las preguntas que uno se hace cuando algo empieza a ir mal:
 - **Captura y correlación de eventos** relevantes del registro de eventos de Windows con el disco al
   que corresponden.
 - **Historial local en SQLite**, con retención configurable y sin ningún dato saliendo del equipo.
+- **Ayuda con IA opcional y apagada de fábrica**: si la activas, traduce a lenguaje claro el detalle
+  técnico de una alerta o un disco. El texto se anonimiza antes de salir del equipo y hay vista
+  previa. El instalador incluye una **clave de demostración** compartida y limitada a modelos
+  gratuitos para probarla con un clic; para uso habitual conviene crear una propia en openrouter.ai.
 - **Pruebas manuales bajo demanda**: benchmark de lectura/escritura, `chkdsk /scan` y autotest SMART
   corto, cuando el dispositivo lo soporte.
 - **Exportación e informes**: CSV, JSON y HTML imprimible, más un paquete ZIP de diagnóstico

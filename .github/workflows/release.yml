@@ -47,6 +47,11 @@ jobs:
 
       - name: Instalador NSIS (WebView2 sin conexión)
         run: pnpm app:build
+        env:
+          # Clave de demostración compartida para la ayuda con IA (ADR-054). `build.rs` la ofusca y
+          # la compila en el binario. Sin el secreto, la Release sale sin ella (degradación limpia)
+          # y la ayuda con IA sigue exigiendo una clave propia.
+          SDM_OPENROUTER_DEMO_KEY: ${{ secrets.OPENROUTER_DEMO_KEY }}
 
       - name: Publicar la Release con el instalador
         uses: softprops/action-gh-release@v2

@@ -784,8 +784,12 @@ fn construir_estado_ia(
     conn: &rusqlite::Connection,
     clave_valida: Option<bool>,
 ) -> crate::domain::ia::EstadoIaWire {
+    let credencial = crate::platform::credenciales::leer();
+    let clave_demo = crate::platform::ia_clave_demo::clave_demo();
+    let (clave_compartida_disponible, usando_clave_compartida) =
+        crate::domain::ia::estado_clave_compartida(clave_demo.as_deref(), credencial.as_deref());
     crate::domain::ia::EstadoIaWire {
-        activa: crate::platform::credenciales::leer().is_some(),
+        activa: credencial.is_some(),
         modelo: leer_ajuste_string(
             conn,
             "settings.ai.model",
@@ -794,6 +798,8 @@ fn construir_estado_ia(
         preview_acknowledged: leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false),
         send_without_review: leer_ajuste_bool(conn, "settings.ai.send_without_review", false),
         clave_valida,
+        clave_compartida_disponible,
+        usando_clave_compartida,
     }
 }
 
@@ -863,6 +869,49 @@ pub async fn guardar_clave_ia(
         .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
     guardar_ajuste(&conn, "settings.ai.enabled", &true, &ahora_rfc3339())?;
     tracing::info!("ayuda con IA activada");
+    Ok(construir_estado_ia(&conn, Some(valida)))
+}
+
+/// Activa la ayuda con IA usando la **clave de demostración compartida** compilada en este binario
+/// (ADR-054, principio XVI). Es el gesto explícito equivalente a introducir una clave propia: la
+/// comprueba contra el proveedor y solo entonces la copia al Administrador de credenciales. Si el
+/// binario no trae clave compilada (un clon del repositorio) → `ia.no_shared_key`.
+///
+/// La clave de demostración solo cubre modelos gratuitos, así que fija el modelo en el router
+/// automático (`openrouter/free`); la persona puede cambiarlo luego bajo su propia responsabilidad.
+#[tauri::command]
+pub async fn activar_ayuda_ia_compartida(
+    state: State<'_, AppState>,
+) -> AppResult<crate::domain::ia::EstadoIaWire> {
+    let Some(clave) = crate::platform::ia_clave_demo::clave_demo() else {
+        return Err(Box::new(AppError::new(
+            "ia.no_shared_key",
+            "error.ia.noSharedKey",
+        )));
+    };
+
+    let resultado = crate::platform::ia_openrouter::validar_clave(&clave).await;
+    let valida = interpretar_validacion(resultado)?;
+
+    crate::platform::credenciales::guardar(
+        &clave,
+        crate::platform::credenciales::CredPersist::LocalMachine,
+    )?;
+    guardar_validez_ia(&state, Some(valida));
+
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    let ahora = ahora_rfc3339();
+    guardar_ajuste(&conn, "settings.ai.enabled", &true, &ahora)?;
+    guardar_ajuste(
+        &conn,
+        "settings.ai.model",
+        &crate::domain::ia::MODELO_AUTOMATICO,
+        &ahora,
+    )?;
+    tracing::info!("ayuda con IA activada con la clave de demostración compartida");
     Ok(construir_estado_ia(&conn, Some(valida)))
 }
 

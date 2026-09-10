@@ -6,6 +6,7 @@ pub mod autoarranque;
 pub mod bandeja;
 pub mod credenciales;
 pub mod energia;
+pub mod ia_clave_demo;
 pub mod ia_openrouter;
 pub mod locale;
 pub mod paths;
