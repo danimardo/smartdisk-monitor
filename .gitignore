@@ -35,6 +35,10 @@ playwright-report/
 blob-report/
 .playwright/
 
+# Símbolos de depuración de DiskSpd: la descarga oficial trae el .pdb junto al .exe; no se
+# redistribuye (ADR-053, THIRD_PARTY_NOTICES.md), solo el ejecutable y la licencia.
+third-party/diskspd/bin/*.pdb
+
 # Marketing y multimedia pesada
 Marketing/Videos/
 

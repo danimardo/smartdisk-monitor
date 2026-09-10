@@ -2044,11 +2044,79 @@ navegador; se descarta). «Copiar información» no cambia: sigue copiando solo 
   `about.authorName`, `about.authorRole` y `about.photoAlt`.
 - `get_app_info` y los permisos de Tauri **no cambian**.
 
-## ADR-053 — Reservada
+## ADR-053 — DiskSpd como motor del benchmark de disco
 
-Estado: reservada para la spec `008-benchmark-diskspd` (binario DiskSpd redistribuido). El número
-se asignó al planificar esa feature; su ADR se redacta al implementarla. ADR-054 se numeró después
-y se aceptó antes por orden de implementación.
+Estado: aceptada. Fecha: 2026-09-10. Spec: `008-benchmark-diskspd`. (ADR-054 se numeró y aceptó
+antes por orden de implementación; este ADR quedó reservado al planificar la spec 008.)
+
+### El problema
+
+La «Prueba de lectura y escritura» usaba un motor propio (E/S con buffer alineado sobre un archivo
+temporal, `src-tauri/src/tests/benchmark.rs` + verificación de patrón byte a byte en `patron.rs`).
+Daba una cifra de MB/s secuencial y confirmaba integridad, pero **sus números no se pueden comparar
+con CrystalDiskMark**, que es la referencia que la gente reconoce en un benchmark de disco
+«profesional»: sin perfiles de cola, sin IOPS ni latencia por perfil, sin acceso aleatorio 4K. Un
+benchmark cuyas cifras no comparan con la herramienta de referencia cumple mal el principio I
+(veracidad del dato: el número existe pero no significa lo que la persona cree).
+
+### La decisión
+
+Se **sustituye** el motor propio por **Microsoft DiskSpd**, redistribuido como binario independiente
+con el mismo patrón que `smartctl.exe` (ADR-005): proceso externo, nunca enlazado, comunicación por
+línea de comandos y XML por stdout (`-Rxml`).
+
+- **Licencia MIT** (Microsoft). A diferencia de la GPLv2 de smartmontools, **no hay obligación de
+  redistribuir el código fuente**: basta el texto de la licencia y el aviso de copyright.
+- **Solo `amd64/diskspd.exe`** (~513 KB), verificado como PE de máquina `0x8664`. arm64, x86 y la
+  documentación se dejan fuera. Versión fijada por este ADR con su hash, igual que «smartmontools
+  7.5»: **DiskSpd 2.3.0 (2026/06/15)**, SHA-256
+  `dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2`.
+- Estructura en `third-party/diskspd/` (espejo de `third-party/smartmontools/`): `bin/diskspd.exe`,
+  `licenses/LICENSE.txt`, `README.md`. Empaquetado vía `tauri.conf.json` → `bundle.resources`.
+  Integridad por `scripts/verify-assets.mjs` (SHA-256) y `THIRD_PARTY_NOTICES.md`.
+- **El XML se parsea a mano**, sin dependencia nueva (constitución §III): el bloque agregado de
+  DiskSpd es plano y estable, igual que el XML del Event Log que `collectors/event_log.rs` ya
+  deserializa a mano. Módulo `tests::diskspd_xml` con helpers `extraer_*` y un struct explícito.
+- **4 perfiles fijos** estilo CrystalDiskMark (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1) ×
+  lectura/escritura = 8 mediciones. No configurables (modo avanzado queda fuera de alcance).
+- **Acotado por tiempo con tope de datos** (FR-017): cada medición corre `D_OBJETIVO` s salvo que
+  el tope de datos de escritura (`TOPE_DATOS`) se alcance antes; el envoltorio calcula el `-d` de
+  cada escritura a partir del caudal ya medido de la lectura del mismo perfil. Valores en
+  `docs/open-questions.md`.
+- **Se elimina la verificación de integridad byte a byte** (`tests::patron`). Sin sustituto:
+  decisión explícita del dueño. DiskSpd no verifica contenido y añadirlo por fuera desvirtuaría las
+  cifras.
+- Guardia térmica y cancelación pasan a **matar el proceso DiskSpd** (una invocación por medición,
+  con su propio límite de tiempo). El resto de salvaguardas (rutas en carpeta controlada, reserva
+  de espacio, exclusión con el autotest SMART, borrado del archivo) se reutilizan tal cual.
+
+### Alternativas descartadas
+
+- **Motor propio con E/S superpuesta (overlapped/IOCP vía FFI a `kernel32`)**: sin dependencia
+  nueva, pero es mucho código `unsafe` y clavar las cifras para que coincidan con CrystalDiskMark es
+  difícil. Se valoró y descartó con el dueño.
+- **Ampliar modestamente el motor actual** (añadir un perfil aleatorio): sigue sin comparar con CDM
+  y duplica el esfuerzo de mantenimiento del motor propio.
+- **Empaquetar CrystalDiskMark**: es una GUI, no se automatiza de forma limpia, y pesa y licencia
+  peor.
+- **`-Rtext` / `-Rjson`**: el texto es frágil de parsear (anchos variables); DiskSpd no tiene
+  salida JSON.
+
+### Consecuencias
+
+- **Binario redistribuido nuevo** (~513 KB) con su entrada en `verify:assets` y
+  `THIRD_PARTY_NOTICES.md`. El instalador crece ~0,5 MB.
+- **Se pierde la verificación de integridad**: la prueba ya no detecta un disco que devuelve datos
+  corruptos. Se acepta: era una garantía que ninguna otra parte del producto ofrece y que un
+  benchmark no es el sitio natural para dar.
+- La prueba se **renombra** de «Lectura y escritura» a **«Rendimiento»** / «Performance».
+- El contrato de `start_benchmark` cambia (se van `sizeBytes`/`blockSizeBytes`/`mode`/`passes`;
+  queda `{ volumeId }`); `TestResult` gana un bloque `benchmark` con la tabla de filas.
+- **ToS y disponibilidad**: DiskSpd es de Microsoft y su distribución con una app es estándar; si
+  cambiara el formato XML entre versiones, el parser a mano lo notaría (campos ausentes → error
+  `test.tool_output_unreadable`), no daría cifras equivocadas en silencio.
+- El `.pdb` que acompaña a `diskspd.exe` en la descarga **no se redistribuye** (solo el `.exe` y la
+  licencia).
 
 ## ADR-054 — Clave de demostración compartida para la ayuda con IA
 

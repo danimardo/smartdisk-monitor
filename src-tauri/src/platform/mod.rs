@@ -5,6 +5,7 @@ pub mod accent;
 pub mod autoarranque;
 pub mod bandeja;
 pub mod credenciales;
+pub mod diskspd;
 pub mod energia;
 pub mod ia_clave_demo;
 pub mod ia_openrouter;

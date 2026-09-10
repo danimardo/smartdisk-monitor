@@ -164,13 +164,8 @@ export const getEventRawXml = (eventId: string) => call("get_event_raw_xml", z.s
 
 /* ------------------------------------------------------------------ pruebas */
 
-export const startBenchmark = (params: {
-  volumeId: string;
-  sizeBytes: number;
-  blockSizeBytes: number;
-  mode: "sequential" | "random";
-  passes: number;
-}) => call("start_benchmark", z.string(), params);
+/** Prueba de Rendimiento (ADR-053): corre la matriz fija de DiskSpd. Sin parámetros de perfil. */
+export const startBenchmark = (params: { volumeId: string }) => call("start_benchmark", z.string(), params);
 
 export const runChkdskScan = (volumeId: string) => call("run_chkdsk_scan", z.string(), { volumeId });
 export const runSmartShortTest = (deviceId: string) => call("run_smart_short_test", z.string(), { deviceId });

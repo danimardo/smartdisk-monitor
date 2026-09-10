@@ -12,6 +12,7 @@
    */
   import { onMount } from "svelte";
   import {
+    BenchmarkResults,
     Button,
     Card,
     ConfirmDialog,
@@ -30,7 +31,7 @@
     startBenchmark,
     toAppError
   } from "$lib/api";
-  import { formatDateTime, formatLatency, formatTemperature, formatThroughput } from "$lib/design/format";
+  import { formatDateTime, formatIops, formatMbPerSecond } from "$lib/design/format";
   import { healthToken } from "$lib/design/health";
   import { healthIcon, testIcon, type IconName } from "$lib/design/icons";
   import { t } from "$lib/i18n";
@@ -150,9 +151,6 @@
   let iniciando = $state(false);
   let accionError = $state<AppError | null>(null);
 
-  const BENCHMARK_TAMANO_BYTES = 1024 ** 3; // 1 GiB, valor predeterminado (product-specification.md §6)
-  const BENCHMARK_BLOQUE_BYTES = 1024 ** 2; // 1 MiB
-
   const letraVolumen = $derived(volumen?.driveLetters[0]?.replace(":", "") ?? "");
   const comandoChkdsk = $derived(letraVolumen ? `chkdsk ${letraVolumen}: /scan` : "");
 
@@ -162,13 +160,7 @@
     iniciando = true;
     try {
       if (tipo === "benchmark" && volumen) {
-        await startBenchmark({
-          volumeId: volumen.id,
-          sizeBytes: BENCHMARK_TAMANO_BYTES,
-          blockSizeBytes: BENCHMARK_BLOQUE_BYTES,
-          mode: "sequential",
-          passes: 1
-        });
+        await startBenchmark({ volumeId: volumen.id });
       } else if (tipo === "chkdsk" && volumen) {
         await runChkdskScan(volumen.id);
       } else if (tipo === "autotest" && deviceId) {
@@ -251,21 +243,15 @@
       : t("tests.active.progress", { percent: pruebaActiva.progressPercent });
   });
 
-  /** Las cinco métricas del benchmark en curso como cuadros `bg-glass-3` con icono + cifra
-   *  `.sdm-display` (`04-pruebas.md` §3). Los formateadores ya incluyen la unidad. */
-  function metricasBenchmark(
-    r: NonNullable<TestRun["result"]>
-  ): { icon: IconName; label: string; value: string }[] {
-    return [
-      { icon: "pulse", label: t("tests.metrics.write"), value: formatThroughput(r.writeBytesPerSecond) },
-      { icon: "pulse", label: t("tests.metrics.read"), value: formatThroughput(r.readBytesPerSecond) },
-      { icon: "clock", label: t("tests.metrics.latency"), value: formatLatency(r.readLatencyMs) },
-      {
-        icon: "temp",
-        label: t("tests.metrics.temperature"),
-        value: formatTemperature(r.maxTemperatureC)
-      }
-    ];
+  /** Resumen de una línea para el historial: el caudal secuencial de lectura y los IOPS 4K de
+   *  lectura, que es lo que la gente compara de un vistazo. */
+  function resumenBenchmark(b: NonNullable<NonNullable<TestRun["result"]>["benchmark"]>): string {
+    const seq = b.rows.find((f) => f.profile === "seq1m_q8" && f.direction === "read");
+    const rnd = b.rows.find((f) => f.profile === "rnd4k_q32" && f.direction === "read");
+    const partes: string[] = [];
+    if (seq) partes.push(`${t("tests.benchmark.col.throughput")} ${formatMbPerSecond(seq.mbPerSecond)}`);
+    if (rnd) partes.push(`${t("tests.benchmark.col.iops")} ${formatIops(rnd.iops)}`);
+    return partes.join(" · ");
   }
 </script>
 
@@ -344,17 +330,8 @@
           trailing={progresoActivoTexto}
         />
 
-        {#if pruebaActiva.type === "benchmark" && pruebaActiva.result}
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {#each metricasBenchmark(pruebaActiva.result) as m}
-              <div class="flex flex-col gap-1 rounded-inner bg-glass-3 p-3">
-                <span class="flex items-center gap-1.5 text-2xs font-medium text-fg-faint">
-                  <Icon name={m.icon} size={12} />{m.label}
-                </span>
-                <span class="sdm-num sdm-display text-metric">{m.value}</span>
-              </div>
-            {/each}
-          </div>
+        {#if pruebaActiva.type === "benchmark" && pruebaActiva.result?.benchmark}
+          <BenchmarkResults result={pruebaActiva.result.benchmark} />
         {/if}
 
         <div class="flex gap-3 rounded-inner bg-warn-soft p-4">
@@ -451,21 +428,39 @@
         <div class="flex flex-col">
           {#each historialOrdenado as run (run.id)}
             {@const salud = ESTADO_A_SALUD[run.status] ?? "unknown"}
-            <div
-              class="grid grid-cols-[28px_118px_1fr_1fr_1fr_auto] items-center gap-4 border-t border-hairline py-2 first:border-t-0"
-            >
-              <span
-                class="grid size-[28px] shrink-0 place-items-center rounded-nav"
-                style="background: {healthToken[salud].soft}; color: {healthToken[salud].fg}"
-              >
-                <Icon name={healthIcon[salud]} size={14} label={t(`tests.status.${run.status}`)} />
-              </span>
-              <span class="text-xs tabular-nums text-fg-dim">{formatDateTime(run.startedAt)}</span>
-              <span class="text-xs font-semibold">{t(TIPO_LABEL_KEY[run.type] ?? "common.notAvailable")}</span
-              >
-              <span class="text-xs text-fg-dim">{objetivoLabel(run)}</span>
-              <span class="text-xs text-fg-dim">{resultadoLabel(run)}</span>
-              <StatusPill state={salud} label={t(`tests.status.${run.status}`)} />
+            {@const tabla = run.type === "benchmark" ? (run.result?.benchmark ?? null) : null}
+            <div class="border-t border-hairline first:border-t-0">
+              <div class="grid grid-cols-[28px_118px_1fr_1fr_1fr_auto] items-center gap-4 py-2">
+                <span
+                  class="grid size-[28px] shrink-0 place-items-center rounded-nav"
+                  style="background: {healthToken[salud].soft}; color: {healthToken[salud].fg}"
+                >
+                  <Icon name={healthIcon[salud]} size={14} label={t(`tests.status.${run.status}`)} />
+                </span>
+                <span class="text-xs tabular-nums text-fg-dim">{formatDateTime(run.startedAt)}</span>
+                <span class="text-xs font-semibold"
+                  >{t(TIPO_LABEL_KEY[run.type] ?? "common.notAvailable")}</span
+                >
+                <span class="text-xs text-fg-dim">{objetivoLabel(run)}</span>
+                <span class="text-xs text-fg-dim">
+                  {#if tabla && tabla.rows.length > 0}
+                    {resumenBenchmark(tabla)}
+                  {:else}
+                    {resultadoLabel(run)}
+                  {/if}
+                </span>
+                <StatusPill state={salud} label={t(`tests.status.${run.status}`)} />
+              </div>
+              {#if tabla && (tabla.rows.length > 0 || tabla.notRun.length > 0)}
+                <details class="pb-2" open={run.id === historialOrdenado[0].id}>
+                  <summary class="cursor-pointer text-2xs font-semibold text-fg-dim">
+                    {t("tests.benchmark.showTable")}
+                  </summary>
+                  <div class="mt-2">
+                    <BenchmarkResults result={tabla} />
+                  </div>
+                </details>
+              {/if}
             </div>
           {/each}
         </div>

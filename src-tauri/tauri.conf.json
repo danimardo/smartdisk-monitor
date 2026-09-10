@@ -45,6 +45,8 @@
       "../third-party/smartmontools/licenses/COPYING.txt": "licenses/smartmontools/COPYING.txt",
       "../third-party/smartmontools/licenses/AUTHORS.txt": "licenses/smartmontools/AUTHORS.txt",
       "../third-party/smartmontools/source/smartmontools-7.5.tar.gz": "licenses/smartmontools/smartmontools-7.5.tar.gz",
+      "../third-party/diskspd/bin/diskspd.exe": "bin/diskspd.exe",
+      "../third-party/diskspd/licenses/LICENSE.txt": "licenses/diskspd/LICENSE.txt",
       "../src/design-system/fonts/OFL.txt": "licenses/instrument-sans/OFL.txt",
       "windows/defender-exception.ps1": "scripts/defender-exception.ps1"
     },

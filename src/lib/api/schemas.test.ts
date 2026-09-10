@@ -483,3 +483,57 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
     ).toBe(false);
   });
 });
+
+describe("benchmark de Rendimiento (spec 008 / ADR-053)", () => {
+  const filaValida = {
+    profile: "seq1m_q8",
+    direction: "read",
+    mbPerSecond: 2680,
+    iops: 2556,
+    avgLatencyMs: 2.97,
+    actualDurationS: 1.0,
+    bytesMoved: 2680160256,
+    dataCapHit: false
+  };
+
+  it("testResult acepta un benchmark completo y también chkdsk sin el campo `benchmark`", () => {
+    expect(
+      S.testResult.safeParse({
+        passed: null,
+        maxTemperatureC: 44,
+        stoppedReason: "completed",
+        benchmark: {
+          tool: "diskspd",
+          toolVersion: "2.3.0",
+          fileSizeBytes: 1073741824,
+          rows: [filaValida],
+          notRun: []
+        }
+      }).success
+    ).toBe(true);
+    // chkdsk / autotest: el backend omite `benchmark` (skip_serializing_if) → default a null.
+    const chkdsk = S.testResult.safeParse({
+      passed: true,
+      maxTemperatureC: null,
+      stoppedReason: "completed"
+    });
+    expect(chkdsk.success).toBe(true);
+    expect(chkdsk.success && chkdsk.data.benchmark).toBe(null);
+  });
+
+  it("RECHAZA una fila sin `mbPerSecond`", () => {
+    const { mbPerSecond: _omitido, ...incompleta } = filaValida;
+    expect(S.benchmarkRow.safeParse(incompleta).success).toBe(false);
+  });
+
+  it("RECHAZA un `profile` fuera del enum y un `direction` inválido", () => {
+    expect(S.benchmarkRow.safeParse({ ...filaValida, profile: "seq2m_q8" }).success).toBe(false);
+    expect(S.benchmarkRow.safeParse({ ...filaValida, direction: "readwrite" }).success).toBe(false);
+  });
+
+  it('RECHAZA `stoppedReason: "space"` (ya no aparece en ejecución, ADR-053)', () => {
+    expect(
+      S.testResult.safeParse({ passed: null, maxTemperatureC: null, stoppedReason: "space" }).success
+    ).toBe(false);
+  });
+});

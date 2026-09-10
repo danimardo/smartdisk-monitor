@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { RESPUESTAS, testRunActivo } from "./fixtures/respuestas";
+import { RESPUESTAS, testRunActivo, testRunBenchmarkTerminado } from "./fixtures/respuestas";
 import { emitirEvento, instalarIpcFalso, llamadas } from "./ipc-falso";
 import es from "../../src/lib/i18n/es.json" with { type: "json" };
 
@@ -25,7 +25,9 @@ test.describe("pruebas y diagnóstico", () => {
     expect((await llamadas(page)).map((l) => l.comando)).not.toContain("run_chkdsk_scan");
   });
 
-  test("confirmar el benchmark llama a start_benchmark con los valores predeterminados", async ({ page }) => {
+  test("el benchmark avisa de los GB a escribir y llama a start_benchmark solo con el volumen (ADR-053)", async ({
+    page
+  }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/tests");
 
@@ -33,17 +35,53 @@ test.describe("pruebas y diagnóstico", () => {
     await tarjetaBenchmark.getByRole("button", { name: es["tests.cta.configure"] }).click();
 
     const dialogo = page.getByRole("dialog");
+    await expect(dialogo.getByText("GB", { exact: false })).toBeVisible();
     await dialogo.getByRole("button", { name: es["tests.confirm.benchmark.confirmLabel"] }).click();
     await expect(dialogo).not.toBeVisible();
 
     const invocacion = (await llamadas(page)).find((l) => l.comando === "start_benchmark");
-    expect(invocacion?.args).toMatchObject({
-      volumeId: "vol-c",
-      sizeBytes: 1_073_741_824,
-      blockSizeBytes: 1_048_576,
-      mode: "sequential",
-      passes: 1
+    expect(invocacion?.args).toEqual({ volumeId: "vol-c" });
+  });
+
+  test("un benchmark terminado pinta la tabla de Rendimiento con sus 8 filas", async ({ page }) => {
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_test_runs: [testRunBenchmarkTerminado]
     });
+    await page.goto("/tests");
+
+    const historial = page.locator("section", { hasText: es["tests.history.title"] });
+    await expect(
+      historial.getByText(es["tests.benchmark.measuredWith"].replace("{tool} {version}", "DiskSpd 2.3.0"))
+    ).toBeVisible();
+    await expect(historial.getByRole("columnheader", { name: es["tests.benchmark.col.iops"] })).toBeVisible();
+    await expect(
+      historial.getByRole("rowheader", { name: es["tests.benchmark.profile.rnd4k_q1"] }).first()
+    ).toBeVisible();
+  });
+
+  test("SC-005: si start_benchmark falla porque falta la herramienta, chkdsk y autotest siguen disponibles", async ({
+    page
+  }) => {
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      start_benchmark: {
+        __rechazar__: { code: "test.tool_missing", messageKey: "error.testToolMissing", retryable: false }
+      }
+    });
+    await page.goto("/tests");
+
+    const tarjetaBenchmark = page.locator("section", { hasText: es["tests.cards.benchmark.title"] });
+    await tarjetaBenchmark.getByRole("button", { name: es["tests.cta.configure"] }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: es["tests.confirm.benchmark.confirmLabel"] })
+      .click();
+
+    await expect(page.getByText(es["error.testToolMissing"])).toBeVisible();
+    // Las otras dos pruebas siguen ofreciéndose.
+    await expect(page.getByRole("heading", { name: es["tests.cards.chkdsk.title"] })).toBeVisible();
+    await expect(page.getByRole("heading", { name: es["tests.cards.autotest.title"] })).toBeVisible();
   });
 
   test("un evento test:progress en curso muestra el progreso y permite cancelar", async ({ page }) => {

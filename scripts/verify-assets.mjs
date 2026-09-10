@@ -50,6 +50,15 @@ const ASSETS = [
   {
     path: "third-party/smartmontools/licenses/COPYING.txt",
     why: "texto de la GPL v2"
+  },
+  {
+    path: "third-party/diskspd/bin/diskspd.exe",
+    sha256: "dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2",
+    why: "motor del benchmark de disco (ADR-053); cifras comparables con CrystalDiskMark"
+  },
+  {
+    path: "third-party/diskspd/licenses/LICENSE.txt",
+    why: "la MIT obliga a redistribuir la licencia y el aviso de copyright"
   }
 ];
 

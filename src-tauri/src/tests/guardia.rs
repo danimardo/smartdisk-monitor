@@ -2,8 +2,8 @@
 //! §6: "se detiene si se alcanza el límite térmico crítico —el del fabricante si lo declara, y
 //! si no el configurado—").
 //!
-//! Puro: no lee la temperatura ni decide cuándo comprobarla — eso es `tests::benchmark`, que
-//! llama a esto entre bloques con el último valor ya leído.
+//! Puro: no lee la temperatura ni decide cuándo comprobarla — eso es `tests::diskspd`, que
+//! sondea entre mediciones y durante cada invocación de DiskSpd con el último valor ya leído.
 
 /// El límite crítico efectivo: el del fabricante si el disco lo declara, si no el configurado en
 /// `settings` (mismo criterio que `alert-rules.md` usa para las reglas de temperatura).

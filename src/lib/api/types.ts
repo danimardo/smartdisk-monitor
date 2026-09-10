@@ -81,14 +81,35 @@ export interface AlertDetail extends AlertGroup {
 
 export type TestType = "benchmark" | "chkdsk_scan" | "smart_short";
 
+export type BenchmarkProfile = "seq1m_q8" | "seq1m_q1" | "rnd4k_q32" | "rnd4k_q1";
+
+export interface BenchmarkRow {
+  profile: BenchmarkProfile;
+  direction: "read" | "write";
+  /** MB decimales por segundo, como CrystalDiskMark. */
+  mbPerSecond: number;
+  iops: number;
+  avgLatencyMs: number;
+  actualDurationS: number;
+  bytesMoved: number;
+  /** `true` si la duración se recortó por el tope de datos de escritura (ADR-053, D3). */
+  dataCapHit: boolean;
+}
+
+export interface BenchmarkResult {
+  tool: "diskspd";
+  toolVersion: string;
+  fileSizeBytes: number;
+  rows: BenchmarkRow[];
+  notRun: { profile: BenchmarkProfile; direction: "read" | "write" }[];
+}
+
 export interface TestResult {
   passed: boolean | null;
-  readBytesPerSecond: number | null;
-  writeBytesPerSecond: number | null;
-  readLatencyMs: number | null;
-  writeLatencyMs: number | null;
   maxTemperatureC: number | null;
-  stoppedReason: "completed" | "cancelled" | "thermal" | "space" | "error" | null;
+  stoppedReason: "completed" | "cancelled" | "thermal" | "error" | null;
+  /** Solo en la prueba de Rendimiento (`type === "benchmark"`). */
+  benchmark: BenchmarkResult | null;
 }
 
 export interface TestRun {

@@ -5285,28 +5285,58 @@ impl Default for ParametrosPruebaJson {
 #[serde(rename_all = "camelCase")]
 struct ResumenPruebaJson {
     passed: Option<bool>,
-    read_bytes_per_second: Option<f64>,
-    write_bytes_per_second: Option<f64>,
-    read_latency_ms: Option<f64>,
-    write_latency_ms: Option<f64>,
     max_temperature_c: Option<f64>,
     stopped_reason: Option<String>,
     output: Option<String>,
     output_encoding: Option<String>,
+    /// Solo en la prueba de Rendimiento (ADR-053): la tabla de perfiles. `None` en chkdsk/autotest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    benchmark: Option<BenchmarkResultJson>,
 }
 
-/// Espejo de `TestResult` en `src/lib/api/types.ts` (hoy declarado a mano allí; T084 lo sustituye
-/// por la reexportación de este tipo generado, igual que ya se hizo con `MetricSeriesWire`).
+/// Tabla de resultados de la prueba de Rendimiento (ADR-053, `contracts/pruebas-benchmark.md`).
+/// Vive dentro de `result_summary_json`; se serializa igual hacia la interfaz.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarkResultJson {
+    pub tool: String,
+    pub tool_version: String,
+    pub file_size_bytes: u64,
+    pub rows: Vec<BenchmarkRowJson>,
+    /// Perfiles/sentidos que no llegaron a ejecutarse por parada anticipada.
+    pub not_run: Vec<BenchmarkNotRunJson>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarkRowJson {
+    pub profile: String,
+    pub direction: String,
+    /// MB **decimales** por segundo, como CrystalDiskMark.
+    pub mb_per_second: f64,
+    pub iops: f64,
+    pub avg_latency_ms: f64,
+    pub actual_duration_s: f64,
+    pub bytes_moved: u64,
+    /// `true` si la duración se recortó por el tope de datos de escritura (D3).
+    pub data_cap_hit: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarkNotRunJson {
+    pub profile: String,
+    pub direction: String,
+}
+
+/// Espejo de `TestResult` en `src/lib/api/types.ts` (declarado a mano allí; T084 pendiente).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestResultWire {
     pub passed: Option<bool>,
-    pub read_bytes_per_second: Option<f64>,
-    pub write_bytes_per_second: Option<f64>,
-    pub read_latency_ms: Option<f64>,
-    pub write_latency_ms: Option<f64>,
     pub max_temperature_c: Option<f64>,
     pub stopped_reason: Option<String>,
+    pub benchmark: Option<BenchmarkResultJson>,
 }
 
 /// Espejo de `TestRun` en `src/lib/api/types.ts`.
@@ -5370,12 +5400,9 @@ fn test_run_to_wire(t: &TestRun) -> TestRunWire {
         parameters: envelope.params,
         result: resumen.as_ref().map(|r| TestResultWire {
             passed: r.passed,
-            read_bytes_per_second: r.read_bytes_per_second,
-            write_bytes_per_second: r.write_bytes_per_second,
-            read_latency_ms: r.read_latency_ms,
-            write_latency_ms: r.write_latency_ms,
             max_temperature_c: r.max_temperature_c,
             stopped_reason: r.stopped_reason.clone(),
+            benchmark: r.benchmark.clone(),
         }),
         output: resumen.as_ref().and_then(|r| r.output.clone()),
         output_encoding: resumen.as_ref().and_then(|r| r.output_encoding.clone()),
@@ -5440,17 +5467,41 @@ fn hay_prueba_activa(
         .map_err(rusqlite_err_to_app_error)
 }
 
+/// `true` si la matriz de DiskSpd debe detenerse ya: cancelación del usuario o guardia térmica.
+/// Se consulta antes de cada medición y dentro de cada invocación de DiskSpd
+/// (`ejecutar_con_limite_cancelable`).
+fn benchmark_debe_parar(
+    cancelado: &std::sync::atomic::AtomicBool,
+    ultima_temp_c: &std::sync::Mutex<Option<f64>>,
+    limite_termico_c: f64,
+) -> bool {
+    if cancelado.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
+    let t = *ultima_temp_c
+        .lock()
+        .expect("el mutex de temperatura no se envenena: sin pánicos dentro");
+    tests::guardia::debe_detenerse_por_temperatura(t, limite_termico_c)
+}
+
+/// Prueba de **Rendimiento** (ADR-053): corre la matriz fija de 8 mediciones de DiskSpd sobre un
+/// archivo de 1 GiB en la carpeta controlada del volumen. Sin parámetros de perfil.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub fn start_benchmark(
     app: tauri::AppHandle,
     state: State<AppState>,
     volume_id: String,
-    size_bytes: i64,
-    block_size_bytes: i64,
-    mode: String,
-    passes: i64,
 ) -> AppResult<String> {
+    use tests::diskspd;
+
+    let diskspd_path = crate::platform::diskspd::resolve_diskspd_path();
+    if !diskspd_path.exists() {
+        return Err(Box::new(
+            AppError::new("test.tool_missing", "error.testToolMissing")
+                .with_detail(format!("no se encontró {}", diskspd_path.display())),
+        ));
+    }
+
     let conn = state
         .conn
         .lock()
@@ -5468,7 +5519,7 @@ pub fn start_benchmark(
         .ok_or_else(|| Box::new(AppError::new("path.invalid", "error.pathInvalid")))?;
 
     let tamano_bytes = tests::rutas::resolver_tamano_bytes(
-        size_bytes,
+        diskspd::TAMANO_ARCHIVO_BYTES as i64,
         volumen.free_bytes.unwrap_or(0),
         volumen.capacity_bytes.unwrap_or(0),
     )
@@ -5478,18 +5529,6 @@ pub fn start_benchmark(
             "error.testInsufficientSpace",
         ))
     })? as u64;
-
-    let bloque_bytes = if block_size_bytes > 0 {
-        block_size_bytes as u64
-    } else {
-        1024 * 1024
-    };
-    let pasadas = passes.clamp(1, 10) as u32;
-    let modo = if mode == "random" {
-        tests::benchmark::ModoAcceso::Random
-    } else {
-        tests::benchmark::ModoAcceso::Sequential
-    };
 
     let raiz = std::path::PathBuf::from(format!("{letra}:\\"));
     let carpeta = tests::rutas::carpeta_benchmark(&raiz);
@@ -5507,13 +5546,13 @@ pub fn start_benchmark(
         .map_err(|_| Box::new(AppError::new("path.invalid", "error.pathInvalid")))?;
 
     let ahora = ahora_rfc3339();
+    let perfiles: Vec<&str> = diskspd::PERFILES.iter().map(|p| p.clave).collect();
     let envelope = ParametrosPruebaJson {
         command: None,
         params: serde_json::json!({
-            "sizeBytes": tamano_bytes,
-            "blockSizeBytes": bloque_bytes,
-            "mode": if modo == tests::benchmark::ModoAcceso::Random { "random" } else { "sequential" },
-            "passes": pasadas,
+            "tool": "diskspd",
+            "fileSizeBytes": tamano_bytes,
+            "profiles": perfiles,
         }),
     };
     let fila = TestRun {
@@ -5549,21 +5588,18 @@ pub fn start_benchmark(
 
     drop(conn);
 
-    let parametros = tests::benchmark::ParametrosBenchmark {
-        size_bytes: tamano_bytes,
-        block_size_bytes: bloque_bytes,
-        mode: modo,
-        passes: pasadas,
-    };
     let limite_termico = tests::guardia::limite_critico_efectivo(None, 80.0);
+    // Última temperatura leída, compartida entre `leer_temperatura` (que la actualiza) y
+    // `benchmark_debe_parar` (que la consulta desde dentro de la invocación de DiskSpd).
+    let ultima_temp = std::sync::Arc::new(std::sync::Mutex::new(None::<f64>));
 
     let app_temp = app.clone();
+    let temp_para_lectura = ultima_temp.clone();
     let mut ultimo_chequeo_temp = std::time::Instant::now() - std::time::Duration::from_secs(10);
-    let mut ultima_temp: Option<f64> = None;
     let leer_temperatura = move || -> Option<f64> {
         if ultimo_chequeo_temp.elapsed() >= std::time::Duration::from_secs(2) {
             ultimo_chequeo_temp = std::time::Instant::now();
-            ultima_temp = app_temp
+            let nueva = app_temp
                 .state::<AppState>()
                 .conn
                 .lock()
@@ -5576,26 +5612,24 @@ pub fn start_benchmark(
                     })
                 })
                 .and_then(|m| m.value_real);
+            *temp_para_lectura
+                .lock()
+                .expect("el mutex de temperatura no se envenena: sin pánicos dentro") = nueva;
         }
-        ultima_temp
+        *temp_para_lectura
+            .lock()
+            .expect("el mutex de temperatura no se envenena: sin pánicos dentro")
     };
-
-    let bandera_hilo = bandera.clone();
-    let cancelado = move || bandera_hilo.load(std::sync::atomic::Ordering::Relaxed);
 
     let app_progreso = app.clone();
     let id_progreso = id.clone();
     let mut ultimo_progreso = std::time::Instant::now() - std::time::Duration::from_secs(10);
-    let on_progreso = move |hecho: u64, total: u64| {
-        if ultimo_progreso.elapsed() < std::time::Duration::from_millis(300) && hecho < total {
+    let on_progreso = move |_perfil: &'static str, _sentido: diskspd::Sentido, hechas: u64| {
+        if ultimo_progreso.elapsed() < std::time::Duration::from_millis(300) && hechas < 8 {
             return;
         }
         ultimo_progreso = std::time::Instant::now();
-        let porcentaje = if total == 0 {
-            100
-        } else {
-            ((hecho as f64 / total as f64) * 100.0).min(100.0) as i64
-        };
+        let porcentaje = ((hechas as f64 / 8.0) * 100.0).min(100.0) as i64;
         if let Ok(conn) = app_progreso.state::<AppState>().conn.lock() {
             let _ = repo_varios::update_test_run_status(
                 &conn,
@@ -5607,68 +5641,115 @@ pub fn start_benchmark(
         }
     };
 
+    let bandera_parar = bandera.clone();
+    let temp_parar = ultima_temp.clone();
+    let debe_parar = move || benchmark_debe_parar(&bandera_parar, &temp_parar, limite_termico);
+
+    let bandera_razon = bandera.clone();
+    let temp_razon = ultima_temp.clone();
+    let razon_de_parada = move || {
+        if bandera_razon.load(std::sync::atomic::Ordering::Relaxed) {
+            diskspd::RazonParada::Cancelada
+        } else if tests::guardia::debe_detenerse_por_temperatura(
+            *temp_razon
+                .lock()
+                .expect("el mutex de temperatura no se envenena: sin pánicos dentro"),
+            limite_termico,
+        ) {
+            diskspd::RazonParada::Termica
+        } else {
+            diskspd::RazonParada::Error
+        }
+    };
+
+    let bandera_lanzar = bandera.clone();
+    let temp_lanzar = ultima_temp.clone();
+    let diskspd_path_hilo = diskspd_path.clone();
+    let lanzar = move |args: &[String],
+                       limite: std::time::Duration|
+          -> std::io::Result<Option<Vec<u8>>> {
+        let mut cmd = std::process::Command::new(&diskspd_path_hilo);
+        cmd.args(args);
+        let salida =
+            crate::platform::proceso_externo::ejecutar_con_limite_cancelable(cmd, limite, || {
+                benchmark_debe_parar(&bandera_lanzar, &temp_lanzar, limite_termico)
+            })?;
+        Ok(salida.map(|o| o.stdout))
+    };
+
     let app_final = app.clone();
     let id_final = id.clone();
     let ruta_hilo = ruta_archivo.clone();
+    let tamano_hilo = tamano_bytes;
     std::thread::spawn(move || {
-        let resultado = tests::benchmark::ejecutar(
+        let r = diskspd::orquestar_matriz(
             &ruta_hilo,
-            &parametros,
-            limite_termico,
-            cancelado,
+            tamano_hilo,
+            lanzar,
+            debe_parar,
+            razon_de_parada,
             leer_temperatura,
             on_progreso,
         );
 
-        // El archivo se borra siempre que se pueda, se sepa o no el resultado (product-specification.md
-        // §6): si el borrado falla, `temp_path` queda con la ruta para limpieza manual posterior.
+        // El archivo se borra siempre que se pueda, se sepa o no el resultado
+        // (`product-specification.md` §6): si el borrado falla, `temp_path` queda con la ruta.
         let borrado_ok = std::fs::remove_file(&ruta_hilo).is_ok();
-        let temp_path_final = if borrado_ok {
-            None
+        let temp_path_final = (!borrado_ok).then(|| ruta_hilo.to_string_lossy().into_owned());
+
+        let sin_datos = r.filas.is_empty();
+        let estado = match r.razon {
+            diskspd::RazonParada::Completada if !sin_datos => TestStatus::Completed,
+            diskspd::RazonParada::Cancelada => TestStatus::Cancelled,
+            _ => TestStatus::Failed,
+        };
+        let stopped_reason = if sin_datos && r.razon == diskspd::RazonParada::Completada {
+            "error"
         } else {
-            Some(ruta_hilo.to_string_lossy().into_owned())
+            r.razon.clave()
         };
 
-        let (estado, resumen) = match resultado {
-            Ok(r) => {
-                let estado = match r.stopped_reason {
-                    tests::benchmark::RazonParada::Completed => TestStatus::Completed,
-                    tests::benchmark::RazonParada::Cancelled => TestStatus::Cancelled,
-                    tests::benchmark::RazonParada::Thermal
-                    | tests::benchmark::RazonParada::Space
-                    | tests::benchmark::RazonParada::Error => TestStatus::Failed,
-                };
-                let stopped_reason = match r.stopped_reason {
-                    tests::benchmark::RazonParada::Completed => "completed",
-                    tests::benchmark::RazonParada::Cancelled => "cancelled",
-                    tests::benchmark::RazonParada::Thermal => "thermal",
-                    tests::benchmark::RazonParada::Space => "space",
-                    tests::benchmark::RazonParada::Error => "error",
-                };
-                (
-                    estado,
-                    ResumenPruebaJson {
-                        passed: r.passed,
-                        read_bytes_per_second: r.read_bytes_per_second,
-                        write_bytes_per_second: r.write_bytes_per_second,
-                        read_latency_ms: r.read_latency_ms,
-                        write_latency_ms: r.write_latency_ms,
-                        max_temperature_c: r.max_temperature_c,
-                        stopped_reason: Some(stopped_reason.to_string()),
-                        output: None,
-                        output_encoding: None,
-                    },
-                )
-            }
-            Err(e) => (
-                TestStatus::Failed,
-                ResumenPruebaJson {
-                    stopped_reason: Some("error".to_string()),
-                    output: Some(e.to_string()),
-                    ..Default::default()
-                },
-            ),
+        let benchmark = (!sin_datos || !r.no_ejecutadas.is_empty()).then(|| BenchmarkResultJson {
+            tool: "diskspd".to_owned(),
+            tool_version: r.tool_version.clone().unwrap_or_default(),
+            file_size_bytes: tamano_hilo,
+            rows: r
+                .filas
+                .iter()
+                .map(|f| BenchmarkRowJson {
+                    profile: f.perfil.to_owned(),
+                    direction: f.sentido.to_owned(),
+                    mb_per_second: f.mb_por_segundo,
+                    iops: f.iops,
+                    avg_latency_ms: f.latencia_media_ms,
+                    actual_duration_s: f.duracion_real_s,
+                    bytes_moved: f.bytes_movidos,
+                    data_cap_hit: f.tope_alcanzado,
+                })
+                .collect(),
+            not_run: r
+                .no_ejecutadas
+                .iter()
+                .map(|(p, d)| BenchmarkNotRunJson {
+                    profile: (*p).to_owned(),
+                    direction: (*d).to_owned(),
+                })
+                .collect(),
+        });
+
+        let resumen = ResumenPruebaJson {
+            passed: None,
+            max_temperature_c: r.max_temperatura_c,
+            stopped_reason: Some(stopped_reason.to_owned()),
+            output: r.detalle_error.clone(),
+            output_encoding: r.detalle_error.as_ref().map(|_| "utf-8".to_owned()),
+            benchmark,
         };
+
+        if r.razon == diskspd::RazonParada::Error {
+            // Un fallo de DiskSpd se registra una vez, **sin** su volcado (puede llevar rutas).
+            tracing::warn!(test_run = %id_final, "la prueba de Rendimiento falló");
+        }
 
         if let Ok(conn) = app_final.state::<AppState>().conn.lock() {
             let _ = repo_varios::finish_test_run(

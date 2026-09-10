@@ -42,6 +42,18 @@ fn spawn_con_pipes(mut cmd: Command) -> io::Result<Child> {
 /// `Ok(None)` = se agotó el límite y se mató al proceso; quien llama decide si eso cuenta como
 /// fallo o como dato ausente — igual que cualquier otro dato que no llegó a tiempo.
 pub fn ejecutar_con_limite(cmd: Command, limite: Duration) -> io::Result<Option<Output>> {
+    ejecutar_con_limite_cancelable(cmd, limite, || false)
+}
+
+/// Como [`ejecutar_con_limite`], pero además consulta `debe_parar()` en cada vuelta del bucle de
+/// espera: si devuelve `true` se mata el proceso y se devuelve `Ok(None)` (la misma señal que el
+/// agotamiento del límite). Para la prueba de Rendimiento (ADR-053): cancelación del usuario y
+/// guardia térmica matan la invocación de DiskSpd en curso.
+pub fn ejecutar_con_limite_cancelable(
+    cmd: Command,
+    limite: Duration,
+    debe_parar: impl Fn() -> bool,
+) -> io::Result<Option<Output>> {
     let mut hijo = spawn_con_pipes(cmd)?;
 
     let mut stdout = hijo.stdout.take();
@@ -72,7 +84,7 @@ pub fn ejecutar_con_limite(cmd: Command, limite: Duration) -> io::Result<Option<
                 stderr: error,
             }));
         }
-        if inicio.elapsed() >= limite {
+        if inicio.elapsed() >= limite || debe_parar() {
             let _ = hijo.kill();
             let _ = hijo.wait();
             let _ = lector_stdout.join();

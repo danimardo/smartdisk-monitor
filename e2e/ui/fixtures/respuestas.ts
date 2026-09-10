@@ -271,8 +271,69 @@ export const testRunActivo = {
   finishedAt: null,
   progressPercent: 40,
   command: null,
-  parameters: { sizeBytes: 1_073_741_824, blockSizeBytes: 1_048_576, mode: "sequential", passes: 1 },
+  parameters: {
+    tool: "diskspd",
+    fileSizeBytes: 1_073_741_824,
+    profiles: ["seq1m_q8", "seq1m_q1", "rnd4k_q32", "rnd4k_q1"]
+  },
   result: null,
+  output: null,
+  outputEncoding: null,
+  orphanPath: null
+};
+
+const filaBench = (
+  profile: "seq1m_q8" | "seq1m_q1" | "rnd4k_q32" | "rnd4k_q1",
+  direction: "read" | "write",
+  mb: number
+) => ({
+  profile,
+  direction,
+  mbPerSecond: mb,
+  iops: Math.round((mb * 1_000_000) / (direction === "read" && profile.startsWith("rnd") ? 4096 : 1_048_576)),
+  avgLatencyMs: profile.startsWith("rnd") ? 0.3 : 1.4,
+  actualDurationS: 5,
+  bytesMoved: mb * 5_000_000,
+  dataCapHit: false
+});
+
+/** Un benchmark de Rendimiento terminado, con la tabla completa (ADR-053). */
+export const testRunBenchmarkTerminado = {
+  id: "run-benchmark-done",
+  type: "benchmark" as const,
+  deviceId: null,
+  volumeId: "vol-c",
+  status: "completed" as const,
+  startedAt: AHORA,
+  finishedAt: AHORA,
+  progressPercent: 100,
+  command: "DiskSpd 2.3.0 — 4 perfiles, lectura y escritura, archivo de 1 GiB",
+  parameters: {
+    tool: "diskspd",
+    fileSizeBytes: 1_073_741_824,
+    profiles: ["seq1m_q8", "seq1m_q1", "rnd4k_q32", "rnd4k_q1"]
+  },
+  result: {
+    passed: null,
+    maxTemperatureC: 46,
+    stoppedReason: "completed" as const,
+    benchmark: {
+      tool: "diskspd" as const,
+      toolVersion: "2.3.0",
+      fileSizeBytes: 1_073_741_824,
+      rows: [
+        filaBench("seq1m_q8", "read", 3300),
+        filaBench("seq1m_q8", "write", 2900),
+        filaBench("seq1m_q1", "read", 2700),
+        filaBench("seq1m_q1", "write", 2500),
+        filaBench("rnd4k_q32", "read", 780),
+        filaBench("rnd4k_q32", "write", 690),
+        filaBench("rnd4k_q1", "read", 72),
+        filaBench("rnd4k_q1", "write", 210)
+      ],
+      notRun: []
+    }
+  },
   output: null,
   outputEncoding: null,
   orphanPath: null
@@ -460,6 +521,7 @@ export function validar(): void {
   S.systemEventPage.parse(paginaEventos);
   S.testRun.array().parse(testRunsVacio);
   S.testRun.parse(testRunActivo);
+  S.testRun.parse(testRunBenchmarkTerminado);
   S.diagnosticPreview.parse(vistaPreviaDiagnostico);
   S.appInfo.parse(appInfoDePrueba);
   S.estadoIa.parse(estadoIaActiva);

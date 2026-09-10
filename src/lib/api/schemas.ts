@@ -232,14 +232,33 @@ export const systemEventPage = z.object({
 
 /* ------------------------------------------------------------------ pruebas */
 
+export const benchmarkProfile = z.enum(["seq1m_q8", "seq1m_q1", "rnd4k_q32", "rnd4k_q1"]);
+export const benchmarkDirection = z.enum(["read", "write"]);
+
+export const benchmarkRow = z.object({
+  profile: benchmarkProfile,
+  direction: benchmarkDirection,
+  mbPerSecond: z.number(),
+  iops: z.number(),
+  avgLatencyMs: z.number(),
+  actualDurationS: z.number(),
+  bytesMoved: z.number(),
+  dataCapHit: z.boolean()
+});
+
+export const benchmarkResult = z.object({
+  tool: z.literal("diskspd"),
+  toolVersion: z.string(),
+  fileSizeBytes: z.number(),
+  rows: benchmarkRow.array(),
+  notRun: z.object({ profile: benchmarkProfile, direction: benchmarkDirection }).array()
+});
+
 export const testResult = z.object({
   passed: z.boolean().nullable(),
-  readBytesPerSecond: nullableNumber,
-  writeBytesPerSecond: nullableNumber,
-  readLatencyMs: nullableNumber,
-  writeLatencyMs: nullableNumber,
   maxTemperatureC: nullableNumber,
-  stoppedReason: z.enum(["completed", "cancelled", "thermal", "space", "error"]).nullable()
+  stoppedReason: z.enum(["completed", "cancelled", "thermal", "error"]).nullable(),
+  benchmark: benchmarkResult.nullable().default(null)
 });
 
 export const testRun = z.object({

@@ -188,6 +188,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
 | `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
 | `AboutDialog` | «Acerca de» del riel (US-061) | mismo patrón de modal informativo que `ExplicacionModal` (`role="dialog" aria-modal`, foco devuelto, `Escape`, cruz); foto del autor como avatar (`src/lib/assets/`, único raster empaquetado — ADR-052) + nombre + biografía breve; pie con créditos (MIT, terceros, autor de `get_app_info`) y enlaces como **texto plano**; «Copiar información» copia solo lo diagnóstico |
+| `BenchmarkResults` | tabla de resultados de la prueba de Rendimiento (spec 008 / ADR-053) | `<table>` con `<th scope>` reales; una fila por perfil × sentido (MB/s, IOPS, latencia); filas `notRun` como «no ejecutado», **nunca 0**; marca «tope de datos alcanzado» por fila; pie «Medido con DiskSpd {version}». Solo en la pantalla de Pruebas (activa e historial) — no es un patrón transversal |
 
 ### Autorizados y pendientes de construir
 

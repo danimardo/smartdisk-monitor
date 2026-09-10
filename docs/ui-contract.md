@@ -52,6 +52,8 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `test.unsupported` | el dispositivo no admite esa prueba | no |
 | `test.insufficient_space` | no cabe el archivo con la reserva | no |
 | `test.io_failed` | fallo de E/S al preparar o ejecutar la prueba (crear la carpeta, lanzar el proceso auxiliar…) | sí |
+| `test.tool_missing` | la prueba de Rendimiento no encuentra `diskspd.exe` (ADR-053) | no |
+| `test.tool_output_unreadable` | DiskSpd terminó pero su `-Rxml` no se pudo interpretar; aparece en el resultado (`stoppedReason: "error"` + `output`), no en la llamada | no |
 | `db.locked` | SQLite ocupado más allá del tiempo de espera | sí |
 | `db.migration_failed` | migración fallida; se ha restaurado la copia previa | no |
 | `path.invalid` | ruta fuera de las carpetas permitidas | no |
@@ -377,13 +379,9 @@ Un id que no esté en la página cargada no es un error: la pantalla se comporta
 ### 3.6 Pruebas
 
 ```ts
-invoke<string>("start_benchmark", {          // devuelve testRunId
-  volumeId: string,
-  sizeBytes: number,
-  blockSizeBytes: number,
-  mode: "sequential" | "random",
-  passes: number
-})
+// Prueba de Rendimiento (ADR-053): corre la matriz fija de 8 mediciones de DiskSpd sobre un
+// archivo de 1 GiB en la carpeta controlada del volumen. Sin parámetros de perfil.
+invoke<string>("start_benchmark", { volumeId: string })   // devuelve testRunId
 invoke<string>("run_chkdsk_scan", { volumeId: string })
 invoke<string>("run_smart_short_test", { deviceId: string })
 invoke<void>("cancel_test", { testRunId: string })
@@ -411,18 +409,38 @@ interface TestRun {
 }
 
 interface TestResult {
-  passed: boolean | null;
-  readBytesPerSecond: number | null;
-  writeBytesPerSecond: number | null;
-  readLatencyMs: number | null;
-  writeLatencyMs: number | null;
+  passed: boolean | null;                // chkdsk / autotest; siempre null en la prueba de Rendimiento
   maxTemperatureC: number | null;
-  stoppedReason: "completed" | "cancelled" | "thermal" | "space" | "error" | null;
+  stoppedReason: "completed" | "cancelled" | "thermal" | "error" | null;  // "space" ya no aparece en ejecución (rechazo previo)
+  benchmark: BenchmarkResult | null;     // no null solo si type === "benchmark" y hubo al menos una fila o un notRun
+}
+
+interface BenchmarkResult {
+  tool: "diskspd";
+  toolVersion: string;                   // del XML de DiskSpd (FR-012)
+  fileSizeBytes: number;
+  rows: {
+    profile: "seq1m_q8" | "seq1m_q1" | "rnd4k_q32" | "rnd4k_q1";
+    direction: "read" | "write";
+    mbPerSecond: number;                 // MB decimales/s, como CrystalDiskMark
+    iops: number;
+    avgLatencyMs: number;
+    actualDurationS: number;
+    bytesMoved: number;
+    dataCapHit: boolean;                 // true si la duración se recortó por el tope de datos (ADR-053, D3)
+  }[];
+  notRun: { profile: string; direction: "read" | "write" }[];   // perfiles que no llegaron a correr por parada anticipada
 }
 ```
 
-Parámetros por defecto del benchmark en `product-specification.md` §6. La UI nunca construye el
-comando: lo recibe ya formado en `command` solo para mostrarlo.
+- **Orden de la matriz**: para cada perfil, primero **lectura** (da el caudal de referencia para
+  dimensionar la `-d` de la escritura, ADR-053 D3), luego **escritura**; los 4 perfiles en orden
+  fijo. `progressPercent` avanza `100/8` por medición terminada.
+- **Parada anticipada**: las mediciones hechas quedan en `rows`, las que faltaban en `notRun`;
+  `status` = `cancelled` o `failed`, `stoppedReason` lo precisa. Nunca una fila a 0 (§I).
+- La UI **nunca construye la línea de comandos**: el backend arma cada invocación de DiskSpd, la
+  lanza por `platform::proceso_externo`, parsea el `-Rxml` y compone `BenchmarkResult`. `command` es
+  una descripción legible de la matriz, no un comando de shell.
 
 ### 3.7 Informes y diagnóstico
 

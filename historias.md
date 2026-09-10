@@ -365,7 +365,8 @@ El producto debe ayudar a responder:
 - Captura y correlación de eventos relevantes de Windows.
 - Historial local en SQLite, gráficas y panel general.
 - Alertas locales, agrupadas y visibles desde la aplicación y el systray.
-- Prueba manual de lectura y escritura con un archivo temporal controlado.
+- Prueba manual de rendimiento del disco (benchmark con Microsoft DiskSpd, ADR-053) con un archivo
+  temporal controlado.
 - Ejecución manual de `chkdsk /scan`.
 - Autotest SMART corto manual cuando el dispositivo lo soporte.
 - Exportación CSV, JSON y HTML imprimible.
@@ -517,26 +518,38 @@ Las alertas de capacidad son poco intrusivas: se genera una alerta agrupada al c
 
 ### 6. Pruebas manuales
 
-#### Prueba de lectura y escritura
+#### Prueba de Rendimiento
 
-- El usuario elige un volumen de un disco seleccionado.
-- Se crea un archivo temporal dedicado en una carpeta controlada por la aplicación.
-- Nunca se sobrescribe un archivo existente.
-- Parámetros predeterminados: **1 GiB** de archivo, bloques de **1 MiB**, acceso **secuencial**,
-  **una** pasada de escritura y una de lectura. Configurables entre 256 MiB y 8 GiB.
-- La escritura se hace **sin caché del sistema** (`FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`)
-  y se sincroniza antes de medir. Sin esto se estaría midiendo la memoria RAM y las cifras no serían
-  comparables entre ejecuciones ni entre discos.
-- El tamaño se limita por configuración, espacio libre y una **reserva de seguridad de 2 GiB o el
-  5 % del volumen, la mayor de las dos**, que nunca se invade.
-- Se escribe, sincroniza, lee y verifica el contenido mediante bloques con patrón comprobable.
-- Se muestran rendimiento, latencia, progreso y temperatura.
-- Se puede cancelar.
-- Se detiene si se alcanza el límite térmico crítico —el del fabricante si lo declara, y si no el
-  configurado— o si se llega a la reserva de espacio. La razón de la parada se conserva en el
-  historial de la prueba.
-- El archivo se elimina al finalizar o cancelar; si no fuera posible, queda claramente identificado para su limpieza posterior.
-- Antes de comenzar se advierte del impacto temporal en rendimiento, temperatura y escrituras del SSD.
+- Motor: **Microsoft DiskSpd** (ADR-053), redistribuido como binario independiente igual que
+  `smartctl`. Se ejecuta como proceso externo, nunca enlazado.
+- El usuario elige un volumen de un disco seleccionado. No hay parámetros que configurar.
+- Se crea un archivo temporal dedicado de **1 GiB** en una carpeta controlada por la aplicación en
+  la raíz del volumen. Nunca se sobrescribe un archivo existente.
+- La prueba corre una **matriz fija de 8 mediciones**: cuatro perfiles estilo CrystalDiskMark
+  —secuencial 1 MiB a cola 8 y a cola 1; aleatorio 4 KiB a cola 32 y a cola 1—, cada uno en
+  **lectura y escritura**.
+- La E/S se hace **sin caché del sistema** (`-Sh` = `FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`)
+  y la escritura usa un búfer de datos aleatorios para que un SSD con compresión no infle las cifras.
+- Cada medición corre unos **5 s** (suelo 2 s), o hasta un **tope de datos de ~4 GiB** por perfil de
+  escritura, lo que llegue antes. Si el disco es tan rápido que el tope se agota antes del suelo, se
+  mide el suelo y la fila se **etiqueta**. El resultado siempre indica la duración real y los bytes
+  movidos.
+- El tamaño del archivo se limita por espacio libre y una **reserva de seguridad de 2 GiB o el 5 %
+  del volumen, la mayor de las dos**, que nunca se invade.
+- **No hay verificación de integridad del contenido** (a diferencia del motor anterior): DiskSpd no
+  la hace y añadirla por fuera desvirtuaría las cifras.
+- El resultado es una **tabla** con caudal (MB/s decimales), IOPS y latencia media por perfil y
+  sentido, más la versión de DiskSpd con la que se midió. Las mediciones que no llegaron a correr
+  por una parada anticipada se muestran como «no ejecutado», nunca a cero.
+- Se puede cancelar; la E/S cesa al matar el proceso de DiskSpd (≤ 3 s).
+- Se detiene si el disco alcanza el límite térmico crítico —el del fabricante si lo declara, y si no
+  el configurado—, matando el proceso de DiskSpd y conservando las filas ya medidas. La razón de la
+  parada se conserva en el historial.
+- No puede coincidir con el autotest SMART del mismo disco físico.
+- El archivo se elimina al finalizar o cancelar; si no fuera posible, queda claramente identificado
+  para su limpieza posterior.
+- Antes de comenzar se advierte del impacto temporal en rendimiento y temperatura y de los GB que se
+  escribirán.
 
 #### CHKDSK
 
@@ -1234,7 +1247,8 @@ como lista pendiente.
 
 ### Versión 0.4 — Pruebas e informes
 
-- Benchmark de archivo temporal.
+- Benchmark de archivo temporal. *(0.1.5 lo sustituye por la prueba de Rendimiento con Microsoft
+  DiskSpd — perfiles estilo CrystalDiskMark, sin verificación de integridad, ADR-053.)*
 - CHKDSK `/scan`.
 - Autotest SMART corto.
 - CSV, JSON y HTML.
@@ -1680,12 +1694,17 @@ Fichero de origen: `docs/data-model.md`
 
 #### `test_runs`
 
-- Tipo: benchmark, chkdsk_scan o smart_short.
+- Tipo: benchmark (prueba de **Rendimiento**), chkdsk_scan o smart_short.
 - Disco/volumen objetivo.
 - Estado: pending, running, cancelling, completed, failed, cancelled, interrupted.
 - Inicio, fin, progreso y resultado.
-- Parámetros y resumen de métricas.
-- Ruta temporal solo mientras sea necesaria.
+- Parámetros y resumen de métricas. **Sin cambio de esquema** (ADR-053): el resumen vive en
+  `result_summary_json`, columna libre por diseño (J.29). Para un benchmark lleva ahora un
+  `BenchmarkResult` —`{ tool, toolVersion, fileSizeBytes, rows[], notRun[] }`, la forma exacta en
+  `docs/ui-contract.md` §3.6— en vez de los cuatro campos planos de caudal/latencia anteriores.
+  `parameters_json` guarda `{ tool: "diskspd", fileSizeBytes, profiles }`.
+- Ruta temporal (`temp_path`) solo mientras sea necesaria; se limpia a `NULL` en cuanto el archivo
+  del benchmark se borra con éxito, y queda con la ruta (`orphanPath`) si el borrado falla.
 
 #### `settings`
 
@@ -2214,6 +2233,8 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `test.unsupported` | el dispositivo no admite esa prueba | no |
 | `test.insufficient_space` | no cabe el archivo con la reserva | no |
 | `test.io_failed` | fallo de E/S al preparar o ejecutar la prueba (crear la carpeta, lanzar el proceso auxiliar…) | sí |
+| `test.tool_missing` | la prueba de Rendimiento no encuentra `diskspd.exe` (ADR-053) | no |
+| `test.tool_output_unreadable` | DiskSpd terminó pero su `-Rxml` no se pudo interpretar; aparece en el resultado (`stoppedReason: "error"` + `output`), no en la llamada | no |
 | `db.locked` | SQLite ocupado más allá del tiempo de espera | sí |
 | `db.migration_failed` | migración fallida; se ha restaurado la copia previa | no |
 | `path.invalid` | ruta fuera de las carpetas permitidas | no |
@@ -2539,13 +2560,9 @@ Un id que no esté en la página cargada no es un error: la pantalla se comporta
 #### 3.6 Pruebas
 
 ```ts
-invoke<string>("start_benchmark", {          // devuelve testRunId
-  volumeId: string,
-  sizeBytes: number,
-  blockSizeBytes: number,
-  mode: "sequential" | "random",
-  passes: number
-})
+// Prueba de Rendimiento (ADR-053): corre la matriz fija de 8 mediciones de DiskSpd sobre un
+// archivo de 1 GiB en la carpeta controlada del volumen. Sin parámetros de perfil.
+invoke<string>("start_benchmark", { volumeId: string })   // devuelve testRunId
 invoke<string>("run_chkdsk_scan", { volumeId: string })
 invoke<string>("run_smart_short_test", { deviceId: string })
 invoke<void>("cancel_test", { testRunId: string })
@@ -2573,18 +2590,38 @@ interface TestRun {
 }
 
 interface TestResult {
-  passed: boolean | null;
-  readBytesPerSecond: number | null;
-  writeBytesPerSecond: number | null;
-  readLatencyMs: number | null;
-  writeLatencyMs: number | null;
+  passed: boolean | null;                // chkdsk / autotest; siempre null en la prueba de Rendimiento
   maxTemperatureC: number | null;
-  stoppedReason: "completed" | "cancelled" | "thermal" | "space" | "error" | null;
+  stoppedReason: "completed" | "cancelled" | "thermal" | "error" | null;  // "space" ya no aparece en ejecución (rechazo previo)
+  benchmark: BenchmarkResult | null;     // no null solo si type === "benchmark" y hubo al menos una fila o un notRun
+}
+
+interface BenchmarkResult {
+  tool: "diskspd";
+  toolVersion: string;                   // del XML de DiskSpd (FR-012)
+  fileSizeBytes: number;
+  rows: {
+    profile: "seq1m_q8" | "seq1m_q1" | "rnd4k_q32" | "rnd4k_q1";
+    direction: "read" | "write";
+    mbPerSecond: number;                 // MB decimales/s, como CrystalDiskMark
+    iops: number;
+    avgLatencyMs: number;
+    actualDurationS: number;
+    bytesMoved: number;
+    dataCapHit: boolean;                 // true si la duración se recortó por el tope de datos (ADR-053, D3)
+  }[];
+  notRun: { profile: string; direction: "read" | "write" }[];   // perfiles que no llegaron a correr por parada anticipada
 }
 ```
 
-Parámetros por defecto del benchmark en `product-specification.md` §6. La UI nunca construye el
-comando: lo recibe ya formado en `command` solo para mostrarlo.
+- **Orden de la matriz**: para cada perfil, primero **lectura** (da el caudal de referencia para
+  dimensionar la `-d` de la escritura, ADR-053 D3), luego **escritura**; los 4 perfiles en orden
+  fijo. `progressPercent` avanza `100/8` por medición terminada.
+- **Parada anticipada**: las mediciones hechas quedan en `rows`, las que faltaban en `notRun`;
+  `status` = `cancelled` o `failed`, `stoppedReason` lo precisa. Nunca una fila a 0 (§I).
+- La UI **nunca construye la línea de comandos**: el backend arma cada invocación de DiskSpd, la
+  lanza por `platform::proceso_externo`, parsea el `-Rxml` y compone `BenchmarkResult`. `command` es
+  una descripción legible de la matriz, no un comando de shell.
 
 #### 3.7 Informes y diagnóstico
 
@@ -5927,11 +5964,79 @@ navegador; se descarta). «Copiar información» no cambia: sigue copiando solo 
   `about.authorName`, `about.authorRole` y `about.photoAlt`.
 - `get_app_info` y los permisos de Tauri **no cambian**.
 
-### ADR-053 — Reservada
+### ADR-053 — DiskSpd como motor del benchmark de disco
 
-Estado: reservada para la spec `008-benchmark-diskspd` (binario DiskSpd redistribuido). El número
-se asignó al planificar esa feature; su ADR se redacta al implementarla. ADR-054 se numeró después
-y se aceptó antes por orden de implementación.
+Estado: aceptada. Fecha: 2026-09-10. Spec: `008-benchmark-diskspd`. (ADR-054 se numeró y aceptó
+antes por orden de implementación; este ADR quedó reservado al planificar la spec 008.)
+
+#### El problema
+
+La «Prueba de lectura y escritura» usaba un motor propio (E/S con buffer alineado sobre un archivo
+temporal, `src-tauri/src/tests/benchmark.rs` + verificación de patrón byte a byte en `patron.rs`).
+Daba una cifra de MB/s secuencial y confirmaba integridad, pero **sus números no se pueden comparar
+con CrystalDiskMark**, que es la referencia que la gente reconoce en un benchmark de disco
+«profesional»: sin perfiles de cola, sin IOPS ni latencia por perfil, sin acceso aleatorio 4K. Un
+benchmark cuyas cifras no comparan con la herramienta de referencia cumple mal el principio I
+(veracidad del dato: el número existe pero no significa lo que la persona cree).
+
+#### La decisión
+
+Se **sustituye** el motor propio por **Microsoft DiskSpd**, redistribuido como binario independiente
+con el mismo patrón que `smartctl.exe` (ADR-005): proceso externo, nunca enlazado, comunicación por
+línea de comandos y XML por stdout (`-Rxml`).
+
+- **Licencia MIT** (Microsoft). A diferencia de la GPLv2 de smartmontools, **no hay obligación de
+  redistribuir el código fuente**: basta el texto de la licencia y el aviso de copyright.
+- **Solo `amd64/diskspd.exe`** (~513 KB), verificado como PE de máquina `0x8664`. arm64, x86 y la
+  documentación se dejan fuera. Versión fijada por este ADR con su hash, igual que «smartmontools
+  7.5»: **DiskSpd 2.3.0 (2026/06/15)**, SHA-256
+  `dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2`.
+- Estructura en `third-party/diskspd/` (espejo de `third-party/smartmontools/`): `bin/diskspd.exe`,
+  `licenses/LICENSE.txt`, `README.md`. Empaquetado vía `tauri.conf.json` → `bundle.resources`.
+  Integridad por `scripts/verify-assets.mjs` (SHA-256) y `THIRD_PARTY_NOTICES.md`.
+- **El XML se parsea a mano**, sin dependencia nueva (constitución §III): el bloque agregado de
+  DiskSpd es plano y estable, igual que el XML del Event Log que `collectors/event_log.rs` ya
+  deserializa a mano. Módulo `tests::diskspd_xml` con helpers `extraer_*` y un struct explícito.
+- **4 perfiles fijos** estilo CrystalDiskMark (SEQ1M Q8T1, SEQ1M Q1T1, RND4K Q32T1, RND4K Q1T1) ×
+  lectura/escritura = 8 mediciones. No configurables (modo avanzado queda fuera de alcance).
+- **Acotado por tiempo con tope de datos** (FR-017): cada medición corre `D_OBJETIVO` s salvo que
+  el tope de datos de escritura (`TOPE_DATOS`) se alcance antes; el envoltorio calcula el `-d` de
+  cada escritura a partir del caudal ya medido de la lectura del mismo perfil. Valores en
+  `docs/open-questions.md`.
+- **Se elimina la verificación de integridad byte a byte** (`tests::patron`). Sin sustituto:
+  decisión explícita del dueño. DiskSpd no verifica contenido y añadirlo por fuera desvirtuaría las
+  cifras.
+- Guardia térmica y cancelación pasan a **matar el proceso DiskSpd** (una invocación por medición,
+  con su propio límite de tiempo). El resto de salvaguardas (rutas en carpeta controlada, reserva
+  de espacio, exclusión con el autotest SMART, borrado del archivo) se reutilizan tal cual.
+
+#### Alternativas descartadas
+
+- **Motor propio con E/S superpuesta (overlapped/IOCP vía FFI a `kernel32`)**: sin dependencia
+  nueva, pero es mucho código `unsafe` y clavar las cifras para que coincidan con CrystalDiskMark es
+  difícil. Se valoró y descartó con el dueño.
+- **Ampliar modestamente el motor actual** (añadir un perfil aleatorio): sigue sin comparar con CDM
+  y duplica el esfuerzo de mantenimiento del motor propio.
+- **Empaquetar CrystalDiskMark**: es una GUI, no se automatiza de forma limpia, y pesa y licencia
+  peor.
+- **`-Rtext` / `-Rjson`**: el texto es frágil de parsear (anchos variables); DiskSpd no tiene
+  salida JSON.
+
+#### Consecuencias
+
+- **Binario redistribuido nuevo** (~513 KB) con su entrada en `verify:assets` y
+  `THIRD_PARTY_NOTICES.md`. El instalador crece ~0,5 MB.
+- **Se pierde la verificación de integridad**: la prueba ya no detecta un disco que devuelve datos
+  corruptos. Se acepta: era una garantía que ninguna otra parte del producto ofrece y que un
+  benchmark no es el sitio natural para dar.
+- La prueba se **renombra** de «Lectura y escritura» a **«Rendimiento»** / «Performance».
+- El contrato de `start_benchmark` cambia (se van `sizeBytes`/`blockSizeBytes`/`mode`/`passes`;
+  queda `{ volumeId }`); `TestResult` gana un bloque `benchmark` con la tabla de filas.
+- **ToS y disponibilidad**: DiskSpd es de Microsoft y su distribución con una app es estándar; si
+  cambiara el formato XML entre versiones, el parser a mano lo notaría (campos ausentes → error
+  `test.tool_output_unreadable`), no daría cifras equivocadas en silencio.
+- El `.pdb` que acompaña a `diskspd.exe` en la descarga **no se redistribuye** (solo el `.exe` y la
+  licencia).
 
 ### ADR-054 — Clave de demostración compartida para la ayuda con IA
 
@@ -6501,7 +6606,7 @@ asunción del programador.
 | J.15 | Cómo distinguir "sin compatibilidad SMART" de "aún sin leer" en `get_device_detail` | Ausencia de `smartctl_path` (T025: `Get-PhysicalDisk.DeviceId` no numérico, típico de volúmenes RAID lógicos) se trata como `unsupported`; presencia de `smartctl_path` sin ninguna muestra `metric_samples.source = smartctl` se trata como `not-yet-sampled`. Deliberadamente **no** se interpreta el `exit_status` de `smartctl` como señal de soporte: sus bits documentan fallos de sintaxis/apertura/hallazgos SMART, no "este bus no expone SMART", y esa lectura no se ha podido verificar contra hardware real (`open-questions.md` I.5). Provisional hasta medir (spec 001-monitor-discos-windows, T038) |
 | J.13 | Umbrales de espacio libre para detener la escritura de historial | 1 GB para el aviso y 256 MB para la parada, sobre el volumen donde reside el historial (`storage.free_space_warn_bytes` / `storage.free_space_halt_bytes`, spec 001-monitor-discos-windows). Valores de partida razonables para Windows, **no medidos**; confirmar al implementar la retención (T001, T017-T018) |
 | J.14 | Cómo se representa la agregación de `metric_samples` | `docs/data-model.md` §4 exige conservar mínimo, máximo, promedio, primera y última lectura, pero el esquema solo tenía una columna de valor por fila. Se añade la tabla `metric_aggregates` (migración 0002) con `value_min/max/avg/first/last`, `bucket_start_utc`/`bucket_end_utc` y `resolution`. Los "tres periodos de retención" de US-071 son las tres resoluciones ya definidas (`raw`, `five_minutes`, `hourly`): `retention.raw_days` (7), `retention.five_minutes_days` (90), `retention.hourly_days` (730); pasado el tercero se purga. `value_last - value_first` da el incremento del bucket para contadores acumulativos, sin columna aparte. Valores por defecto, **no medidos** (spec 001-monitor-discos-windows, T015) |
-| J.29 | Cómo conectar los cinco comandos de pruebas (T083): identificadores, exclusión mutua, umbral térmico y columnas sin sitio propio en `test_runs` | **Identificador de `test_run` y sufijo aleatorio del archivo del benchmark** (J.27): `format!("{:x}", OffsetDateTime::now_utc().unix_timestamp_nanos())` — nanosegundos UTC en hexadecimal, sin añadir una dependencia de aleatoriedad (mismo criterio que el LCG de T079); la unicidad real la sigue dando `rutas::confirmar_no_sobrescribe`, no la improbabilidad de colisión. **Exclusión mutua** (`test.busy`, ya previsto en `ui-contract.md` §1: "ya hay una prueba en ese disco"): se aplica por disco físico subyacente vía `device_volume_links`, no solo por el id exacto recibido — antes de arrancar cualquier prueba se comprueba que ni el objetivo ni ningún otro volumen/dispositivo del mismo disco tenga ya un `test_run` en `pending`/`running`/`cancelling`. Esto cubre a la vez la regla genérica del contrato y la regla explícita de `product-specification.md` §6 ("el autotest no se permite simultáneamente con el benchmark de la aplicación"), sin tabla de exclusión aparte. **Umbral térmico "configurado"** de `tests::guardia::limite_critico_efectivo` cuando el fabricante no lo declara (hoy siempre: `vendor_temp_critical_c` no está implementado, J.15/J.16): se reutiliza el mismo valor que ya usa el motor de alertas para `temp.above_configured_crit`, **80 °C** (`alert-rules.md`, `alerts::motor::evaluar_temperatura_configurada_crit`) — mismo concepto normativo, no un valor nuevo. **Columnas sin sitio propio**: `test_runs` (migración 0001) no tiene columna para `command`, `output` ni `outputEncoding` (`ui-contract.md` §3.6); se guardan dentro de `parameters_json` (el comando, fijado al crear la fila) y `result_summary_json` (salida y codificación, solo se conocen al terminar) en vez de abrir una migración nueva. `orphanPath` reutiliza la columna `temp_path` ya existente: mientras la prueba corre, o si el archivo no se pudo borrar al terminar, queda con la ruta; se limpia a `NULL` en cuanto el borrado tiene éxito. `volume.not_found` se añade a la tabla de códigos de `ui-contract.md` §1 en paralelo a `device.not_found`, que hasta ahora solo cubría `device_id`. **Límite conocido, no simulado**: `RazonParada::Space` (T079) solo es alcanzable como rechazo previo (`test.insufficient_space`) antes de crear la fila — `tests::benchmark::ejecutar` no comprueba espacio libre durante la ejecución (T079 solo implementó cancelación y guardia térmica), así que un agotamiento de espacio a mitad de prueba no se detecta hoy (spec 001-monitor-discos-windows, T083) |
+| J.29 | Cómo conectar los cinco comandos de pruebas (T083): identificadores, exclusión mutua, umbral térmico y columnas sin sitio propio en `test_runs` | **Identificador de `test_run` y sufijo aleatorio del archivo del benchmark** (J.27): `format!("{:x}", OffsetDateTime::now_utc().unix_timestamp_nanos())` — nanosegundos UTC en hexadecimal, sin añadir una dependencia de aleatoriedad (mismo criterio que el LCG de T079); la unicidad real la sigue dando `rutas::confirmar_no_sobrescribe`, no la improbabilidad de colisión. **Exclusión mutua** (`test.busy`, ya previsto en `ui-contract.md` §1: "ya hay una prueba en ese disco"): se aplica por disco físico subyacente vía `device_volume_links`, no solo por el id exacto recibido — antes de arrancar cualquier prueba se comprueba que ni el objetivo ni ningún otro volumen/dispositivo del mismo disco tenga ya un `test_run` en `pending`/`running`/`cancelling`. Esto cubre a la vez la regla genérica del contrato y la regla explícita de `product-specification.md` §6 ("el autotest no se permite simultáneamente con el benchmark de la aplicación"), sin tabla de exclusión aparte. **Umbral térmico "configurado"** de `tests::guardia::limite_critico_efectivo` cuando el fabricante no lo declara (hoy siempre: `vendor_temp_critical_c` no está implementado, J.15/J.16): se reutiliza el mismo valor que ya usa el motor de alertas para `temp.above_configured_crit`, **80 °C** (`alert-rules.md`, `alerts::motor::evaluar_temperatura_configurada_crit`) — mismo concepto normativo, no un valor nuevo. **Columnas sin sitio propio**: `test_runs` (migración 0001) no tiene columna para `command`, `output` ni `outputEncoding` (`ui-contract.md` §3.6); se guardan dentro de `parameters_json` (el comando, fijado al crear la fila) y `result_summary_json` (salida y codificación, solo se conocen al terminar) en vez de abrir una migración nueva. `orphanPath` reutiliza la columna `temp_path` ya existente: mientras la prueba corre, o si el archivo no se pudo borrar al terminar, queda con la ruta; se limpia a `NULL` en cuanto el borrado tiene éxito. `volume.not_found` se añade a la tabla de códigos de `ui-contract.md` §1 en paralelo a `device.not_found`, que hasta ahora solo cubría `device_id`. **Límite conocido, no simulado**: `RazonParada::Space` (T079) solo es alcanzable como rechazo previo (`test.insufficient_space`) antes de crear la fila — `tests::benchmark::ejecutar` no comprueba espacio libre durante la ejecución (T079 solo implementó cancelación y guardia térmica), así que un agotamiento de espacio a mitad de prueba no se detecta hoy (spec 001-monitor-discos-windows, T083). **Actualizado (ADR-053, spec 008)**: el motor propio (`tests::benchmark`) se ha eliminado; la prueba de Rendimiento usa DiskSpd sobre un archivo de tamaño fijo (`-c 1 GiB`) que **no crece**, así que la guardia de espacio durante la ejecución sigue sin existir y sin hacer falta. `RazonParada::Space` ya no existe como estado; `test.insufficient_space` sigue siendo un rechazo previo. El resto de J.29 (identificador de `test_run`, exclusión por disco físico, umbral térmico 80 °C, columnas dentro de `parameters_json`/`result_summary_json`, `orphanPath` sobre `temp_path`) se conserva tal cual con DiskSpd |
 | J.30 | Contenido exacto de la exportación tabular/estructurada (T087): ningún documento fija las columnas o campos | **CSV y JSON son el volcado completo**, una fila/objeto por `(dispositivo, metric_key, marca de tiempo)`: `schemaVersion, deviceId, deviceLabel, metricKey, unit, resolution, timestampUtc, value`. Qué métricas incluir no es una lista fija: `repo_metricas::distinct_metric_keys` devuelve las que de verdad tengan dato del dispositivo en el rango (crudo o agregado), para no inventar columnas vacías ni olvidar una real. **Resolución por rango**, igual que ya hace `get_metric_series_impl` para las gráficas (crudo ≤24 h y dentro de los últimos 7 días; `five_minutes` ≤7 días; `hourly` con reserva a `five_minutes` ≤90 días; `hourly` más allá) — implementada de nuevo en `reporting/export.rs`, sin tocar la función existente de `commands/mod.rs`, para no arriesgar una regresión en la gráfica por una necesidad distinta (el `value` de una fila agregada es `value_avg` con reserva a `value_last`, igual que ya hace `leer_agregados_dispositivo`). **HTML es un resumen legible, no el mismo volcado**: identidad y salud actual del dispositivo más las alertas que se dispararon en el rango — la especificación solo exige que sea "legible e imprimible" (`product-specification.md` §9), no que reproduzca miles de filas; quien necesite el detalle completo tiene el CSV o el JSON. **Dato ausente**: `null` en JSON, cadena literal `"N/A"` en CSV — nunca vacío ni cero, mismo criterio que el resto de la aplicación. `deviceIds: null` en el comando significa todos los dispositivos monitorizados (no los excluidos). **Sin evento de progreso nuevo**: `docs/ui-contract.md` §4 no define uno para exportar, y el escenario de aceptación ("la aplicación sigue respondiendo y muestra progreso", Historia 6 §spec) queda cubierto por la propia naturaleza asíncrona del `invoke` (la interfaz no se bloquea) más un indicador indeterminado local mientras se espera la respuesta — no hace falta inventar `export:progress` para una operación que no tiene fases intermedias que reportar. **Las alertas del resumen HTML muestran `ruleKey` tal cual** (p. ej. `smart.wear_high`), no una frase humana: ADR-030 decidió que el backend nunca manda texto de alerta, solo la clave, y este HTML lo genera el propio backend sin acceso a los diccionarios de `$lib/i18n` — duplicar ahí una traducción sería una segunda copia sin mantener, exactamente lo que ADR-030 quiso evitar (spec 001-monitor-discos-windows, T087/T088) |
 | J.31 | Contenido y disposición del ZIP de diagnóstico (T090): ningún documento fija los ficheros que lleva dentro | **`smart_snapshots.raw_json_path`/`fields_json` están sin usar**: ningún colector escribe hoy el JSON crudo de `smartctl` a disco ni a la base (`insert_smart_snapshot` siempre los llama con `None`, T036). El ZIP no puede leer un archivo que no existe, así que **vuelve a consultar `smartctl` en el momento de generarlo** (`collectors::smartctl::query_device_json`, ya verificado contra hardware real esta sesión) para cada dispositivo con `smartctl_path` — un diagnóstico fresco, no uno reconstruido de una captura que nunca se guardó. **Disposición dentro del ZIP**: `manifest.json` (schemaVersion, generatedAtUtc, versión de la app, `anonymized`, `redactedFields`), `settings.json` (`repo_varios::list_settings`, todas las claves), `events.json` (`repo_varios::list_events` sin filtro, límite alto en vez de paginado: es un volcado, no una pantalla), `smart/<deviceId>.json` (o `smart/<deviceId>.error.txt` si la consulta falla — un fallo de un disco no debe tirar el paquete entero), `logs/<nombre-de-fichero>` (todo lo que haya en `platform::paths::log_dir()`, tal cual lo escribe `tracing_appender::rolling::daily`, FR-029c). **Cada entrada de texto pasa por el mismo `Anonimizador`** antes de escribirse — de ahí que la sustitución sea consistente en todo el paquete (US-051): el mismo número de serie se convierte en el mismo `<SERIE-N>` tanto en `smart/*.json` como en `logs/*` si apareciera ahí. `includeIdentifiers: true` construye un `Anonimizador::sin_anonimizar()`: nada se sustituye, y `redactedFields` viaja vacío en el manifiesto (spec 001-monitor-discos-windows, T090) |
 | J.32 | Forma completa de `Settings` (T095/T096): `ui-contract.md` §3.1 nombra `get_settings`/`set_setting`/`reset_settings` pero nunca escribe la interfaz — ningún documento reúne en un solo sitio todos los campos configurables que ya estaban dispersos (D.1, C.1, J.13, J.14) | Cuatro grupos, alineados con los cuatro valores de `reset_settings({scope})`: **`schedule`** (`metricsFastSeconds`/`smartFullSeconds`/`eventsSeconds`/`discoverySeconds`) reutiliza tal cual los límites ya codificados en `collectors::planificador::{METRICAS_RAPIDAS,SMART_COMPLETO,EVENTOS_WINDOWS,ALTAS_Y_BAJAS}` (D.1) — ese módulo ya decía en su propio comentario "esto lo hace `domain::ajustes`, no este módulo", así que no son límites nuevos, son los que ya existían sin consumidor. **`alerts`**: `tempConfiguredWarnC`/`tempConfiguredCritC` (por defecto 70/80, los mismos literales que hoy tiene hardcodeados `alerts::motor` para `temp.above_configured_warn/crit`; límites nuevos, no medidos: 40-95 °C para el aviso, el crítico entre el aviso y 100 °C) y los cinco campos de capacidad ya decididos en C.1/ADR-019 (`capacityWarnPercent` 10, `capacityCritPercent` 5, `capacityAbsoluteFloorMinCapacityBytes` 256 GiB, `capacityAbsoluteFloorWarnBytes` 20 GiB, `capacityAbsoluteFloorCritBytes` 10 GiB — los mismos valores que ya usa `capacityState()` en `src/lib/design/health.ts`, hoy con el suelo fijo en una constante en vez de leído de `settings`). **`retention`**: los tres periodos de J.14 (7/90/730 días, límites nuevos y razonables: crudo 1-30, cinco minutos 7-365, horario 90-1825) más `storage.free_space_warn_bytes`/`halt_bytes` de J.13 (1 GiB/256 MiB, sin límites de UI porque US-071 solo pide poder cambiar los tres periodos, no estos dos bytes). **Fuera de estos tres grupos** (solo se restauran con `scope: "all"`): `lifecycle.closeAction` (`"minimize"` por defecto, `docs/open-questions.md` J.19 seguía abierta y este valor la cierra: minimizar es "el lado seguro" ya razonado en `lib.rs`) y `closeActionRemembered`, `notifications.soundEnabled` (`false` de fábrica, US-072), `logging.verbose` (ya nombrada en `data-model.md`). **Apariencia no vive en `Settings`**: `theme`/`language`/`useSystemAccent` siguen teniendo su propio `get_appearance_settings()` ya construido; se persisten con el mismo `set_setting(key, value)` genérico (`theme.svelte.ts`/`i18n.svelte.ts` ya devuelven `{key: "settings.appearance.theme"/"settings.appearance.language", value}` a la espera de un consumidor, que es exactamente lo que T097 les da). **Límite conocido, no ampliado por esta historia**: ni `domain::espacio` (guardia de espacio del historial) ni `capacityState()` ni ninguna regla `capacity.low/critical` en el motor de alertas leen hoy estos valores de `settings` en un ciclo real — no existe todavía el bucle de recopilación en producción que los invoque (ninguna tarea de esta historia lo pide); esta historia deja el valor correctamente guardado y validado, listo para cuando ese consumidor exista, igual que ya pasaba con `logging.verbose` antes de FR-029a (spec 001-monitor-discos-windows, T095/T096) |
@@ -6534,6 +6639,7 @@ asunción del programador.
 | J.59 | **DECIDIDO** e implementado. El usuario ve «Desgaste 5 %» en una tarjeta de disco y no sabe qué significa ni si es preocupante; quiere un tooltip que lo explique al pasar el ratón, en el panel general y en el detalle de disco, con un veredicto sobre el valor actual | Se construye el componente **`Tooltip`** (que `ui-design.md` §3 ya tenía autorizado y pendiente) y un módulo `src/lib/design/metricHelp.ts` con `veredictoMetrica` (puro) + `ayudaMetrica` (texto traducido). El veredicto («normal» / «alto» / «demasiado alto») usa `classifyAgainstThresholds` y los umbrales de `settings.alerts`, así **nunca contradice** al color de la tarjeta ni a una alerta; actividad y horas de encendido son informativas (siempre `ok`), y un disco SATA sin desgaste lo explica. **Alcance**: 3 métricas de `DiskCard` (panel) + las 4 `MetricCard` (detalle); **no** la tabla «Contadores». **Panel: tooltip solo con el ratón**, porque la `DiskCard` es un `<a>` entero y no puede contener un elemento tabulable — con teclado, la versión completa (`Tooltip focusable`, `Escape`, `aria-describedby`, WCAG 1.4.13) está en el detalle. En la `DiskCard` el tooltip es **local y ligero** (no el componente `Tooltip`): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006, `e2e/ui/rendimiento.spec.ts`); el silencio `a11y_no_static_element_interactions` está en `known-issues.md` #4. El panel pide `settings` una vez sin bloquear el pintado; hasta que llega, `metricHelp` usa los umbrales de fábrica. Textos en `metric.help.{temperature,wear,activity,powerOnHours}.*` |
 | J.60 | **DECIDIDO** e implementado (ADR-045). Sobre la aplicación real, el usuario señaló que una alerta `smart.error_log` de su NVMe Crucial `CT2000P3SSD8` (contador en 2162) parecía un fallo de disco pero, al mirar el registro de errores, **todas** las entradas eran `"Invalid Field in Command"` (`status_code_type` 0, `status_code` 2) con `media_errors` 0, `critical_warning` 0, `smart_status.passed` verdadero y `percentage_used` 3 — no es daño, y aun así no se podía ignorar porque `smart.error_log` estaba en el conjunto vetado de ADR-044. «Quizá hemos sido demasiado radicales» | **`smart.error_log` sale de `REGLAS_NO_IGNORABLES`** (ADR-044 → seis reglas). En NVMe de consumo ese contador (`num_err_log_entries`) lo dominan rechazos de protocolo benignos: `smartctl` o Windows piden una página de log opcional que la controladora no implementa y esta apunta cada comando rechazado. El daño de medio real lo sigue cubriendo `smart.media_errors`, que **no** se toca y sigue vetada. Cambio de una línea en `alerts::reglas` + su prueba + `docs/alert-rules.md` §1 (los tres juntos, como pide ADR-044), más `ui-contract.md` §3.4 y `ui-design.md` §3. **Pendiente, spec propia**: afinar la regla para que solo dispare con entradas del registro de tipo «media/integridad» (NVMe `status_code_type == 2`) en vez del contador bruto — es el arreglo de raíz, toca el parser de `smartctl` y cambia comportamiento observable; poder ignorarla ya resuelve el caso mientras tanto |
 | J.61 | **DECIDIDO** (ADR-054). Al activar la ayuda con IA con la **clave de demostración compartida**, ¿qué modelo queda seleccionado, dado que esa clave solo cubre modelos gratuitos? | `activar_ayuda_ia_compartida` fija `settings.ai.model` en el **router automático** (`openrouter/free`). No se añade una validación que impida luego cambiar a un modelo de pago: si la persona lo hace, OpenRouter rechaza la petición y se muestra el error `ia.*` habitual — misma degradación que ya existe, sin código nuevo para un caso que el proveedor ya cubre. La ofuscación XOR de la clave (patrón fijo en `src-tauri/src/platform/clave_demo_ofuscacion.rs`, incluido también por `build.rs`) **no es cifrado** y así se declara: la clave es extraíble del ejecutable, su valor es la comodidad, no la confidencialidad |
+| J.62 | **PROPUESTO** (spec 008 / ADR-053, `research.md` D3). Valores numéricos del benchmark con DiskSpd, aún sin medir contra hardware real variado: **`D_OBJETIVO` = 5 s** (ventana de medición por medición; DiskSpd/CDM usan 5–10 s), **`D_MIN` = 2 s** (por debajo, la cifra es ruido; suelo de medición), **`D_CALENTAMIENTO` (`-W`) = 2 s** (descarta caché SLC y colas frías; escribe pero no cuenta como medido), **`TOPE_DATOS` por medición de escritura = 4 GiB** (techo de desgaste por perfil; la lectura no desgasta → sin tope), **`TAMANO_ARCHIVO` (`-c`) = 1 GiB** (como el motor anterior; DiskSpd itera sobre él, no lo hace crecer). **Perfiles fijos** (4): `seq1m_q8` (`-b1M -o8 -s`), `seq1m_q1` (`-b1M -o1 -s`), `rnd4k_q32` (`-b4K -o32 -r4K`), `rnd4k_q1` (`-b4K -o1 -r4K`); todos `-t1`, `-Sh`, `-Z1M`, `-L`. La `-d` de cada escritura = `clamp(TOPE_DATOS / caudal_lectura_del_mismo_perfil, D_MIN, D_OBJETIVO)`. **Tensión conocida** (D3): en discos muy rápidos (Gen5, ~12 GB/s) el tope de 4 GiB se agota antes de `D_MIN`; en ese caso se mide `D_MIN` igualmente y el resultado se **etiqueta** «disco muy rápido: se escribieron ~N GiB para poder medir con fiabilidad» — una medición de 0,3 s no es un dato. El resultado siempre reporta la `-d` real y los bytes realmente escritos (de la salida de DiskSpd). Peso total de escritura estimado de la matriz: ~1,5 GiB (HDD) a ~30–50 GiB (Gen5, etiquetado); < 0,01 % de la resistencia TBW de cualquier SSD. Se confirmará contra hardware real en la validación manual del `quickstart.md` (T052) |
 
 ---
 
@@ -7604,6 +7710,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
 | `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
 | `AboutDialog` | «Acerca de» del riel (US-061) | mismo patrón de modal informativo que `ExplicacionModal` (`role="dialog" aria-modal`, foco devuelto, `Escape`, cruz); foto del autor como avatar (`src/lib/assets/`, único raster empaquetado — ADR-052) + nombre + biografía breve; pie con créditos (MIT, terceros, autor de `get_app_info`) y enlaces como **texto plano**; «Copiar información» copia solo lo diagnóstico |
+| `BenchmarkResults` | tabla de resultados de la prueba de Rendimiento (spec 008 / ADR-053) | `<table>` con `<th scope>` reales; una fila por perfil × sentido (MB/s, IOPS, latencia); filas `notRun` como «no ejecutado», **nunca 0**; marca «tope de datos alcanzado» por fila; pie «Medido con DiskSpd {version}». Solo en la pantalla de Pruebas (activa e historial) — no es un patrón transversal |
 
 #### Autorizados y pendientes de construir
 
@@ -8731,6 +8838,7 @@ export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 
 export { default as AiModelSelect } from "./AiModelSelect.svelte";
+export { default as BenchmarkResults } from "./BenchmarkResults.svelte";
 export { default as AboutDialog } from "./AboutDialog.svelte";
 export { default as ConfirmDialog } from "./ConfirmDialog.svelte";
 export { default as ExplicacionModal } from "./ExplicacionModal.svelte";
@@ -9270,6 +9378,26 @@ export function formatThroughput(
 
 /** Latencia en milisegundos. Por debajo de 10 ms se muestra un decimal: la diferencia entre
  *  0,2 ms (NVMe) y 4 ms (HDD) es justo la que interesa leer. */
+/** Caudal del benchmark en MB **decimales** por segundo (como CrystalDiskMark). El backend ya da
+ *  el valor en MB/s; aquí solo se le pone la unidad y los decimales. */
+export function formatMbPerSecond(
+  mbPerSecond: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
+  if (isMissing(mbPerSecond)) return NOT_AVAILABLE();
+  const decimals = mbPerSecond < 100 ? 1 : 0;
+  return `${mbPerSecond.toLocaleString(locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  })} MB/s`;
+}
+
+/** Operaciones de E/S por segundo del benchmark. Miles con separador de miles del locale. */
+export function formatIops(iops: number | null | undefined, locale = i18n.formatLocale): string {
+  if (isMissing(iops)) return NOT_AVAILABLE();
+  return iops.toLocaleString(locale, { maximumFractionDigits: 0 });
+}
+
 export function formatLatency(milliseconds: number | null | undefined, locale = i18n.formatLocale): string {
   if (isMissing(milliseconds)) return NOT_AVAILABLE();
   const decimals = milliseconds < 10 ? 1 : 0;
@@ -9717,7 +9845,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "range.7d": "7 d",
   "range.30d": "30 d",
   "range.custom": "Personalizado",
-  "tests.benchmark": "Lectura y escritura",
+  "tests.benchmark": "Rendimiento",
   "tests.chkdsk": "Escaneo del sistema de archivos",
   "tests.smartShort": "Autotest SMART corto",
   "tests.running": "En curso",
@@ -10024,15 +10152,15 @@ Fichero de origen: `src/lib/i18n/es.json`
   "tests.chip.running": "En curso",
   "tests.chip.unsupported": "No compatible",
   "tests.chkdskUnsupportedReason": "Este volumen no es NTFS: chkdsk /scan solo existe para ese sistema de archivos.",
-  "tests.cards.benchmark.title": "Lectura y escritura",
-  "tests.cards.benchmark.desc": "Crea un archivo temporal nuevo, escribe, sincroniza, lee y verifica el patrón. Nunca sobrescribe archivos existentes.",
+  "tests.cards.benchmark.title": "Rendimiento",
+  "tests.cards.benchmark.desc": "Mide el caudal, los IOPS y la latencia con cuatro perfiles tipo CrystalDiskMark (secuencial 1 MiB y aleatorio 4 KiB, en lectura y escritura). Usa un archivo temporal que se borra al terminar.",
   "tests.cards.chkdsk.title": "Escaneo del sistema de archivos",
   "tests.cards.chkdsk.desc": "Ejecuta chkdsk /scan en línea sobre un volumen NTFS compatible y conserva la salida completa. Sin opciones de reparación.",
   "tests.cards.autotest.title": "Autotest SMART corto",
   "tests.cards.autotest.desc": "Solicita al firmware su autotest corto. Solo se ofrece si el dispositivo declara compatibilidad; no puede coincidir con el benchmark.",
-  "tests.confirm.benchmark.title": "Probar lectura y escritura",
-  "tests.confirm.benchmark.body": "Se creará un archivo temporal de 1 GiB en el volumen elegido, en bloques de 1 MiB y acceso secuencial. Se elimina automáticamente al terminar o cancelar.",
-  "tests.confirm.benchmark.impact": "El rendimiento del equipo, la temperatura del disco y sus escrituras pueden verse afectados mientras dure la prueba.",
+  "tests.confirm.benchmark.title": "Probar el rendimiento",
+  "tests.confirm.benchmark.body": "Se creará un archivo temporal de 1 GiB en el volumen elegido y se ejecutarán ocho mediciones (cuatro perfiles, lectura y escritura). El archivo se borra al terminar o cancelar.",
+  "tests.confirm.benchmark.impact": "Las mediciones de escritura escribirán varios GB en el disco (unos 8 GB en la parte medida, más el calentamiento; en discos muy rápidos, más). Es una fracción ínfima de la resistencia del disco. El rendimiento del equipo y la temperatura pueden verse afectados mientras dure la prueba.",
   "tests.confirm.benchmark.confirmLabel": "Iniciar prueba",
   "tests.confirm.chkdsk.title": "Ejecutar chkdsk /scan en {letter}:",
   "tests.confirm.chkdsk.body": "Se comprobará el sistema de archivos en línea. No se programa ninguna reparación fuera de línea y no se modifica ningún archivo.",
@@ -10047,10 +10175,22 @@ Fichero de origen: `src/lib/i18n/es.json`
   "tests.active.progress": "{percent} %",
   "tests.active.indeterminate": "En curso",
   "tests.active.warning": "La prueba se detiene sola si el disco alcanza el límite térmico crítico o si el espacio libre baja de la reserva de seguridad. Mientras dure, el rendimiento del equipo puede bajar.",
-  "tests.metrics.write": "Escritura",
-  "tests.metrics.read": "Lectura",
-  "tests.metrics.latency": "Latencia media",
-  "tests.metrics.temperature": "Temperatura",
+  "tests.benchmark.col.profile": "Perfil",
+  "tests.benchmark.col.direction": "Sentido",
+  "tests.benchmark.col.throughput": "MB/s",
+  "tests.benchmark.col.iops": "IOPS",
+  "tests.benchmark.col.latency": "Latencia",
+  "tests.benchmark.profile.seq1m_q8": "Secuencial 1M (cola 8)",
+  "tests.benchmark.profile.seq1m_q1": "Secuencial 1M (cola 1)",
+  "tests.benchmark.profile.rnd4k_q32": "Aleatorio 4K (cola 32)",
+  "tests.benchmark.profile.rnd4k_q1": "Aleatorio 4K (cola 1)",
+  "tests.benchmark.direction.read": "Lectura",
+  "tests.benchmark.direction.write": "Escritura",
+  "tests.benchmark.notRun": "No ejecutado",
+  "tests.benchmark.dataCapHit": "tope de datos alcanzado",
+  "tests.benchmark.dataCapHitNote": "En los perfiles marcados, la medición se acortó para no escribir más datos de la cuenta: el disco es lo bastante rápido como para agotar el tope antes del tiempo objetivo.",
+  "tests.benchmark.measuredWith": "Medido con {tool} {version}",
+  "tests.benchmark.showTable": "Ver la tabla completa",
   "tests.history.title": "Historial de pruebas",
   "tests.history.empty": "Todavía no se ha ejecutado ninguna prueba.",
   "tests.history.inProgress": "{percent} % completado",
@@ -10068,13 +10208,14 @@ Fichero de origen: `src/lib/i18n/es.json`
   "tests.stoppedReason.completed": "Sin incidencias",
   "tests.stoppedReason.cancelled": "Cancelada por el usuario",
   "tests.stoppedReason.thermal": "Detenida en el límite térmico",
-  "tests.stoppedReason.space": "Detenida por falta de espacio",
   "tests.stoppedReason.error": "Detenida por un error",
   "error.volumeNotFound": "Este volumen ya no existe en el inventario.",
   "error.testBusy": "Ya hay una prueba en curso sobre ese disco.",
   "error.testUnsupported": "El dispositivo no admite esta prueba.",
   "error.testInsufficientSpace": "No queda espacio suficiente tras la reserva de seguridad.",
   "error.testIoFailed": "No se pudo preparar o ejecutar la prueba.",
+  "error.testToolMissing": "Esta instalación no incluye la herramienta de medición (DiskSpd).",
+  "error.testToolOutputUnreadable": "La herramienta de medición terminó pero su resultado no se pudo interpretar.",
   "error.pathInvalid": "La ruta no es válida para esta operación.",
   "error.exportWriteFailed": "No se pudo escribir el destino elegido.",
   "error.ia.noKey": "La ayuda con IA no está activada.",
@@ -10291,7 +10432,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "range.7d": "7 d",
   "range.30d": "30 d",
   "range.custom": "Custom",
-  "tests.benchmark": "Read & write test",
+  "tests.benchmark": "Performance",
   "tests.chkdsk": "File system scan",
   "tests.smartShort": "SMART short self-test",
   "tests.running": "Running",
@@ -10598,15 +10739,15 @@ Fichero de origen: `src/lib/i18n/en.json`
   "tests.chip.running": "Running",
   "tests.chip.unsupported": "Not supported",
   "tests.chkdskUnsupportedReason": "This volume isn't NTFS: chkdsk /scan only exists for that file system.",
-  "tests.cards.benchmark.title": "Read and write",
-  "tests.cards.benchmark.desc": "Creates a new temporary file, writes, syncs, reads and verifies the pattern. Never overwrites an existing file.",
+  "tests.cards.benchmark.title": "Performance",
+  "tests.cards.benchmark.desc": "Measures throughput, IOPS and latency with four CrystalDiskMark-style profiles (sequential 1 MiB and random 4 KiB, read and write). Uses a temporary file that is deleted when it finishes.",
   "tests.cards.chkdsk.title": "File system scan",
   "tests.cards.chkdsk.desc": "Runs chkdsk /scan online on a compatible NTFS volume and keeps the full output. No repair options.",
   "tests.cards.autotest.title": "Short SMART self-test",
   "tests.cards.autotest.desc": "Asks the firmware to run its short self-test. Only offered if the device declares support; it can't coincide with the benchmark.",
-  "tests.confirm.benchmark.title": "Test read and write",
-  "tests.confirm.benchmark.body": "A 1 GiB temporary file will be created on the chosen volume, in 1 MiB blocks with sequential access. It's removed automatically when it finishes or is cancelled.",
-  "tests.confirm.benchmark.impact": "The computer's performance, the disk's temperature and its writes may be affected while the test runs.",
+  "tests.confirm.benchmark.title": "Test performance",
+  "tests.confirm.benchmark.body": "A 1 GiB temporary file will be created on the chosen volume and eight measurements will run (four profiles, read and write). The file is deleted when it finishes or is cancelled.",
+  "tests.confirm.benchmark.impact": "The write measurements will write several GB to the disk (around 8 GB in the measured part, plus warm-up; more on very fast disks). That is a tiny fraction of the disk's endurance. The computer's performance and the disk's temperature may be affected while the test runs.",
   "tests.confirm.benchmark.confirmLabel": "Start test",
   "tests.confirm.chkdsk.title": "Run chkdsk /scan on {letter}:",
   "tests.confirm.chkdsk.body": "The file system will be checked online. No offline repair is scheduled and no file is modified.",
@@ -10621,10 +10762,22 @@ Fichero de origen: `src/lib/i18n/en.json`
   "tests.active.progress": "{percent}%",
   "tests.active.indeterminate": "In progress",
   "tests.active.warning": "The test stops on its own if the disk reaches the critical thermal limit or if free space drops below the safety reserve. Computer performance may drop while it runs.",
-  "tests.metrics.write": "Write",
-  "tests.metrics.read": "Read",
-  "tests.metrics.latency": "Average latency",
-  "tests.metrics.temperature": "Temperature",
+  "tests.benchmark.col.profile": "Profile",
+  "tests.benchmark.col.direction": "Direction",
+  "tests.benchmark.col.throughput": "MB/s",
+  "tests.benchmark.col.iops": "IOPS",
+  "tests.benchmark.col.latency": "Latency",
+  "tests.benchmark.profile.seq1m_q8": "Sequential 1M (queue 8)",
+  "tests.benchmark.profile.seq1m_q1": "Sequential 1M (queue 1)",
+  "tests.benchmark.profile.rnd4k_q32": "Random 4K (queue 32)",
+  "tests.benchmark.profile.rnd4k_q1": "Random 4K (queue 1)",
+  "tests.benchmark.direction.read": "Read",
+  "tests.benchmark.direction.write": "Write",
+  "tests.benchmark.notRun": "Not run",
+  "tests.benchmark.dataCapHit": "data cap reached",
+  "tests.benchmark.dataCapHitNote": "For the marked profiles the measurement was shortened so as not to write more data than needed: the disk is fast enough to reach the cap before the target time.",
+  "tests.benchmark.measuredWith": "Measured with {tool} {version}",
+  "tests.benchmark.showTable": "Show the full table",
   "tests.history.title": "Test history",
   "tests.history.empty": "No test has run yet.",
   "tests.history.inProgress": "{percent}% complete",
@@ -10642,13 +10795,14 @@ Fichero de origen: `src/lib/i18n/en.json`
   "tests.stoppedReason.completed": "No issues",
   "tests.stoppedReason.cancelled": "Cancelled by the user",
   "tests.stoppedReason.thermal": "Stopped at the thermal limit",
-  "tests.stoppedReason.space": "Stopped for lack of space",
   "tests.stoppedReason.error": "Stopped due to an error",
   "error.volumeNotFound": "This volume no longer exists in the inventory.",
   "error.testBusy": "There's already a test running on that disk.",
   "error.testUnsupported": "The device doesn't support this test.",
   "error.testInsufficientSpace": "There isn't enough space left after the safety reserve.",
   "error.testIoFailed": "The test couldn't be prepared or run.",
+  "error.testToolMissing": "This installation doesn't include the measurement tool (DiskSpd).",
+  "error.testToolOutputUnreadable": "The measurement tool finished but its output couldn't be interpreted.",
   "error.pathInvalid": "The path isn't valid for this operation.",
   "error.exportWriteFailed": "The chosen destination couldn't be written.",
   "error.ia.noKey": "AI help isn't turned on.",
@@ -11041,6 +11195,34 @@ requires keeping the source available and answering requests for that period; a 
 
 The source archive version must always match the binary version, or the "corresponding source"
 requirement is no longer met.
+
+### DiskSpd
+
+SmartDisk Monitor invokes `diskspd.exe` as a separate executable to run the disk performance test
+(ADR-053).
+
+- Project: https://github.com/microsoft/diskspd
+- Copyright (c) 2014 Microsoft
+- License: The MIT License (MIT) (`SPDX-License-Identifier: MIT`)
+- Version: **DiskSpd 2.3.0**, build 2026/06/15
+- Distribution status: **bundled** (amd64 only)
+
+| Bundled file | MD5 | SHA-256 |
+|---|---|---|
+| `bin/diskspd.exe` (amd64) | `2b8d3bd1f5afa45b6ee6051fccb54546` | `dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2` |
+
+Downloaded from the official release (`https://aka.ms/getdiskspd`) and verified as a PE with machine
+type `0x8664` (AMD64). Only `amd64/diskspd.exe` and the licence text are redistributed; the arm64
+and x86 builds, the `.pdb` symbols and the documentation are left out. The unmodified `LICENSE.txt`
+ships at `licenses\diskspd\LICENSE.txt` in the installer and is copied into the installed
+application folder.
+
+`diskspd` runs as a separate process, communicating over the command line and XML on standard
+output. It is never linked into the application, so no derivative work is created and the project's
+own MIT licence is unaffected.
+
+Unlike smartmontools (GPLv2), the MIT licence carries **no source-code obligation**: including the
+copyright notice and the licence text is sufficient. GPLv2 section 3(a) does **not** apply here.
 
 ### Instrument Sans
 

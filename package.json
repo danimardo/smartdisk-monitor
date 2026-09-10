@@ -1,7 +1,7 @@
 {
   "name": "smartdisk-monitor",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Supervisión local de discos para Windows",
   "author": "Daniel Diez Mardomingo",
   "license": "MIT",

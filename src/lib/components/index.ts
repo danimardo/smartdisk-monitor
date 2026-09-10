@@ -34,6 +34,7 @@ export { default as AlertCard } from "./AlertCard.svelte";
 export { default as EventRow } from "./EventRow.svelte";
 
 export { default as AiModelSelect } from "./AiModelSelect.svelte";
+export { default as BenchmarkResults } from "./BenchmarkResults.svelte";
 export { default as AboutDialog } from "./AboutDialog.svelte";
 export { default as ConfirmDialog } from "./ConfirmDialog.svelte";
 export { default as ExplicacionModal } from "./ExplicacionModal.svelte";

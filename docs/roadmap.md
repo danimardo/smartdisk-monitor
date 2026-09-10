@@ -111,7 +111,8 @@ como lista pendiente.
 
 ## Versión 0.4 — Pruebas e informes
 
-- Benchmark de archivo temporal.
+- Benchmark de archivo temporal. *(0.1.5 lo sustituye por la prueba de Rendimiento con Microsoft
+  DiskSpd — perfiles estilo CrystalDiskMark, sin verificación de integridad, ADR-053.)*
 - CHKDSK `/scan`.
 - Autotest SMART corto.
 - CSV, JSON y HTML.

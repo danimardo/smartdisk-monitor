@@ -50,9 +50,7 @@ test.describe("ayuda con IA — Ajustes (US1)", () => {
     await instalarIpcFalso(page, { ...RESPUESTAS, estado_ia: estadoIaDesactivada });
     await page.goto("/settings");
 
-    await expect(
-      page.getByRole("button", { name: es["settings.ai.cta.useShared"] })
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: es["settings.ai.cta.useShared"] })).toHaveCount(0);
   });
 
   test("con la clave de demostración compilada, el botón la activa con un gesto (ADR-054)", async ({
@@ -67,9 +65,7 @@ test.describe("ayuda con IA — Ajustes (US1)", () => {
 
     await page.getByRole("button", { name: es["settings.ai.cta.useShared"] }).click();
 
-    const llamada = (await llamadas(page)).find(
-      (l) => l.comando === "activar_ayuda_ia_compartida"
-    );
+    const llamada = (await llamadas(page)).find((l) => l.comando === "activar_ayuda_ia_compartida");
     expect(llamada).toBeTruthy();
     await expect(page.getByText(es["settings.ai.status.on"])).toBeVisible();
     await expect(page.getByText(es["settings.ai.shared.inUse"])).toBeVisible();

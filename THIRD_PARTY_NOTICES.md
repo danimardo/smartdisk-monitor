@@ -38,6 +38,34 @@ requires keeping the source available and answering requests for that period; a 
 The source archive version must always match the binary version, or the "corresponding source"
 requirement is no longer met.
 
+## DiskSpd
+
+SmartDisk Monitor invokes `diskspd.exe` as a separate executable to run the disk performance test
+(ADR-053).
+
+- Project: https://github.com/microsoft/diskspd
+- Copyright (c) 2014 Microsoft
+- License: The MIT License (MIT) (`SPDX-License-Identifier: MIT`)
+- Version: **DiskSpd 2.3.0**, build 2026/06/15
+- Distribution status: **bundled** (amd64 only)
+
+| Bundled file | MD5 | SHA-256 |
+|---|---|---|
+| `bin/diskspd.exe` (amd64) | `2b8d3bd1f5afa45b6ee6051fccb54546` | `dd4e57e1e8ccaf5d6437938f8aab7f17e9a1e6d8fba8a093006b7cadf16faea2` |
+
+Downloaded from the official release (`https://aka.ms/getdiskspd`) and verified as a PE with machine
+type `0x8664` (AMD64). Only `amd64/diskspd.exe` and the licence text are redistributed; the arm64
+and x86 builds, the `.pdb` symbols and the documentation are left out. The unmodified `LICENSE.txt`
+ships at `licenses\diskspd\LICENSE.txt` in the installer and is copied into the installed
+application folder.
+
+`diskspd` runs as a separate process, communicating over the command line and XML on standard
+output. It is never linked into the application, so no derivative work is created and the project's
+own MIT licence is unaffected.
+
+Unlike smartmontools (GPLv2), the MIT licence carries **no source-code obligation**: including the
+copyright notice and the licence text is sufficient. GPLv2 section 3(a) does **not** apply here.
+
 ## Instrument Sans
 
 The user interface embeds the Instrument Sans variable font. The application performs no network

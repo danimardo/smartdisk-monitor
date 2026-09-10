@@ -37,7 +37,8 @@ El producto debe ayudar a responder:
 - Captura y correlación de eventos relevantes de Windows.
 - Historial local en SQLite, gráficas y panel general.
 - Alertas locales, agrupadas y visibles desde la aplicación y el systray.
-- Prueba manual de lectura y escritura con un archivo temporal controlado.
+- Prueba manual de rendimiento del disco (benchmark con Microsoft DiskSpd, ADR-053) con un archivo
+  temporal controlado.
 - Ejecución manual de `chkdsk /scan`.
 - Autotest SMART corto manual cuando el dispositivo lo soporte.
 - Exportación CSV, JSON y HTML imprimible.
@@ -189,26 +190,38 @@ Las alertas de capacidad son poco intrusivas: se genera una alerta agrupada al c
 
 ## 6. Pruebas manuales
 
-### Prueba de lectura y escritura
+### Prueba de Rendimiento
 
-- El usuario elige un volumen de un disco seleccionado.
-- Se crea un archivo temporal dedicado en una carpeta controlada por la aplicación.
-- Nunca se sobrescribe un archivo existente.
-- Parámetros predeterminados: **1 GiB** de archivo, bloques de **1 MiB**, acceso **secuencial**,
-  **una** pasada de escritura y una de lectura. Configurables entre 256 MiB y 8 GiB.
-- La escritura se hace **sin caché del sistema** (`FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`)
-  y se sincroniza antes de medir. Sin esto se estaría midiendo la memoria RAM y las cifras no serían
-  comparables entre ejecuciones ni entre discos.
-- El tamaño se limita por configuración, espacio libre y una **reserva de seguridad de 2 GiB o el
-  5 % del volumen, la mayor de las dos**, que nunca se invade.
-- Se escribe, sincroniza, lee y verifica el contenido mediante bloques con patrón comprobable.
-- Se muestran rendimiento, latencia, progreso y temperatura.
-- Se puede cancelar.
-- Se detiene si se alcanza el límite térmico crítico —el del fabricante si lo declara, y si no el
-  configurado— o si se llega a la reserva de espacio. La razón de la parada se conserva en el
-  historial de la prueba.
-- El archivo se elimina al finalizar o cancelar; si no fuera posible, queda claramente identificado para su limpieza posterior.
-- Antes de comenzar se advierte del impacto temporal en rendimiento, temperatura y escrituras del SSD.
+- Motor: **Microsoft DiskSpd** (ADR-053), redistribuido como binario independiente igual que
+  `smartctl`. Se ejecuta como proceso externo, nunca enlazado.
+- El usuario elige un volumen de un disco seleccionado. No hay parámetros que configurar.
+- Se crea un archivo temporal dedicado de **1 GiB** en una carpeta controlada por la aplicación en
+  la raíz del volumen. Nunca se sobrescribe un archivo existente.
+- La prueba corre una **matriz fija de 8 mediciones**: cuatro perfiles estilo CrystalDiskMark
+  —secuencial 1 MiB a cola 8 y a cola 1; aleatorio 4 KiB a cola 32 y a cola 1—, cada uno en
+  **lectura y escritura**.
+- La E/S se hace **sin caché del sistema** (`-Sh` = `FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`)
+  y la escritura usa un búfer de datos aleatorios para que un SSD con compresión no infle las cifras.
+- Cada medición corre unos **5 s** (suelo 2 s), o hasta un **tope de datos de ~4 GiB** por perfil de
+  escritura, lo que llegue antes. Si el disco es tan rápido que el tope se agota antes del suelo, se
+  mide el suelo y la fila se **etiqueta**. El resultado siempre indica la duración real y los bytes
+  movidos.
+- El tamaño del archivo se limita por espacio libre y una **reserva de seguridad de 2 GiB o el 5 %
+  del volumen, la mayor de las dos**, que nunca se invade.
+- **No hay verificación de integridad del contenido** (a diferencia del motor anterior): DiskSpd no
+  la hace y añadirla por fuera desvirtuaría las cifras.
+- El resultado es una **tabla** con caudal (MB/s decimales), IOPS y latencia media por perfil y
+  sentido, más la versión de DiskSpd con la que se midió. Las mediciones que no llegaron a correr
+  por una parada anticipada se muestran como «no ejecutado», nunca a cero.
+- Se puede cancelar; la E/S cesa al matar el proceso de DiskSpd (≤ 3 s).
+- Se detiene si el disco alcanza el límite térmico crítico —el del fabricante si lo declara, y si no
+  el configurado—, matando el proceso de DiskSpd y conservando las filas ya medidas. La razón de la
+  parada se conserva en el historial.
+- No puede coincidir con el autotest SMART del mismo disco físico.
+- El archivo se elimina al finalizar o cancelar; si no fuera posible, queda claramente identificado
+  para su limpieza posterior.
+- Antes de comenzar se advierte del impacto temporal en rendimiento y temperatura y de los GB que se
+  escribirán.
 
 ### CHKDSK
 

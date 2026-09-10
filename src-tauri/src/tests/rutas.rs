@@ -2,8 +2,9 @@
 //! `docs/product-specification.md` §6, `docs/open-questions.md` J.27).
 //!
 //! Puro: nada aquí toca el sistema de archivos. Decide **dónde** puede vivir el archivo temporal
-//! y **cuánto** puede pesar; crear, escribir y borrar ese archivo es responsabilidad de
-//! `tests::benchmark` (T079), que solo llama a esto antes de tocar disco.
+//! y **cuánto** puede pesar; crear ese archivo (vía `diskspd.exe -c`) y borrarlo es
+//! responsabilidad de `commands::start_benchmark` y `tests::diskspd`, que solo llaman a esto antes
+//! de tocar disco.
 
 use std::path::{Path, PathBuf};
 

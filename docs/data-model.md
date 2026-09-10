@@ -99,12 +99,17 @@
 
 ### `test_runs`
 
-- Tipo: benchmark, chkdsk_scan o smart_short.
+- Tipo: benchmark (prueba de **Rendimiento**), chkdsk_scan o smart_short.
 - Disco/volumen objetivo.
 - Estado: pending, running, cancelling, completed, failed, cancelled, interrupted.
 - Inicio, fin, progreso y resultado.
-- Parámetros y resumen de métricas.
-- Ruta temporal solo mientras sea necesaria.
+- Parámetros y resumen de métricas. **Sin cambio de esquema** (ADR-053): el resumen vive en
+  `result_summary_json`, columna libre por diseño (J.29). Para un benchmark lleva ahora un
+  `BenchmarkResult` —`{ tool, toolVersion, fileSizeBytes, rows[], notRun[] }`, la forma exacta en
+  `docs/ui-contract.md` §3.6— en vez de los cuatro campos planos de caudal/latencia anteriores.
+  `parameters_json` guarda `{ tool: "diskspd", fileSizeBytes, profiles }`.
+- Ruta temporal (`temp_path`) solo mientras sea necesaria; se limpia a `NULL` en cuanto el archivo
+  del benchmark se borra con éxito, y queda con la ruta (`orphanPath`) si el borrado falla.
 
 ### `settings`
 

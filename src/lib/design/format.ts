@@ -81,6 +81,26 @@ export function formatThroughput(
 
 /** Latencia en milisegundos. Por debajo de 10 ms se muestra un decimal: la diferencia entre
  *  0,2 ms (NVMe) y 4 ms (HDD) es justo la que interesa leer. */
+/** Caudal del benchmark en MB **decimales** por segundo (como CrystalDiskMark). El backend ya da
+ *  el valor en MB/s; aquí solo se le pone la unidad y los decimales. */
+export function formatMbPerSecond(
+  mbPerSecond: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
+  if (isMissing(mbPerSecond)) return NOT_AVAILABLE();
+  const decimals = mbPerSecond < 100 ? 1 : 0;
+  return `${mbPerSecond.toLocaleString(locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  })} MB/s`;
+}
+
+/** Operaciones de E/S por segundo del benchmark. Miles con separador de miles del locale. */
+export function formatIops(iops: number | null | undefined, locale = i18n.formatLocale): string {
+  if (isMissing(iops)) return NOT_AVAILABLE();
+  return iops.toLocaleString(locale, { maximumFractionDigits: 0 });
+}
+
 export function formatLatency(milliseconds: number | null | undefined, locale = i18n.formatLocale): string {
   if (isMissing(milliseconds)) return NOT_AVAILABLE();
   const decimals = milliseconds < 10 ? 1 : 0;
