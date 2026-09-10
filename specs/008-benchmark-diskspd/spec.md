@@ -175,7 +175,15 @@ ver la tabla de cifras.
   profundidad de cola baja y a profundidad de cola alta. Cada perfil se mide en **lectura** y en
   **escritura**. El usuario no configura cola, hilos ni bloque.
 - **FR-002**: Para cada combinación de perfil y sentido, la prueba DEBE reportar **caudal en MB/s**,
-  **IOPS** y **latencia media en milisegundos**.
+  **IOPS** y **latencia media**.
+- **FR-002a**: Los resultados DEBEN presentarse como una **rejilla con la disposición de
+  CrystalDiskMark** —filas = perfiles (notación `SEQ1M Q8T1`…), columnas = Lectura y Escritura—,
+  pintada con los colores de tema de la aplicación (no los de CrystalDiskMark). Cada celda muestra
+  la cifra principal en grande (MB/s, o IOPS con un **selector global** que alterna todas las
+  celdas), la latencia como dato secundario, y una **barra proporcional** al valor máximo de la
+  ejecución. Los encabezados de columna y las etiquetas de perfil DEBEN llevar un **tooltip** en
+  lenguaje llano que explique qué mide cada uno. La rejilla se **rellena celda a celda** conforme
+  termina cada medición (FR-009); una celda sin dato aún es «pendiente», nunca «0» (constitución §I).
 - **FR-003**: La prueba DEBE escribir sobre un **archivo temporal** en la carpeta controlada del
   volumen probado (`<raíz del volumen>\SmartDisk Monitor Benchmark\`), con un nombre que no colisione
   y **comprobando activamente que no existe** antes de crearlo; **nunca** sobrescribe un archivo
@@ -193,8 +201,9 @@ ver la tabla de cifras.
   pocos segundos y los resultados parciales DEBEN conservarse.
 - **FR-008**: La prueba NO DEBE ejecutarse a la vez que un autotest SMART corto sobre el **mismo
   disco físico**, ni a la vez que otra prueba de rendimiento sobre el mismo disco.
-- **FR-009**: Mientras corre, la prueba DEBE mostrar **progreso en vivo**: qué perfil se está
-  midiendo y un porcentaje de avance de la matriz completa.
+- **FR-009**: Mientras corre, la prueba DEBE mostrar **progreso en vivo**: la rejilla de resultados
+  se va rellenando con cada medición terminada (FR-002a), con la celda en curso marcada, más un
+  porcentaje de avance de la matriz completa.
 - **FR-010**: Antes de empezar, la prueba DEBE **advertir del impacto**: bajada temporal del
   rendimiento del equipo, calentamiento del disco y **cuántos datos se van a escribir en total**
   sobre el SSD.

@@ -436,8 +436,12 @@ interface BenchmarkResult {
 - **Orden de la matriz**: para cada perfil, primero **lectura** (da el caudal de referencia para
   dimensionar la `-d` de la escritura, ADR-053 D3), luego **escritura**; los 4 perfiles en orden
   fijo. `progressPercent` avanza `100/8` por medición terminada.
+- **Rejilla incremental**: en un `TestRun` de tipo `benchmark`, `result.benchmark` es **no nulo
+  desde el arranque** (`rows: []`), y cada `test:progress` añade una fila conforme termina su
+  medición; `notRun` se rellena solo al final. La interfaz pinta la rejilla estilo CrystalDiskMark
+  celda a celda: una celda sin fila y sin `notRun` es «pendiente», nunca 0 (§I).
 - **Parada anticipada**: las mediciones hechas quedan en `rows`, las que faltaban en `notRun`;
-  `status` = `cancelled` o `failed`, `stoppedReason` lo precisa. Nunca una fila a 0 (§I).
+  `status` = `cancelled` o `failed`, `stoppedReason` lo precisa.
 - La UI **nunca construye la línea de comandos**: el backend arma cada invocación de DiskSpd, la
   lanza por `platform::proceso_externo`, parsea el `-Rxml` y compone `BenchmarkResult`. `command` es
   una descripción legible de la matriz, no un comando de shell.

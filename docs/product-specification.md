@@ -210,9 +210,13 @@ Las alertas de capacidad son poco intrusivas: se genera una alerta agrupada al c
   del volumen, la mayor de las dos**, que nunca se invade.
 - **No hay verificación de integridad del contenido** (a diferencia del motor anterior): DiskSpd no
   la hace y añadirla por fuera desvirtuaría las cifras.
-- El resultado es una **tabla** con caudal (MB/s decimales), IOPS y latencia media por perfil y
-  sentido, más la versión de DiskSpd con la que se midió. Las mediciones que no llegaron a correr
-  por una parada anticipada se muestran como «no ejecutado», nunca a cero.
+- El resultado se presenta como una **rejilla con la disposición de CrystalDiskMark** (filas =
+  perfiles, columnas = Lectura y Escritura), con los colores del tema de la aplicación: cifra grande
+  de MB/s —o IOPS, con un selector—, latencia como dato secundario, y una barra proporcional. Los
+  encabezados y las etiquetas de perfil llevan un texto de ayuda que explica qué mide cada uno. La
+  rejilla se rellena celda a celda mientras corre la prueba. Las mediciones que no llegaron a correr
+  por una parada anticipada se muestran como «no ejecutado», nunca a cero. Al pie, la versión de
+  DiskSpd con la que se midió.
 - Se puede cancelar; la E/S cesa al matar el proceso de DiskSpd (≤ 3 s).
 - Se detiene si el disco alcanza el límite térmico crítico —el del fabricante si lo declara, y si no
   el configurado—, matando el proceso de DiskSpd y conservando las filas ya medidas. La razón de la

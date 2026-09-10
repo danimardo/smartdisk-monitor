@@ -233,7 +233,8 @@ fn fila_de(
 ///   parar. El llamador distingue cancelación de guardia térmica releyendo su estado.
 /// - `razon_de_parada`: tras un `Ok(None)`, devuelve por qué (cancelación vs. térmica).
 /// - `leer_temperatura`: para `max_temperatura_c` del resumen.
-/// - `on_progreso(clave_perfil, sentido, hechas)`: 0..=8.
+/// - `on_avance(filas_hasta_ahora, version_herramienta, hechas)`: tras cada medición terminada,
+///   para que el llamador publique la rejilla de resultados celda a celda (`hechas` va de 1 a 8).
 #[allow(clippy::too_many_arguments)]
 pub fn orquestar_matriz(
     ruta_archivo: &Path,
@@ -242,7 +243,7 @@ pub fn orquestar_matriz(
     debe_parar: impl Fn() -> bool,
     razon_de_parada: impl Fn() -> RazonParada,
     mut leer_temperatura: impl FnMut() -> Option<f64>,
-    mut on_progreso: impl FnMut(&'static str, Sentido, u64),
+    mut on_avance: impl FnMut(&[FilaResultado], Option<&str>, u64),
 ) -> ResultadoMatriz {
     let mut filas: Vec<FilaResultado> = Vec::with_capacity(8);
     let mut no_ejecutadas: Vec<(&'static str, &'static str)> = Vec::new();
@@ -290,7 +291,7 @@ pub fn orquestar_matriz(
                             }
                             filas.push(fila_de(perfil.clave, sentido, &salida, tope_alcanzado));
                             hechas += 1;
-                            on_progreso(perfil.clave, sentido, hechas);
+                            on_avance(&filas, tool_version.as_deref(), hechas);
                         }
                         Err(SalidaIlegible(detalle)) => {
                             no_ejecutadas.push((perfil.clave, sentido.clave()));
@@ -511,6 +512,7 @@ mod tests {
             };
             Ok(Some(xml))
         };
+        let mut avances: Vec<(usize, Option<String>, u64)> = Vec::new();
         let r = orquestar_matriz(
             &ruta(),
             TAMANO_ARCHIVO_BYTES,
@@ -518,7 +520,9 @@ mod tests {
             || false,
             || RazonParada::Cancelada,
             || Some(44.0),
-            |_, _, _| {},
+            |filas, version, hechas| {
+                avances.push((filas.len(), version.map(str::to_owned), hechas));
+            },
         );
         assert_eq!(r.razon, RazonParada::Completada);
         assert_eq!(r.filas.len(), 8);
@@ -529,6 +533,15 @@ mod tests {
             .filas
             .iter()
             .all(|f| f.mb_por_segundo > 0.0 && f.iops > 0.0));
+        // `on_avance` se llama una vez por medición, con la rejilla creciendo y la versión ya
+        // conocida desde la primera.
+        assert_eq!(avances.len(), 8);
+        assert_eq!(
+            avances.iter().map(|(n, ..)| *n).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5, 6, 7, 8]
+        );
+        assert_eq!(avances[0].1.as_deref(), Some("2.3.0"));
+        assert_eq!(avances.last().unwrap().2, 8);
     }
 
     #[test]

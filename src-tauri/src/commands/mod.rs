@@ -5329,6 +5329,42 @@ pub struct BenchmarkNotRunJson {
     pub direction: String,
 }
 
+/// Compone un `BenchmarkResultJson` a partir de las filas medidas por `tests::diskspd`. Se usa
+/// tanto para el resultado final como para las publicaciones parciales durante la ejecución (la
+/// rejilla se llena celda a celda en la interfaz).
+fn benchmark_json_de(
+    filas: &[tests::diskspd::FilaResultado],
+    no_ejecutadas: &[(&str, &str)],
+    tool_version: Option<&str>,
+    file_size_bytes: u64,
+) -> BenchmarkResultJson {
+    BenchmarkResultJson {
+        tool: "diskspd".to_owned(),
+        tool_version: tool_version.unwrap_or_default().to_owned(),
+        file_size_bytes,
+        rows: filas
+            .iter()
+            .map(|f| BenchmarkRowJson {
+                profile: f.perfil.to_owned(),
+                direction: f.sentido.to_owned(),
+                mb_per_second: f.mb_por_segundo,
+                iops: f.iops,
+                avg_latency_ms: f.latencia_media_ms,
+                actual_duration_s: f.duracion_real_s,
+                bytes_moved: f.bytes_movidos,
+                data_cap_hit: f.tope_alcanzado,
+            })
+            .collect(),
+        not_run: no_ejecutadas
+            .iter()
+            .map(|(p, d)| BenchmarkNotRunJson {
+                profile: (*p).to_owned(),
+                direction: (*d).to_owned(),
+            })
+            .collect(),
+    }
+}
+
 /// Espejo de `TestResult` en `src/lib/api/types.ts` (declarado a mano allí; T084 pendiente).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -5564,7 +5600,17 @@ pub fn start_benchmark(
         started_at_utc: Some(ahora),
         finished_at_utc: None,
         progress_percent: Some(0),
-        result_summary_json: None,
+        // Rejilla vacía desde el arranque: la interfaz la pinta con todas las celdas «pendientes»
+        // y se van llenando con los eventos `test:progress` (spec 008, presentación estilo CDM).
+        result_summary_json: serde_json::to_string(&ResumenPruebaJson {
+            passed: None,
+            max_temperature_c: None,
+            stopped_reason: None,
+            output: None,
+            output_encoding: None,
+            benchmark: Some(benchmark_json_de(&[], &[], None, tamano_bytes)),
+        })
+        .ok(),
         parameters_json: serde_json::to_string(&envelope).ok(),
         temp_path: Some(ruta_archivo.to_string_lossy().into_owned()),
     };
@@ -5623,23 +5669,32 @@ pub fn start_benchmark(
 
     let app_progreso = app.clone();
     let id_progreso = id.clone();
-    let mut ultimo_progreso = std::time::Instant::now() - std::time::Duration::from_secs(10);
-    let on_progreso = move |_perfil: &'static str, _sentido: diskspd::Sentido, hechas: u64| {
-        if ultimo_progreso.elapsed() < std::time::Duration::from_millis(300) && hechas < 8 {
-            return;
-        }
-        ultimo_progreso = std::time::Instant::now();
-        let porcentaje = ((hechas as f64 / 8.0) * 100.0).min(100.0) as i64;
-        if let Ok(conn) = app_progreso.state::<AppState>().conn.lock() {
-            let _ = repo_varios::update_test_run_status(
-                &conn,
-                &id_progreso,
-                TestStatus::Running,
-                Some(porcentaje),
-            );
-            emitir_test_progress(&app_progreso, &conn, &id_progreso);
-        }
-    };
+    let tamano_progreso = tamano_bytes;
+    // Cada medición terminada publica la rejilla parcial: la interfaz la llena celda a celda
+    // (spec 008, presentación estilo CrystalDiskMark). Sin `notRun` mientras corre — una celda
+    // ausente es «pendiente», no «no ejecutada».
+    let on_avance =
+        move |filas: &[tests::diskspd::FilaResultado], version: Option<&str>, hechas: u64| {
+            let porcentaje = ((hechas as f64 / 8.0) * 100.0).min(100.0) as i64;
+            let parcial = benchmark_json_de(filas, &[], version, tamano_progreso);
+            let resumen = ResumenPruebaJson {
+                passed: None,
+                max_temperature_c: None,
+                stopped_reason: None,
+                output: None,
+                output_encoding: None,
+                benchmark: Some(parcial),
+            };
+            if let Ok(conn) = app_progreso.state::<AppState>().conn.lock() {
+                let _ = repo_varios::update_test_run_progress_summary(
+                    &conn,
+                    &id_progreso,
+                    Some(porcentaje),
+                    serde_json::to_string(&resumen).ok().as_deref(),
+                );
+                emitir_test_progress(&app_progreso, &conn, &id_progreso);
+            }
+        };
 
     let bandera_parar = bandera.clone();
     let temp_parar = ultima_temp.clone();
@@ -5689,7 +5744,7 @@ pub fn start_benchmark(
             debe_parar,
             razon_de_parada,
             leer_temperatura,
-            on_progreso,
+            on_avance,
         );
 
         // El archivo se borra siempre que se pueda, se sepa o no el resultado
@@ -5709,32 +5764,13 @@ pub fn start_benchmark(
             r.razon.clave()
         };
 
-        let benchmark = (!sin_datos || !r.no_ejecutadas.is_empty()).then(|| BenchmarkResultJson {
-            tool: "diskspd".to_owned(),
-            tool_version: r.tool_version.clone().unwrap_or_default(),
-            file_size_bytes: tamano_hilo,
-            rows: r
-                .filas
-                .iter()
-                .map(|f| BenchmarkRowJson {
-                    profile: f.perfil.to_owned(),
-                    direction: f.sentido.to_owned(),
-                    mb_per_second: f.mb_por_segundo,
-                    iops: f.iops,
-                    avg_latency_ms: f.latencia_media_ms,
-                    actual_duration_s: f.duracion_real_s,
-                    bytes_moved: f.bytes_movidos,
-                    data_cap_hit: f.tope_alcanzado,
-                })
-                .collect(),
-            not_run: r
-                .no_ejecutadas
-                .iter()
-                .map(|(p, d)| BenchmarkNotRunJson {
-                    profile: (*p).to_owned(),
-                    direction: (*d).to_owned(),
-                })
-                .collect(),
+        let benchmark = (!sin_datos || !r.no_ejecutadas.is_empty()).then(|| {
+            benchmark_json_de(
+                &r.filas,
+                &r.no_ejecutadas,
+                r.tool_version.as_deref(),
+                tamano_hilo,
+            )
         });
 
         let resumen = ResumenPruebaJson {

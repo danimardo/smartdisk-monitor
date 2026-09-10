@@ -101,6 +101,19 @@ export function formatIops(iops: number | null | undefined, locale = i18n.format
   return iops.toLocaleString(locale, { maximumFractionDigits: 0 });
 }
 
+/** Latencia del benchmark: **µs** por debajo de 1 ms (donde vive el acceso aleatorio 4K de un
+ *  NVMe), ms por encima (acceso secuencial). Es la convención de CrystalDiskMark. */
+export function formatBenchLatency(
+  milliseconds: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
+  if (isMissing(milliseconds)) return NOT_AVAILABLE();
+  if (milliseconds < 1) {
+    return `${(milliseconds * 1000).toLocaleString(locale, { maximumFractionDigits: 0 })} µs`;
+  }
+  return `${milliseconds.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ms`;
+}
+
 export function formatLatency(milliseconds: number | null | undefined, locale = i18n.formatLocale): string {
   if (isMissing(milliseconds)) return NOT_AVAILABLE();
   const decimals = milliseconds < 10 ? 1 : 0;

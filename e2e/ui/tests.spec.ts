@@ -43,7 +43,7 @@ test.describe("pruebas y diagnóstico", () => {
     expect(invocacion?.args).toEqual({ volumeId: "vol-c" });
   });
 
-  test("un benchmark terminado pinta la tabla de Rendimiento con sus 8 filas", async ({ page }) => {
+  test("un benchmark terminado pinta la rejilla de Rendimiento estilo CrystalDiskMark", async ({ page }) => {
     await instalarIpcFalso(page, {
       ...RESPUESTAS,
       get_test_runs: [testRunBenchmarkTerminado]
@@ -51,12 +51,19 @@ test.describe("pruebas y diagnóstico", () => {
     await page.goto("/tests");
 
     const historial = page.locator("section", { hasText: es["tests.history.title"] });
+    await expect(historial.getByText("Medido con DiskSpd 2.3.0")).toBeVisible();
+    // Encabezado de columna real (Lectura/Escritura) y de fila (notación CDM del perfil).
     await expect(
-      historial.getByText(es["tests.benchmark.measuredWith"].replace("{tool} {version}", "DiskSpd 2.3.0"))
+      historial
+        .getByRole("columnheader", { name: es["tests.benchmark.direction.read"], exact: false })
+        .first()
     ).toBeVisible();
-    await expect(historial.getByRole("columnheader", { name: es["tests.benchmark.col.iops"] })).toBeVisible();
     await expect(
-      historial.getByRole("rowheader", { name: es["tests.benchmark.profile.rnd4k_q1"] }).first()
+      historial.getByRole("rowheader", { name: es["tests.benchmark.short.rnd4k_q1"] }).first()
+    ).toBeVisible();
+    // El toggle MB/s ↔ IOPS existe.
+    await expect(
+      historial.getByRole("radio", { name: es["tests.benchmark.col.iops"] }).first()
     ).toBeVisible();
   });
 

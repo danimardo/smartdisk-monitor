@@ -60,7 +60,7 @@ interface TestResult {
   passed: boolean | null;                 // chkdsk / autotest; siempre null en benchmark
   maxTemperatureC: number | null;
   stoppedReason: "completed" | "cancelled" | "thermal" | "error" | null;
-  benchmark: BenchmarkResult | null;      // no null sólo si type === "benchmark" y hubo al menos una fila
+  benchmark: BenchmarkResult | null;      // en type === "benchmark": no null desde el arranque (rejilla que se llena en vivo)
 }
 
 interface BenchmarkResult {
@@ -93,10 +93,15 @@ interface BenchmarkRow {
 - **Orden de la matriz**: para cada perfil, primero **lectura**, luego **escritura** (la lectura da
   el caudal de referencia para dimensionar la `-d` de la escritura, D3). Los 4 perfiles en el orden
   de `PERFILES`.
-- **Progreso**: `progressPercent` avanza `100/8` por cada medición terminada; el evento
-  `test:progress` lleva además qué perfil/sentido está en curso (clave i18n, no texto).
-- **Parada anticipada**: las mediciones ya hechas quedan en `rows`; las que faltaban, en `notRun`.
-  `status` = `cancelled` o `failed`; `stoppedReason` lo precisa.
+- **Progreso incremental**: `progressPercent` avanza `100/8` por cada medición terminada. Durante
+  `status: "running"`, `result.benchmark` **no es null**: sus `rows` van creciendo (una por
+  medición terminada), `notRun` está vacío y `toolVersion` se rellena en cuanto se parsea la primera
+  salida. El evento `test:progress` —que ya lleva `result`— transporta esa rejilla parcial; la
+  interfaz la pinta celda a celda (FR-002a). Una celda que no está en `rows` ni en `notRun` es
+  «pendiente»; la primera de la matriz en ese estado es la que se está midiendo.
+- **Parada anticipada**: las mediciones ya hechas quedan en `rows`; las que faltaban, en `notRun`
+  (que solo se rellena al terminar la ejecución). `status` = `cancelled` o `failed`; `stoppedReason`
+  lo precisa.
 - **`command`** y **`parameters.toolVersion`** hacen la ejecución comparable con otra y con
   CrystalDiskMark (FR-012).
 - **Cero red** en todo el flujo (FR-014).

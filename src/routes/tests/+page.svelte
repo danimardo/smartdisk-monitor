@@ -331,7 +331,7 @@
         />
 
         {#if pruebaActiva.type === "benchmark" && pruebaActiva.result?.benchmark}
-          <BenchmarkResults result={pruebaActiva.result.benchmark} />
+          <BenchmarkResults result={pruebaActiva.result.benchmark} running />
         {/if}
 
         <div class="flex gap-3 rounded-inner bg-warn-soft p-4">

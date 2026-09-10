@@ -538,9 +538,13 @@ Las alertas de capacidad son poco intrusivas: se genera una alerta agrupada al c
   del volumen, la mayor de las dos**, que nunca se invade.
 - **No hay verificación de integridad del contenido** (a diferencia del motor anterior): DiskSpd no
   la hace y añadirla por fuera desvirtuaría las cifras.
-- El resultado es una **tabla** con caudal (MB/s decimales), IOPS y latencia media por perfil y
-  sentido, más la versión de DiskSpd con la que se midió. Las mediciones que no llegaron a correr
-  por una parada anticipada se muestran como «no ejecutado», nunca a cero.
+- El resultado se presenta como una **rejilla con la disposición de CrystalDiskMark** (filas =
+  perfiles, columnas = Lectura y Escritura), con los colores del tema de la aplicación: cifra grande
+  de MB/s —o IOPS, con un selector—, latencia como dato secundario, y una barra proporcional. Los
+  encabezados y las etiquetas de perfil llevan un texto de ayuda que explica qué mide cada uno. La
+  rejilla se rellena celda a celda mientras corre la prueba. Las mediciones que no llegaron a correr
+  por una parada anticipada se muestran como «no ejecutado», nunca a cero. Al pie, la versión de
+  DiskSpd con la que se midió.
 - Se puede cancelar; la E/S cesa al matar el proceso de DiskSpd (≤ 3 s).
 - Se detiene si el disco alcanza el límite térmico crítico —el del fabricante si lo declara, y si no
   el configurado—, matando el proceso de DiskSpd y conservando las filas ya medidas. La razón de la
@@ -2617,8 +2621,12 @@ interface BenchmarkResult {
 - **Orden de la matriz**: para cada perfil, primero **lectura** (da el caudal de referencia para
   dimensionar la `-d` de la escritura, ADR-053 D3), luego **escritura**; los 4 perfiles en orden
   fijo. `progressPercent` avanza `100/8` por medición terminada.
+- **Rejilla incremental**: en un `TestRun` de tipo `benchmark`, `result.benchmark` es **no nulo
+  desde el arranque** (`rows: []`), y cada `test:progress` añade una fila conforme termina su
+  medición; `notRun` se rellena solo al final. La interfaz pinta la rejilla estilo CrystalDiskMark
+  celda a celda: una celda sin fila y sin `notRun` es «pendiente», nunca 0 (§I).
 - **Parada anticipada**: las mediciones hechas quedan en `rows`, las que faltaban en `notRun`;
-  `status` = `cancelled` o `failed`, `stoppedReason` lo precisa. Nunca una fila a 0 (§I).
+  `status` = `cancelled` o `failed`, `stoppedReason` lo precisa.
 - La UI **nunca construye la línea de comandos**: el backend arma cada invocación de DiskSpd, la
   lanza por `platform::proceso_externo`, parsea el `-Rxml` y compone `BenchmarkResult`. `command` es
   una descripción legible de la matriz, no un comando de shell.
@@ -7710,7 +7718,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
 | `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
 | `AboutDialog` | «Acerca de» del riel (US-061) | mismo patrón de modal informativo que `ExplicacionModal` (`role="dialog" aria-modal`, foco devuelto, `Escape`, cruz); foto del autor como avatar (`src/lib/assets/`, único raster empaquetado — ADR-052) + nombre + biografía breve; pie con créditos (MIT, terceros, autor de `get_app_info`) y enlaces como **texto plano**; «Copiar información» copia solo lo diagnóstico |
-| `BenchmarkResults` | tabla de resultados de la prueba de Rendimiento (spec 008 / ADR-053) | `<table>` con `<th scope>` reales; una fila por perfil × sentido (MB/s, IOPS, latencia); filas `notRun` como «no ejecutado», **nunca 0**; marca «tope de datos alcanzado» por fila; pie «Medido con DiskSpd {version}». Solo en la pantalla de Pruebas (activa e historial) — no es un patrón transversal |
+| `BenchmarkResults` | rejilla de resultados de la prueba de Rendimiento (spec 008 / ADR-053) | `<table>` (`<th scope>` reales, navegable por teclado) **pintada como la rejilla de CrystalDiskMark**, con los tokens de tema: filas = perfiles (notación `SEQ1M Q8T1`), columnas = Lectura / Escritura. Celda: cifra grande (MB/s o IOPS según un `SegmentedControl` global, recordado en `localStorage`) + latencia (µs < 1 ms, si no ms) + barra proporcional al máximo de la ejecución (`bg-accent-soft`). `Tooltip` en encabezados y etiquetas de perfil (qué mide cada uno). Se llena **celda a celda** con `running`: celda pendiente = «midiendo» / «—»; `notRun` = «no ejecutado», **nunca 0**; `*` + nota si una fila alcanzó el tope de datos. Solo en la pantalla de Pruebas (activa e historial) |
 
 #### Autorizados y pendientes de construir
 
@@ -9398,6 +9406,19 @@ export function formatIops(iops: number | null | undefined, locale = i18n.format
   return iops.toLocaleString(locale, { maximumFractionDigits: 0 });
 }
 
+/** Latencia del benchmark: **µs** por debajo de 1 ms (donde vive el acceso aleatorio 4K de un
+ *  NVMe), ms por encima (acceso secuencial). Es la convención de CrystalDiskMark. */
+export function formatBenchLatency(
+  milliseconds: number | null | undefined,
+  locale = i18n.formatLocale
+): string {
+  if (isMissing(milliseconds)) return NOT_AVAILABLE();
+  if (milliseconds < 1) {
+    return `${(milliseconds * 1000).toLocaleString(locale, { maximumFractionDigits: 0 })} µs`;
+  }
+  return `${milliseconds.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ms`;
+}
+
 export function formatLatency(milliseconds: number | null | undefined, locale = i18n.formatLocale): string {
   if (isMissing(milliseconds)) return NOT_AVAILABLE();
   const decimals = milliseconds < 10 ? 1 : 0;
@@ -10175,22 +10196,31 @@ Fichero de origen: `src/lib/i18n/es.json`
   "tests.active.progress": "{percent} %",
   "tests.active.indeterminate": "En curso",
   "tests.active.warning": "La prueba se detiene sola si el disco alcanza el límite térmico crítico o si el espacio libre baja de la reserva de seguridad. Mientras dure, el rendimiento del equipo puede bajar.",
-  "tests.benchmark.col.profile": "Perfil",
-  "tests.benchmark.col.direction": "Sentido",
   "tests.benchmark.col.throughput": "MB/s",
   "tests.benchmark.col.iops": "IOPS",
   "tests.benchmark.col.latency": "Latencia",
-  "tests.benchmark.profile.seq1m_q8": "Secuencial 1M (cola 8)",
-  "tests.benchmark.profile.seq1m_q1": "Secuencial 1M (cola 1)",
-  "tests.benchmark.profile.rnd4k_q32": "Aleatorio 4K (cola 32)",
-  "tests.benchmark.profile.rnd4k_q1": "Aleatorio 4K (cola 1)",
+  "tests.benchmark.profile.seq1m_q8": "Secuencial 1M, cola 8",
+  "tests.benchmark.profile.seq1m_q1": "Secuencial 1M, cola 1",
+  "tests.benchmark.profile.rnd4k_q32": "Aleatorio 4K, cola 32",
+  "tests.benchmark.profile.rnd4k_q1": "Aleatorio 4K, cola 1",
+  "tests.benchmark.short.seq1m_q8": "SEQ1M Q8T1",
+  "tests.benchmark.short.seq1m_q1": "SEQ1M Q1T1",
+  "tests.benchmark.short.rnd4k_q32": "RND4K Q32T1",
+  "tests.benchmark.short.rnd4k_q1": "RND4K Q1T1",
   "tests.benchmark.direction.read": "Lectura",
   "tests.benchmark.direction.write": "Escritura",
   "tests.benchmark.notRun": "No ejecutado",
+  "tests.benchmark.measuring": "Midiendo…",
   "tests.benchmark.dataCapHit": "tope de datos alcanzado",
-  "tests.benchmark.dataCapHitNote": "En los perfiles marcados, la medición se acortó para no escribir más datos de la cuenta: el disco es lo bastante rápido como para agotar el tope antes del tiempo objetivo.",
+  "tests.benchmark.dataCapHitNote": "En los perfiles marcados con *, la medición se acortó para no escribir más datos de la cuenta: el disco es lo bastante rápido como para agotar el tope antes del tiempo objetivo.",
   "tests.benchmark.measuredWith": "Medido con {tool} {version}",
   "tests.benchmark.showTable": "Ver la tabla completa",
+  "tests.benchmark.help.read": "Velocidad de lectura: a qué ritmo el disco entrega datos que ya tiene guardados. Es lo que más se nota al abrir programas o archivos grandes.",
+  "tests.benchmark.help.write": "Velocidad de escritura: a qué ritmo el disco guarda datos nuevos. Es lo que se nota al copiar archivos o instalar programas.",
+  "tests.benchmark.help.profile.seq1m_q8": "Lectura o escritura de un archivo grande de una sola pieza, con varias peticiones en cola a la vez. Es la cifra más alta y la que suele anunciarse: mide el tope del disco moviendo datos contiguos.",
+  "tests.benchmark.help.profile.seq1m_q1": "Igual que el anterior pero con una sola petición cada vez, sin cola. Se parece más a copiar un archivo suelto: casi siempre algo más lento que con cola.",
+  "tests.benchmark.help.profile.rnd4k_q32": "Muchos trozos pequeños (4 KB) repartidos por todo el disco, con la cola llena de peticiones. Representa el trabajo real de Windows y los programas: montones de accesos pequeños a la vez.",
+  "tests.benchmark.help.profile.rnd4k_q1": "Trozos pequeños (4 KB) por todo el disco, de uno en uno. Es el caso más exigente y el que peor se le da a cualquier disco; en un disco mecánico se desploma.",
   "tests.history.title": "Historial de pruebas",
   "tests.history.empty": "Todavía no se ha ejecutado ninguna prueba.",
   "tests.history.inProgress": "{percent} % completado",
@@ -10762,22 +10792,31 @@ Fichero de origen: `src/lib/i18n/en.json`
   "tests.active.progress": "{percent}%",
   "tests.active.indeterminate": "In progress",
   "tests.active.warning": "The test stops on its own if the disk reaches the critical thermal limit or if free space drops below the safety reserve. Computer performance may drop while it runs.",
-  "tests.benchmark.col.profile": "Profile",
-  "tests.benchmark.col.direction": "Direction",
   "tests.benchmark.col.throughput": "MB/s",
   "tests.benchmark.col.iops": "IOPS",
   "tests.benchmark.col.latency": "Latency",
-  "tests.benchmark.profile.seq1m_q8": "Sequential 1M (queue 8)",
-  "tests.benchmark.profile.seq1m_q1": "Sequential 1M (queue 1)",
-  "tests.benchmark.profile.rnd4k_q32": "Random 4K (queue 32)",
-  "tests.benchmark.profile.rnd4k_q1": "Random 4K (queue 1)",
+  "tests.benchmark.profile.seq1m_q8": "Sequential 1M, queue 8",
+  "tests.benchmark.profile.seq1m_q1": "Sequential 1M, queue 1",
+  "tests.benchmark.profile.rnd4k_q32": "Random 4K, queue 32",
+  "tests.benchmark.profile.rnd4k_q1": "Random 4K, queue 1",
+  "tests.benchmark.short.seq1m_q8": "SEQ1M Q8T1",
+  "tests.benchmark.short.seq1m_q1": "SEQ1M Q1T1",
+  "tests.benchmark.short.rnd4k_q32": "RND4K Q32T1",
+  "tests.benchmark.short.rnd4k_q1": "RND4K Q1T1",
   "tests.benchmark.direction.read": "Read",
   "tests.benchmark.direction.write": "Write",
   "tests.benchmark.notRun": "Not run",
+  "tests.benchmark.measuring": "Measuring…",
   "tests.benchmark.dataCapHit": "data cap reached",
-  "tests.benchmark.dataCapHitNote": "For the marked profiles the measurement was shortened so as not to write more data than needed: the disk is fast enough to reach the cap before the target time.",
+  "tests.benchmark.dataCapHitNote": "For the profiles marked with *, the measurement was shortened so as not to write more data than needed: the disk is fast enough to reach the cap before the target time.",
   "tests.benchmark.measuredWith": "Measured with {tool} {version}",
   "tests.benchmark.showTable": "Show the full table",
+  "tests.benchmark.help.read": "Read speed: how fast the disk hands back data it already holds. It's what you notice most when opening programs or large files.",
+  "tests.benchmark.help.write": "Write speed: how fast the disk stores new data. It's what you notice when copying files or installing programs.",
+  "tests.benchmark.help.profile.seq1m_q8": "Reading or writing one large contiguous file, with several requests queued at once. This is the highest figure and the one usually advertised: the disk's ceiling moving contiguous data.",
+  "tests.benchmark.help.profile.seq1m_q1": "Same as above but one request at a time, no queue. Closer to copying a single file: almost always a bit slower than with a queue.",
+  "tests.benchmark.help.profile.rnd4k_q32": "Many small chunks (4 KB) scattered across the disk, with the queue full of requests. This represents the real work of Windows and apps: lots of small accesses at once.",
+  "tests.benchmark.help.profile.rnd4k_q1": "Small chunks (4 KB) across the disk, one at a time. The most demanding case and the worst for any disk; on a spinning drive it collapses.",
   "tests.history.title": "Test history",
   "tests.history.empty": "No test has run yet.",
   "tests.history.inProgress": "{percent}% complete",

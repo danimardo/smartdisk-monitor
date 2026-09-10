@@ -362,6 +362,23 @@ pub fn update_test_run_status(
     Ok(())
 }
 
+/// Actualiza estado, progreso **y** el resumen parcial de una prueba en curso, sin marcarla
+/// terminada. Lo usa la prueba de Rendimiento para publicar la rejilla de resultados celda a celda
+/// mientras corre (el evento `test:progress` lleva ese resumen a la interfaz).
+pub fn update_test_run_progress_summary(
+    conn: &Connection,
+    id: &str,
+    progress_percent: Option<i64>,
+    result_summary_json: Option<&str>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE test_runs SET status = 'running', progress_percent = ?2, result_summary_json = ?3
+         WHERE id = ?1",
+        params![id, progress_percent, result_summary_json],
+    )?;
+    Ok(())
+}
+
 pub fn list_test_runs(
     conn: &Connection,
     device_id: Option<&str>,

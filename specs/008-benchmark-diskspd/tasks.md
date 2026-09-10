@@ -258,9 +258,9 @@ y cifras.
 - [x] T048 [P] `docs/known-issues.md`: si el hilo de ejecución necesita algún `svelte-ignore` o
   silencio, su entrada; si no, nada.
 - [x] T049 `pnpm docs:build` → `historias.md` al día; `pnpm docs:check` en verde.
-- [x] T050 [P] Regenerar la captura de la pantalla de pruebas (`pnpm docs:screenshots` afecta a
-  `pruebas-{claro,oscuro}.png` — la pantalla no cambia de layout salvo la tabla tras un benchmark;
-  revisar si merece un fixture con un benchmark terminado para la captura).
+- [ ] T050 [P] Regenerar la captura de la pantalla de pruebas (`pnpm docs:screenshots`). Pendiente:
+  `docs:screenshots` movió las 14 capturas (ruido de entorno) y se revirtieron; hay que regenerarlas
+  a propósito con un fixture de benchmark terminado y revisarlas a ojo.
 - [x] T051 Ejecutar **todas** las puertas: `pnpm check` (0/0), `lint`, `verify`, `test`,
   `test:component`, `build`, `docs:check`; y desde `src-tauri/`: `cargo fmt --check`,
   `cargo clippy --all-targets -- -D warnings`, `cargo test`.
@@ -268,6 +268,26 @@ y cifras.
   puerta «por cada versión publicada»). Requiere `pnpm app:dev` y un volumen de pruebas real.
 - [x] T053 Pasar la skill `cierre-tarea` (matriz de documentación + nueve puertas) y proponer el
   commit. Subir la versión a **0.1.5** (`package.json` + `Cargo.toml` + `Cargo.lock`).
+
+---
+
+## Phase 7: Presentación estilo CrystalDiskMark (incremento posterior, decidido con el dueño)
+
+Tras la primera implementación, el dueño pidió que la tabla de resultados se viera como la rejilla
+de CrystalDiskMark (misma disposición, colores del tema), con tooltips por campo, y que se rellenara
+celda a celda durante la ejecución. Recogido en `spec.md` FR-002a / FR-009 y en el contrato.
+
+- [x] T054 Backend: `orquestar_matriz` publica las filas ya medidas en cada avance
+  (`on_avance(filas, version, hechas)`); `repo_varios::update_test_run_progress_summary` (nuevo)
+  persiste el `BenchmarkResult` parcial en la fila `running`; `start_benchmark` arranca la fila con
+  una rejilla vacía. `test:progress` —que ya lleva `result`— la transporta. Tests de `on_avance`.
+- [x] T055 `BenchmarkResults.svelte` reescrito como rejilla 4×2 estilo CDM: `<table>` con
+  `<th scope>`, cifra grande + barra proporcional al máximo, `SegmentedControl` MB/s ↔ IOPS
+  (recordado en `localStorage`), `Tooltip` en encabezados y perfiles, relleno celda a celda con
+  `running`, `formatBenchLatency` (µs/ms). Claves i18n de tooltips y notación `SEQ1M Q8T1`.
+- [x] T056 Pruebas de componente (rejilla completa, en curso, parada anticipada, toggle, tope) y
+  e2e (`tests.spec.ts`) adaptadas. Docs: `spec.md`, `contracts/`, `ui-contract.md` §3.6,
+  `ui-design.md` §3, `product-specification.md` §6.
 
 ---
 
