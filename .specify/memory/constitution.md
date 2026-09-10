@@ -517,7 +517,7 @@ acaban discrepando y nadie sabe cuál manda.
 
 #### No hay secretos, y si los hubiera no irían en un `.env`
 
-La aplicación no tiene cuentas, ni claves de API, ni servicios externos (ADR-007). Y conviene
+La aplicación no tiene cuentas ni servicios externos salvo la asistencia con IA del principio XVI (ADR-007, ADR-046). Esa capacidad usa una clave de API —la de la persona, o una **clave de demostración compartida** que, a diferencia de un `.env`, **se declara explícitamente no secreta**—; aun así, en reposo la credencial vive en el almacén de credenciales de Windows (DPAPI), nunca en un fichero junto al ejecutable. Y conviene
 dejarlo escrito para el futuro: **un `.env` empaquetado en un instalador de escritorio no es
 secreto**. Cualquiera puede abrir el instalador y leerlo. Si algún día hiciera falta guardar una
 credencial, la vía es el almacén de credenciales de Windows (DPAPI), nunca un fichero de texto junto
@@ -554,6 +554,17 @@ condiciones. Incumplir una es un defecto, no un matiz.
 - **Apagada de fábrica.** Sin una clave de API configurada por la persona no existe ninguna ruta de
   red: ni cliente, ni conexión, ni resolución de nombres. La aplicación se comporta exactamente
   como si el principio III siguiera siendo absoluto.
+
+  La aplicación **puede incluir una clave de demostración compartida** —capada por el proveedor a
+  modelos gratuitos y sin crédito—, compilada en el binario al construir la Release. **No es un
+  secreto**: se documenta que es extraíble del ejecutable, y su valor es la comodidad, no la
+  confidencialidad. La invariante se conserva: mientras no haya una clave en el almacén de
+  credenciales, no existe ninguna ruta de red. Esa clave la pone ahí **un gesto explícito de la
+  persona** —el botón «Usar la clave de demostración»—, equivalente a introducir la suya; a partir
+  de ese punto todo el principio (destino único, disparo explícito, alcance del dato,
+  anonimización, vista previa, degradación) rige igual. `borrar_clave_ia` la elimina como a
+  cualquier otra. Un binario compilado sin esa clave —un clon del repositorio— se comporta como
+  hasta ahora: la función exige una clave propia.
 - **Iniciada por la persona, nunca automática.** Cada llamada al modelo responde a un gesto
   explícito e inequívoco (pulsar «Explícamelo en lenguaje claro»). Nada en segundo plano, nada al
   arrancar, nada al detectarse una alerta, ningún reintento automático que la persona no haya
@@ -583,6 +594,9 @@ condiciones. Incumplir una es un defecto, no un matiz.
 - **La persona ve qué se envía.** Antes de la primera consulta se muestra el texto exacto que
   saldrá del equipo y una explicación de a dónde va y para qué. La activación de la función es un
   consentimiento informado, no una casilla.
+
+  El botón «Usar la clave de demostración» es ese consentimiento cuando se elige la clave compartida;
+  la vista previa del texto exacto antes de la primera consulta se muestra igual.
 - **La clave vive en el almacén de credenciales de Windows (DPAPI).** Nunca en SQLite, nunca en un
   fichero, nunca en `localStorage`. En `settings` solo se guarda que la función está activa y qué
   modelo se ha elegido.
@@ -786,6 +800,7 @@ sola razón, sin necesidad de más argumento.
 | 1.8.0 | 2026-09-08 | Principio XVI (asistencia con IA en la nube): capacidad opcional, apagada de fábrica, de proveedor y destino único, iniciada siempre por la persona, con anonimización obligatoria y clave en el almacén de credenciales de Windows. Los principios III y IX ganan una excepción **acotada** que no se aplica en estado de fábrica; ninguna otra norma se relaja. Entran dependencias nuevas (cliente HTTP, almacén de credenciales) y un permiso de red de Tauri, cada uno con su ADR. Requiere ADR-046 |
 | 1.8.1 | 2026-09-08 | Precisión (patch) de la tabla de pila (spec `005-explicacion-ia`): la única dependencia nueva es `reqwest` 0.13 (`native-tls`, `json` — SChannel, la pila TLS del sistema; `rustls` se descartó porque arrastra `aws-lc-sys`), ya en el árbol vía `tauri`; el almacén de credenciales se hace con FFI a mano contra `advapi32`, sin crate nuevo. La vía elegida (llamada desde Rust) no requiere permiso de *capabilities*. No cambia ni relaja ninguna norma. ADR-046 |
 | 1.9.0 | 2026-09-08 | Principio XVI, dos viñetas (spec `006-explicacion-ia-contexto-crudo`): «detalle técnico visible» se amplía para incluir el volcado crudo de `smartctl` y el mensaje y los campos de datos del suceso de Windows que originó la alerta —información que la persona ya puede abrir en pantalla—, manteniendo la prohibición de inventario, historial, configuración, otras pantallas y otros discos, y descartando el bloque de metadatos de sistema del suceso. La cláusula de anonimización añade WWN, SID y rutas de dispositivo a la lista de sustituciones y reconoce un modo **opcional** «enviar sin revisar», apagado de fábrica y con consentimiento propio, que omite solo la revisión manual del texto libre residual (la anonimización por campos y patrones se sigue aplicando). Es `minor` porque **amplía** una excepción ya existente y añade un opt-in que relaja al margen la garantía «sin datos identificables» para quien lo active; ninguna otra norma se toca. Requiere ADR-047 |
+| 1.10.0 | 2026-09-10 | Principio XVI, viñeta «Apagada de fábrica»: se permite compilar en la Release una **clave de demostración compartida**, capada a modelos gratuitos y **declarada no secreta**, que la persona activa con un gesto explícito (botón «Usar la clave de demostración»); la invariante «sin clave en el almacén de credenciales, sin ruta de red» se conserva, y el resto del principio (destino único, disparo explícito, alcance del dato, anonimización, vista previa) no cambia. El principio XII se precisa en consecuencia. Es `minor` porque **añade** una vía de activación a una excepción ya existente sin relajar ninguna garantía de red automática ni de privacidad. Requiere ADR-054 |
 
 ### Cumplimiento
 
