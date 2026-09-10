@@ -173,7 +173,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
-| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
+| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live`. Prop opcional `titulo`: título visible y prefijo de la etiqueta accesible — **obligatoria cuando una pantalla apila varias** (detalle de disco: temperatura y actividad) para distinguir cada `role="img"` |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
 | `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Fondo casi opaco (`--sdm-glass-strong`): lleva párrafos y el material translúcido normal dificultaba la lectura. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
@@ -334,9 +334,12 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    discos ya **no** vive en la `Sidebar` (riel de solo iconos, v3).
 2. **Detalle de disco** (v3) — cabecera de identidad (`Card` de una fila: cuadrado de `Icon` con el
    color del estado, alias `.sdm-display`, `StatusPill` con icono, línea de identidad, botón «Probar
-   disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con
-   `TimeSeriesChart` de temperatura y panel de contadores con `DataRow`. El `SegmentedControl` de
-   intervalo va **junto a la gráfica**, ya no en la `Toolbar`.
+   disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con **dos
+   `TimeSeriesChart` apilados** —temperatura y actividad (`activity_percent`, eje 0–100 %, sin
+   umbral, color de acento; ADR-055)— a la izquierda y panel de contadores con `DataRow` a la
+   derecha. El `SegmentedControl` de intervalo va **junto a las gráficas** (único, gobierna las
+   dos), ya no en la `Toolbar`. Cada gráfica apilada lleva `titulo` para que su `role="img"` se
+   distinga.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
    rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
    (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una

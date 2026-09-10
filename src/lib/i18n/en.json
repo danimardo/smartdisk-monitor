@@ -100,6 +100,7 @@
   "chart.noSamples": "No samples in the range",
   "chart.emptyLabel": "No data in the selected range.",
   "chart.summaryLabel": "Series from {from} to {to} in {unit}. Minimum {min}, maximum {max}, latest {last}. Use the arrow keys to step through the points.",
+  "chart.titledSummary": "{title}. {body}",
   "chart.resolution.raw": "Samples every 30 s",
   "chart.resolution.five_minutes": "5-minute averages",
   "chart.resolution.hourly": "Hourly averages",

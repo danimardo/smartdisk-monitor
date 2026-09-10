@@ -2189,3 +2189,59 @@ la propia. La constitución 1.10.0 recoge la enmienda; el principio XII se preci
   `platform::ia_clave_demo` y su fichero compartido `clave_demo_ofuscacion.rs` (incluido también por
   `build.rs`). `.github/workflows/release.yml` pasa el secreto `OPENROUTER_DEMO_KEY`; sin él, la
   Release sale sin clave de demostración (degradación limpia).
+
+## ADR-055 — El detalle de disco apila dos gráficas históricas: temperatura y actividad
+
+Estado: aceptada. Fecha: 2026-09-10. Extensión acotada de la pantalla «Detalle de disco» del
+rediseño v3 (`design/propuesta-redisenov2/cambios/07-detalle-disco.md`). Sin spec propia. Recogida
+en `docs/open-questions.md` E.5.
+
+### El problema
+
+El detalle de disco solo grafica la **temperatura** a lo largo del tiempo. El usuario quiere ver
+también **cuánta carga de trabajo tuvo el disco** en cada momento —picos de uso y periodos de
+reposo— con el mismo control de intervalo (24 h / 7 d / 30 d / personalizado). El dato ya se
+persiste: `activity_percent` es una serie con la misma retención y agregación que la temperatura
+(spec `007-actividad-disco-representativa`, ADR-050). Lo que faltaba era exponerla en la pantalla.
+
+### La decisión
+
+- En la columna izquierda de la rejilla `1.6fr 1fr` del detalle, **debajo** del `TimeSeriesChart`
+  de temperatura, se apila un segundo `TimeSeriesChart` con la serie `activity_percent`. Ambos
+  comparten el **único** `SegmentedControl` de intervalo (y el `DateRangePicker` del modo
+  personalizado): un cambio de rango vuelve a pedir las dos series.
+- La gráfica de actividad va con **eje fijo 0–100 %**, **sin líneas de umbral** (la actividad no
+  genera alertas) y **color de acento siempre** (no sigue el estado del disco, a diferencia de la
+  temperatura, que se pinta en `--sdm-warn` en advertencia térmica).
+- Los huecos «sin datos» que ya produce el backend cuando la ventana de actividad está
+  `parcial`/`no_disponible` (arranque, reanudación, pausa, equipo apagado) se dibujan como banda
+  gris con su leyenda, **nunca** como un cero — el mismo trazado por tramos que la temperatura.
+- Cada gráfica recibe un **título visible** (`TimeSeriesChart` gana la prop opcional `titulo`) que
+  además se antepone a su etiqueta accesible (`chart.titledSummary`), para que los dos `role="img"`
+  apilados se distingan con un lector de pantalla. Con una sola gráfica la prop queda vacía y nada
+  cambia.
+- La `MetricCard` de «Actividad» conserva su sparkline de 24 h: es la cifra de un vistazo, no el
+  histórico navegable.
+- Cada serie carga y falla por su cuenta (`EstadoSerie` en `disks/[id]/+page.svelte`): si
+  `smartctl` responde y los contadores de rendimiento no —o al revés—, una gráfica se pinta y la
+  otra muestra su `EmptyState kind="error"`, sin tirar la pantalla.
+
+### Alternativas descartadas
+
+- **Un conmutador «Temperatura | Actividad» sobre una sola gráfica.** Ahorra alto de pantalla,
+  pero obliga a alternar para comparar si un pico de temperatura coincidió con una ráfaga de uso,
+  que es justo lo que se quiere leer. Apilar deja las dos series a la vista a la vez.
+- **Una gráfica combinada con dos ejes Y.** Dos magnitudes sin relación (°C y %) en un mismo marco
+  con doble eje es difícil de leer y rompe la regla de «una gráfica declara su unidad». Descartada.
+- **Invertir el eje para mostrar “inactividad”.** El usuario aclaró que quiere leer la carga de
+  trabajo; los valles de la curva de actividad ya son los periodos de reposo.
+
+### Consecuencias
+
+- `TimeSeriesChart` suma la prop opcional `titulo` y una clave i18n (`chart.titledSummary`). Sin
+  cambios de contrato, comandos, permisos ni backend: `get_metric_series` ya sirve
+  `activity_percent`.
+- En la ventana mínima (1024 × 560) las dos gráficas apiladas más los contadores exceden el alto y
+  la región hace scroll, como ya contempla `07-detalle-disco.md` §6 para el resto de la pantalla.
+- El boceto aprobado (`design/…/mockups/smartdisk-v3.html`, pestaña Detalle) queda desincronizado
+  hasta reeditarlo: describía una sola gráfica.

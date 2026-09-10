@@ -371,6 +371,33 @@ El trazo curvo (spline monótona, E.1) refuerza ese «devuelve la onda»; el cor
 - Los factores (4×, p25, umbral de «recopilando») son de afinado; si un histórico real se ve mal,
   se ajustan aquí.
 
+### E.5 · El detalle de disco grafica también la actividad, no solo la temperatura · `DECIDIDO` (2026-09-10)
+
+El detalle de disco (`/disks/[id]`) solo tenía una gráfica histórica, la de temperatura. El usuario
+pidió ver también **la carga de trabajo del disco a lo largo del tiempo** —picos de uso y periodos
+de reposo— con el mismo control de intervalo. Se trató como **extensión acotada** de la pantalla
+del rediseño v3, no como spec nueva: el dato (`activity_percent`) ya se persiste con la misma
+retención y agregación que la temperatura (D.4, ADR-050), solo faltaba exponerlo.
+
+| Aspecto | Valor adoptado |
+|---|---|
+| Disposición | Segundo `TimeSeriesChart` **apilado debajo** del de temperatura, en la columna izquierda de la rejilla `1.6fr 1fr`. No un conmutador: apilar deja comparar de un vistazo si un pico térmico coincidió con una ráfaga de uso. |
+| Selector de intervalo | **Único y compartido** (24 h / 7 d / 30 d / personalizado). Un cambio de rango vuelve a pedir las dos series. |
+| Eje Y | Fijo **0–100 %**. |
+| Líneas de umbral | **Ninguna** (la actividad no genera alertas). |
+| Color de la curva | **Acento siempre** (no sigue el estado del disco, a diferencia de la temperatura). |
+| Huecos | Banda gris «sin datos» con su leyenda cuando la ventana de actividad estuvo `parcial`/`no_disponible` (arranque, reanudación, pausa, equipo apagado). Nunca un cero. Mismo trazado por tramos que la temperatura. |
+| Sparkline de la `MetricCard` de «Actividad» | **Se conserva**: es la cifra de un vistazo, no el histórico navegable. |
+| Fallo por fuente | Cada serie carga y falla por su cuenta: si una fuente responde y la otra no, una gráfica se pinta y la otra muestra su `EmptyState kind="error"`. |
+
+Implementación: `TimeSeriesChart` gana la prop opcional `titulo` (título visible + prefijo de la
+etiqueta accesible, `chart.titledSummary`) para que los dos `role="img"` apilados se distingan con
+un lector de pantalla; con una sola gráfica la prop queda vacía y nada cambia. Sin cambios de
+contrato, comando, permiso ni backend. Decisión de diseño en **ADR-055**.
+
+En la ventana mínima (1024 × 560) las dos gráficas más los contadores exceden el alto y la región
+hace scroll, como ya contempla `07-detalle-disco.md` §6.
+
 ---
 
 ## F. Identidad de dispositivo

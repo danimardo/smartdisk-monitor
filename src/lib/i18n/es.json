@@ -100,6 +100,7 @@
   "chart.noSamples": "Sin muestras en el intervalo",
   "chart.emptyLabel": "Gráfica sin datos en el intervalo elegido.",
   "chart.summaryLabel": "Serie de {from} a {to} en {unit}. Mínimo {min}, máximo {max}, último valor {last}. Use las flechas para recorrer los puntos.",
+  "chart.titledSummary": "{title}. {body}",
   "chart.resolution.raw": "Muestras cada 30 s",
   "chart.resolution.five_minutes": "Promedios de 5 min",
   "chart.resolution.hourly": "Promedios horarios",

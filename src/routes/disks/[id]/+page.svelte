@@ -159,9 +159,13 @@
     };
   }
 
-  let serie = $state<MetricSeries | null>(null);
-  let serieError = $state<AppError | null>(null);
-  let serieLoading = $state(false);
+  /** Estado de una de las dos gráficas históricas del detalle (temperatura y actividad). Comparten
+   *  el intervalo del `SegmentedControl`, pero cada una carga y falla por su cuenta: una fuente
+   *  puede responder mientras la otra no. */
+  type EstadoSerie = { serie: MetricSeries | null; error: AppError | null; loading: boolean };
+  const nuevoEstadoSerie = (): EstadoSerie => ({ serie: null, error: null, loading: false });
+  let serieTemp = $state<EstadoSerie>(nuevoEstadoSerie());
+  let serieActividad = $state<EstadoSerie>(nuevoEstadoSerie());
   /** Series mini de 24 h para las sparklines de las `MetricCard` (`07-detalle-disco.md` §3). */
   let mini = $state<Record<string, Punto[]>>({});
 
@@ -169,28 +173,28 @@
     const id = disk.id;
     const { from, to } = calcularIntervalo(rango, customFrom, customTo);
     let cancelado = false;
-    serieLoading = true;
-    void (async () => {
+
+    const pedir = async (metricKey: string, destino: EstadoSerie) => {
+      destino.loading = true;
       try {
-        const s = await getMetricSeries({
-          deviceId: id,
-          metricKey: "temperature_celsius",
-          fromUtc: from,
-          toUtc: to
-        });
+        const s = await getMetricSeries({ deviceId: id, metricKey, fromUtc: from, toUtc: to });
         if (!cancelado) {
-          serie = s;
-          serieError = null;
+          destino.serie = s;
+          destino.error = null;
         }
       } catch (cause) {
         if (!cancelado) {
-          serie = null;
-          serieError = toAppError(cause);
+          destino.serie = null;
+          destino.error = toAppError(cause);
         }
       } finally {
-        if (!cancelado) serieLoading = false;
+        if (!cancelado) destino.loading = false;
       }
-    })();
+    };
+
+    void pedir("temperature_celsius", serieTemp);
+    void pedir("activity_percent", serieActividad);
+
     return () => {
       cancelado = true;
     };
@@ -213,7 +217,10 @@
     }
   });
 
-  const resolutionLabel = $derived(serie ? t(`chart.resolution.${serie.resolution}`) : "");
+  const resolucionTemp = $derived(serieTemp.serie ? t(`chart.resolution.${serieTemp.serie.resolution}`) : "");
+  const resolucionActividad = $derived(
+    serieActividad.serie ? t(`chart.resolution.${serieActividad.serie.resolution}`) : ""
+  );
   const frescura = $derived(formatAge(disk.lastReadAt));
 
   function formatearContador(unit: string | null, value: number | null): string {
@@ -331,7 +338,7 @@
   </div>
 
   <div class="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
-    <div class="flex min-h-[240px] flex-col gap-3">
+    <div class="flex flex-col gap-4">
       <div class="flex flex-wrap items-center gap-3">
         <SegmentedControl options={opcionesRango} value={rango} onchange={(v: Rango) => (rango = v)} />
         {#if rango === "custom"}
@@ -348,32 +355,57 @@
         {/if}
       </div>
 
-      {#if serieError}
-        <EmptyState
-          kind="error"
-          title={t("error.screenFailed")}
-          body={t(serieError.messageKey, serieError.messageVars)}
-          detail={serieError.detail ?? ""}
-        />
-      {:else if serie}
-        <TimeSeriesChart
-          points={serie.points}
-          from={new Date(serie.fromUtc).getTime()}
-          to={new Date(serie.toUtc).getTime()}
-          expectedIntervalMs={serie.expectedIntervalMs}
-          unit="°C"
-          min={0}
-          max={100}
-          color={tempState === "warn" || tempState === "crit" ? "var(--sdm-warn)" : "var(--sdm-accent)"}
-          warnThreshold={tempThresholds.warn}
-          warnLabel={t("chart.tempWarnLabel", { value: formatTemperature(tempThresholds.warn) })}
-          critThreshold={tempThresholds.crit}
-          critLabel={t("chart.tempCritLabel", { value: formatTemperature(tempThresholds.crit) })}
-          {resolutionLabel}
-        />
-      {:else if serieLoading}
-        <span class="text-xs text-fg-dim">{t("common.loading")}</span>
-      {/if}
+      {#snippet cargaOFallo(estado: EstadoSerie)}
+        {#if estado.error}
+          <EmptyState
+            kind="error"
+            title={t("error.screenFailed")}
+            body={t(estado.error.messageKey, estado.error.messageVars)}
+            detail={estado.error.detail ?? ""}
+          />
+        {:else if estado.loading}
+          <span class="text-xs text-fg-dim">{t("common.loading")}</span>
+        {/if}
+      {/snippet}
+
+      <div class="flex flex-col gap-5">
+        {#if serieTemp.serie}
+          <TimeSeriesChart
+            titulo={t("disk.temperature")}
+            points={serieTemp.serie.points}
+            from={new Date(serieTemp.serie.fromUtc).getTime()}
+            to={new Date(serieTemp.serie.toUtc).getTime()}
+            expectedIntervalMs={serieTemp.serie.expectedIntervalMs}
+            unit="°C"
+            min={0}
+            max={100}
+            color={tempState === "warn" || tempState === "crit" ? "var(--sdm-warn)" : "var(--sdm-accent)"}
+            warnThreshold={tempThresholds.warn}
+            warnLabel={t("chart.tempWarnLabel", { value: formatTemperature(tempThresholds.warn) })}
+            critThreshold={tempThresholds.crit}
+            critLabel={t("chart.tempCritLabel", { value: formatTemperature(tempThresholds.crit) })}
+            resolutionLabel={resolucionTemp}
+          />
+        {:else}
+          {@render cargaOFallo(serieTemp)}
+        {/if}
+
+        {#if serieActividad.serie}
+          <TimeSeriesChart
+            titulo={t("disk.activity")}
+            points={serieActividad.serie.points}
+            from={new Date(serieActividad.serie.fromUtc).getTime()}
+            to={new Date(serieActividad.serie.toUtc).getTime()}
+            expectedIntervalMs={serieActividad.serie.expectedIntervalMs}
+            unit="%"
+            min={0}
+            max={100}
+            resolutionLabel={resolucionActividad}
+          />
+        {:else}
+          {@render cargaOFallo(serieActividad)}
+        {/if}
+      </div>
     </div>
 
     <Card title={t("disk.counters")}>

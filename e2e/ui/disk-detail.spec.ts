@@ -6,7 +6,7 @@ import es from "../../src/lib/i18n/es.json" with { type: "json" };
 /** Detalle de disco (US-012, US-020): cabecera, métricas, gráfica de temperatura y contadores. */
 
 test.describe("detalle de disco", () => {
-  test("carga el detalle real y pide la serie de temperatura para 24h", async ({ page }) => {
+  test("carga el detalle real y pinta las gráficas de temperatura y actividad para 24h", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto(`/disks/${detalleDisco0.id}`);
 
@@ -16,21 +16,33 @@ test.describe("detalle de disco", () => {
     await expect(page.getByText(es["disk.temperature"]).first()).toBeVisible();
     await expect(page.getByText(es["smart.counter.power_cycles"])).toBeVisible();
 
-    const comandos = (await llamadas(page)).map((l) => l.comando);
-    expect(comandos).toContain("get_device_detail");
-    expect(comandos).toContain("get_metric_series");
+    // Las dos gráficas históricas se distinguen por su nombre accesible (título + lectura textual).
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.temperature"]}\\.`) })).toBeVisible();
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}\\.`) })).toBeVisible();
+
+    const series = (await llamadas(page))
+      .filter((l) => l.comando === "get_metric_series")
+      .map((l) => (l.args as { metricKey?: string }).metricKey);
+    expect(series).toContain("temperature_celsius");
+    expect(series).toContain("activity_percent");
   });
 
-  test("cambiar a 7 días vuelve a pedir la serie", async ({ page }) => {
+  test("cambiar a 7 días vuelve a pedir las dos series con el intervalo nuevo", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto(`/disks/${detalleDisco0.id}`);
     await expect(page.getByRole("heading", { name: detalleDisco0.model })).toBeVisible();
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}\\.`) })).toBeVisible();
+
+    const seriesAntes = (await llamadas(page)).filter((l) => l.comando === "get_metric_series").length;
 
     await page.getByRole("radio", { name: es["range.7d"] }).click();
     await expect(page.getByRole("radio", { name: es["range.7d"] })).toHaveAttribute("aria-checked", "true");
 
-    const llamadasSerie = (await llamadas(page)).filter((l) => l.comando === "get_metric_series");
-    expect(llamadasSerie.length).toBeGreaterThanOrEqual(2);
+    // El selector es único y gobierna ambas gráficas: un cambio de rango dispara al menos dos
+    // peticiones nuevas (temperatura y actividad).
+    await expect
+      .poll(async () => (await llamadas(page)).filter((l) => l.comando === "get_metric_series").length)
+      .toBeGreaterThanOrEqual(seriesAntes + 2);
   });
 
   test("v3: las cuatro métricas llevan icono y el control de intervalo vive en el cuerpo, no en la barra", async ({

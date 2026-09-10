@@ -49,7 +49,11 @@
      *  `--sdm-accent` cuando el disco está correcto. */
     color = "var(--sdm-accent)",
     /** Resolución servida por el backend; se muestra para que el usuario sepa que ve agregados. */
-    resolutionLabel = "" as string
+    resolutionLabel = "" as string,
+    /** Título visible de la gráfica y prefijo de su etiqueta accesible. Obligatorio cuando la
+     *  pantalla apila varias gráficas (detalle de disco: temperatura y actividad) para que cada
+     *  `role="img"` se distinga; vacío mientras haya una sola y el contexto la identifique. */
+    titulo = "" as string
   } = $props();
 
   const GUTTER = 34; // ancho del eje Y, fuera del área de trazo
@@ -143,6 +147,9 @@
     });
   });
 
+  /** Etiqueta accesible: la lectura textual equivalente, precedida del título cuando lo hay. */
+  const etiqueta = $derived(titulo ? t("chart.titledSummary", { title: titulo, body: summary }) : summary);
+
   const hayMuestras = $derived(readable.length > 0);
   const gid = `tsc-${crypto.randomUUID()}`;
 
@@ -159,6 +166,9 @@
 </script>
 
 <figure class="relative m-0 flex flex-col gap-3">
+  {#if titulo}
+    <p class="text-xs font-medium text-fg-dim">{titulo}</p>
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- La gráfica es interactiva a propósito: cursor de lectura con ratón y teclado, como exige la
@@ -170,7 +180,7 @@
     style="height: {height}px; color: {color}"
     role="img"
     tabindex="0"
-    aria-label={summary}
+    aria-label={etiqueta}
     onmousemove={(e) => (cursor = nearestIndex(e.clientX, e.currentTarget))}
     onmouseleave={() => (cursor = null)}
     onkeydown={onKey}

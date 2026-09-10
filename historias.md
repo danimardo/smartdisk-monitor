@@ -6118,6 +6118,62 @@ la propia. La constitución 1.10.0 recoge la enmienda; el principio XII se preci
   `build.rs`). `.github/workflows/release.yml` pasa el secreto `OPENROUTER_DEMO_KEY`; sin él, la
   Release sale sin clave de demostración (degradación limpia).
 
+### ADR-055 — El detalle de disco apila dos gráficas históricas: temperatura y actividad
+
+Estado: aceptada. Fecha: 2026-09-10. Extensión acotada de la pantalla «Detalle de disco» del
+rediseño v3 (`design/propuesta-redisenov2/cambios/07-detalle-disco.md`). Sin spec propia. Recogida
+en `docs/open-questions.md` E.5.
+
+#### El problema
+
+El detalle de disco solo grafica la **temperatura** a lo largo del tiempo. El usuario quiere ver
+también **cuánta carga de trabajo tuvo el disco** en cada momento —picos de uso y periodos de
+reposo— con el mismo control de intervalo (24 h / 7 d / 30 d / personalizado). El dato ya se
+persiste: `activity_percent` es una serie con la misma retención y agregación que la temperatura
+(spec `007-actividad-disco-representativa`, ADR-050). Lo que faltaba era exponerla en la pantalla.
+
+#### La decisión
+
+- En la columna izquierda de la rejilla `1.6fr 1fr` del detalle, **debajo** del `TimeSeriesChart`
+  de temperatura, se apila un segundo `TimeSeriesChart` con la serie `activity_percent`. Ambos
+  comparten el **único** `SegmentedControl` de intervalo (y el `DateRangePicker` del modo
+  personalizado): un cambio de rango vuelve a pedir las dos series.
+- La gráfica de actividad va con **eje fijo 0–100 %**, **sin líneas de umbral** (la actividad no
+  genera alertas) y **color de acento siempre** (no sigue el estado del disco, a diferencia de la
+  temperatura, que se pinta en `--sdm-warn` en advertencia térmica).
+- Los huecos «sin datos» que ya produce el backend cuando la ventana de actividad está
+  `parcial`/`no_disponible` (arranque, reanudación, pausa, equipo apagado) se dibujan como banda
+  gris con su leyenda, **nunca** como un cero — el mismo trazado por tramos que la temperatura.
+- Cada gráfica recibe un **título visible** (`TimeSeriesChart` gana la prop opcional `titulo`) que
+  además se antepone a su etiqueta accesible (`chart.titledSummary`), para que los dos `role="img"`
+  apilados se distingan con un lector de pantalla. Con una sola gráfica la prop queda vacía y nada
+  cambia.
+- La `MetricCard` de «Actividad» conserva su sparkline de 24 h: es la cifra de un vistazo, no el
+  histórico navegable.
+- Cada serie carga y falla por su cuenta (`EstadoSerie` en `disks/[id]/+page.svelte`): si
+  `smartctl` responde y los contadores de rendimiento no —o al revés—, una gráfica se pinta y la
+  otra muestra su `EmptyState kind="error"`, sin tirar la pantalla.
+
+#### Alternativas descartadas
+
+- **Un conmutador «Temperatura | Actividad» sobre una sola gráfica.** Ahorra alto de pantalla,
+  pero obliga a alternar para comparar si un pico de temperatura coincidió con una ráfaga de uso,
+  que es justo lo que se quiere leer. Apilar deja las dos series a la vista a la vez.
+- **Una gráfica combinada con dos ejes Y.** Dos magnitudes sin relación (°C y %) en un mismo marco
+  con doble eje es difícil de leer y rompe la regla de «una gráfica declara su unidad». Descartada.
+- **Invertir el eje para mostrar “inactividad”.** El usuario aclaró que quiere leer la carga de
+  trabajo; los valles de la curva de actividad ya son los periodos de reposo.
+
+#### Consecuencias
+
+- `TimeSeriesChart` suma la prop opcional `titulo` y una clave i18n (`chart.titledSummary`). Sin
+  cambios de contrato, comandos, permisos ni backend: `get_metric_series` ya sirve
+  `activity_percent`.
+- En la ventana mínima (1024 × 560) las dos gráficas apiladas más los contadores exceden el alto y
+  la región hace scroll, como ya contempla `07-detalle-disco.md` §6 para el resto de la pantalla.
+- El boceto aprobado (`design/…/mockups/smartdisk-v3.html`, pestaña Detalle) queda desincronizado
+  hasta reeditarlo: describía una sola gráfica.
+
 
 ---
 
@@ -6495,6 +6551,33 @@ El trazo curvo (spline monótona, E.1) refuerza ese «devuelve la onda»; el cor
   ejes son la interfaz, y la ventana la elige el usuario.
 - Los factores (4×, p25, umbral de «recopilando») son de afinado; si un histórico real se ve mal,
   se ajustan aquí.
+
+#### E.5 · El detalle de disco grafica también la actividad, no solo la temperatura · `DECIDIDO` (2026-09-10)
+
+El detalle de disco (`/disks/[id]`) solo tenía una gráfica histórica, la de temperatura. El usuario
+pidió ver también **la carga de trabajo del disco a lo largo del tiempo** —picos de uso y periodos
+de reposo— con el mismo control de intervalo. Se trató como **extensión acotada** de la pantalla
+del rediseño v3, no como spec nueva: el dato (`activity_percent`) ya se persiste con la misma
+retención y agregación que la temperatura (D.4, ADR-050), solo faltaba exponerlo.
+
+| Aspecto | Valor adoptado |
+|---|---|
+| Disposición | Segundo `TimeSeriesChart` **apilado debajo** del de temperatura, en la columna izquierda de la rejilla `1.6fr 1fr`. No un conmutador: apilar deja comparar de un vistazo si un pico térmico coincidió con una ráfaga de uso. |
+| Selector de intervalo | **Único y compartido** (24 h / 7 d / 30 d / personalizado). Un cambio de rango vuelve a pedir las dos series. |
+| Eje Y | Fijo **0–100 %**. |
+| Líneas de umbral | **Ninguna** (la actividad no genera alertas). |
+| Color de la curva | **Acento siempre** (no sigue el estado del disco, a diferencia de la temperatura). |
+| Huecos | Banda gris «sin datos» con su leyenda cuando la ventana de actividad estuvo `parcial`/`no_disponible` (arranque, reanudación, pausa, equipo apagado). Nunca un cero. Mismo trazado por tramos que la temperatura. |
+| Sparkline de la `MetricCard` de «Actividad» | **Se conserva**: es la cifra de un vistazo, no el histórico navegable. |
+| Fallo por fuente | Cada serie carga y falla por su cuenta: si una fuente responde y la otra no, una gráfica se pinta y la otra muestra su `EmptyState kind="error"`. |
+
+Implementación: `TimeSeriesChart` gana la prop opcional `titulo` (título visible + prefijo de la
+etiqueta accesible, `chart.titledSummary`) para que los dos `role="img"` apilados se distingan con
+un lector de pantalla; con una sola gráfica la prop queda vacía y nada cambia. Sin cambios de
+contrato, comando, permiso ni backend. Decisión de diseño en **ADR-055**.
+
+En la ventana mínima (1024 × 560) las dos gráficas más los contadores exceden el alto y la región
+hace scroll, como ya contempla `07-detalle-disco.md` §6.
 
 ---
 
@@ -7703,7 +7786,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
-| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live` |
+| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live`. Prop opcional `titulo`: título visible y prefijo de la etiqueta accesible — **obligatoria cuando una pantalla apila varias** (detalle de disco: temperatura y actividad) para distinguir cada `role="img"` |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
 | `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Fondo casi opaco (`--sdm-glass-strong`): lleva párrafos y el material translúcido normal dificultaba la lectura. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
@@ -7864,9 +7947,12 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    discos ya **no** vive en la `Sidebar` (riel de solo iconos, v3).
 2. **Detalle de disco** (v3) — cabecera de identidad (`Card` de una fila: cuadrado de `Icon` con el
    color del estado, alias `.sdm-display`, `StatusPill` con icono, línea de identidad, botón «Probar
-   disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con
-   `TimeSeriesChart` de temperatura y panel de contadores con `DataRow`. El `SegmentedControl` de
-   intervalo va **junto a la gráfica**, ya no en la `Toolbar`.
+   disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con **dos
+   `TimeSeriesChart` apilados** —temperatura y actividad (`activity_percent`, eje 0–100 %, sin
+   umbral, color de acento; ADR-055)— a la izquierda y panel de contadores con `DataRow` a la
+   derecha. El `SegmentedControl` de intervalo va **junto a las gráficas** (único, gobierna las
+   dos), ya no en la `Toolbar`. Cada gráfica apilada lleva `titulo` para que su `role="img"` se
+   distinga.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
    rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
    (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una
@@ -9885,6 +9971,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "chart.noSamples": "Sin muestras en el intervalo",
   "chart.emptyLabel": "Gráfica sin datos en el intervalo elegido.",
   "chart.summaryLabel": "Serie de {from} a {to} en {unit}. Mínimo {min}, máximo {max}, último valor {last}. Use las flechas para recorrer los puntos.",
+  "chart.titledSummary": "{title}. {body}",
   "chart.resolution.raw": "Muestras cada 30 s",
   "chart.resolution.five_minutes": "Promedios de 5 min",
   "chart.resolution.hourly": "Promedios horarios",
@@ -10481,6 +10568,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "chart.noSamples": "No samples in the range",
   "chart.emptyLabel": "No data in the selected range.",
   "chart.summaryLabel": "Series from {from} to {to} in {unit}. Minimum {min}, maximum {max}, latest {last}. Use the arrow keys to step through the points.",
+  "chart.titledSummary": "{title}. {body}",
   "chart.resolution.raw": "Samples every 30 s",
   "chart.resolution.five_minutes": "5-minute averages",
   "chart.resolution.hourly": "Hourly averages",

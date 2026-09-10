@@ -31,13 +31,23 @@ Cuatro bloques, `gap` 18 px:
    «Probar disco». El intervalo **sale de la `Toolbar`** y vive aquí, junto a lo que modifica.
 2. **Cuatro `MetricCard`** en fila, cada una con icono, cifra a 30 px `.sdm-display`, **sparkline de
    22 px** y línea de procedencia.
-3. **Rejilla `1.6fr 1fr`** — `TimeSeriesChart` de temperatura a la izquierda, contadores a la derecha.
-4. La gráfica ocupa el alto restante (`flex: 1`), mínimo 240 px.
+3. **Rejilla `1.6fr 1fr`** — a la izquierda, el `SegmentedControl` de intervalo (único, gobierna
+   las dos gráficas) y **dos `TimeSeriesChart` apilados** (`gap` 20 px): temperatura arriba,
+   actividad debajo. A la derecha, los contadores.
+4. Cada gráfica apilada usa su alto por defecto (≈220 px de trazo + título + pie); la columna crece
+   con las dos y la región hace scroll cuando no cabe.
+
+La gráfica de **actividad** (`activity_percent`, ADR-055): eje fijo **0–100 %**, **sin líneas de
+umbral**, **color de acento siempre** (no sigue el estado del disco, a diferencia de la
+temperatura). Título visible «Actividad»; los huecos «sin datos» se pintan como banda, igual que en
+temperatura.
 
 ## 3. Cambios por componente
 
 - **`TimeSeriesChart`** — el cambio más importante del rediseño. Ver `componentes/Sparkline.md` §2
-  para el trazado por tramos. Resumen:
+  para el trazado por tramos. **Se apilan dos** en el detalle (temperatura y actividad, ADR-055),
+  cada uno con la prop `titulo` para que su `role="img"` se distinga con un lector de pantalla (el
+  título se antepone a la lectura textual equivalente). Resumen:
   - **eje Y** de 26 px de ancho con cuatro marcas (`text-2xs`, `tabular-nums`), fuera del área de trazo;
   - **relleno degradado** bajo la curva (`stop-opacity` .32 → 0) con el color de la serie;
   - **grosor 2,6 px** con `vector-effect="non-scaling-stroke"`, para que `preserveAspectRatio="none"`
@@ -57,20 +67,23 @@ Cuatro bloques, `gap` 18 px:
 
 | Estado | Cómo queda |
 |---|---|
-| **Cargando** | Cabecera real (viene del inventario) + métricas y gráfica en esqueleto. |
-| **Vacío** | Serie sin muestras en el intervalo: el marco de la gráfica se mantiene con el eje Y y en el centro «Sin muestras en las últimas 24 h» sobre `bg-glass-3`. **No** se dibuja una línea a cero. |
-| **No compatible** | Disco sin SMART: las métricas de firmware muestran «No disponible» y la gráfica se sustituye por `EmptyState kind="unsupported"` con el detalle técnico plegado. La capacidad y los eventos asociados **sí** se muestran. |
-| **Error de fuente** | `smartctl` falla: cabecera y capacidad siguen (vienen de otra fuente), y el bloque de firmware pasa a `EmptyState kind="error"`. La pantalla no se cae. |
+| **Cargando** | Cabecera real (viene del inventario) + métricas y gráficas en esqueleto. |
+| **Vacío** | Serie sin muestras en el intervalo: el marco de la gráfica se mantiene con el eje Y y en el centro «Sin muestras en el intervalo» sobre `bg-glass-3`. **No** se dibuja una línea a cero. Cada gráfica lo resuelve por su cuenta: la de actividad puede estar vacía (equipo recién arrancado) mientras la de temperatura tiene datos. |
+| **No compatible** | Disco sin SMART: las métricas de firmware muestran «No disponible» y la gráfica de temperatura se sustituye por `EmptyState kind="unsupported"` con el detalle técnico plegado. La de actividad **sí** se dibuja (no depende de SMART). La capacidad y los eventos asociados **sí** se muestran. |
+| **Error de fuente** | Cada serie falla por su cuenta (`smartctl` para la temperatura, contadores de rendimiento para la actividad): la gráfica afectada pasa a `EmptyState kind="error"` y la otra sigue. Cabecera y capacidad siguen (vienen de otra fuente). La pantalla no se cae. |
 | **Dato obsoleto** | La frescura de la cabecera pasa a `text-warn`, y la curva termina donde terminan los datos, con la banda gris cubriendo el resto hasta «ahora». |
 
 ## 5. Claro y oscuro
 
 Mockup en los dos temas. La serie de temperatura usa `--sdm-warn` cuando el disco está en advertencia
 térmica y `--sdm-accent` cuando está correcto: el color de la curva sigue el estado, no es decorativo.
+La serie de actividad es **siempre `--sdm-accent`**: no tiene estado.
 
 ## 6. Ventana mínima (1024 × 560)
 
 - Cabecera: por debajo de **1100 px** el `SegmentedControl` baja a una segunda línea, alineado a la izquierda.
 - Métricas: a 950 px pasan a **2 × 2**.
-- Rejilla inferior: por debajo de **1000 px** pasa a una columna — primero la gráfica (mínimo 240 px de
-  alto), después los contadores. La región hace scroll.
+- Rejilla inferior: por debajo de **1024 px** pasa a una columna — primero las **dos gráficas
+  apiladas** (cada una ≈220 px de trazo, mínimo ≈200 px), después los contadores. La región hace
+  scroll. En la ventana mínima (1024 × 560) las dos gráficas más los contadores no caben a la vez:
+  el scroll de la región es el comportamiento esperado, no un recorte.

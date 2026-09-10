@@ -81,6 +81,34 @@ describe("TimeSeriesChart", () => {
     expect(container.querySelectorAll("rect").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("con `titulo`, lo muestra visible y lo antepone a la etiqueta accesible (dos gráficas apiladas)", async () => {
+    await render(TimeSeriesChart, {
+      props: {
+        points: [
+          { t: 0, v: 10 },
+          { t: 1000, v: 20 }
+        ],
+        from: 0,
+        to: 1000,
+        unit: "%",
+        titulo: "Actividad"
+      }
+    });
+    await expect.element(page.getByText("Actividad", { exact: true })).toBeVisible();
+    await expect
+      .element(page.getByRole("img"))
+      .toHaveAttribute("aria-label", expect.stringMatching(/^Actividad\. /));
+  });
+
+  it("sin `titulo`, la etiqueta accesible es solo la lectura textual (una sola gráfica)", async () => {
+    await render(TimeSeriesChart, {
+      props: { points: [{ t: 0, v: 10 }], from: 0, to: 1000, unit: "°C" }
+    });
+    await expect
+      .element(page.getByRole("img"))
+      .toHaveAttribute("aria-label", expect.stringMatching(/^Serie de /));
+  });
+
   it("v3: dibuja un eje Y con cuatro marcas numéricas fuera del área de trazo", async () => {
     const { container } = await render(TimeSeriesChart, {
       props: {
