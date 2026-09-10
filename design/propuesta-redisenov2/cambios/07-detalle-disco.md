@@ -32,8 +32,11 @@ Cuatro bloques, `gap` 18 px:
 2. **Cuatro `MetricCard`** en fila, cada una con icono, cifra a 30 px `.sdm-display`, **sparkline de
    22 px** y línea de procedencia.
 3. **Rejilla `1.6fr 1fr`** — a la izquierda, el `SegmentedControl` de intervalo (único, gobierna
-   las dos gráficas) y **dos `TimeSeriesChart` apilados** (`gap` 20 px): temperatura arriba,
-   actividad debajo. A la derecha, los contadores.
+   las dos gráficas; segmentos **`1 h` / `24 h` / `7 d` / `30 d` / `Personalizado`**) y **dos
+   `TimeSeriesChart` apilados** (`gap` 20 px): temperatura arriba, actividad debajo. A la derecha,
+   los contadores. En modo personalizado, el `DateRangePicker` comparte fila con el
+   `SegmentedControl` y sus etiquetas «Desde»/«Hasta» van **en línea** con el campo (no encima),
+   para que los campos queden alineados con las píldoras.
 4. Cada gráfica apilada usa su alto por defecto (≈220 px de trazo + título + pie); la columna crece
    con las dos y la región hace scroll cuando no cabe.
 
@@ -81,7 +84,8 @@ La serie de actividad es **siempre `--sdm-accent`**: no tiene estado.
 
 ## 6. Ventana mínima (1024 × 560)
 
-- Cabecera: por debajo de **1100 px** el `SegmentedControl` baja a una segunda línea, alineado a la izquierda.
+- Cabecera: por debajo de **1100 px** el `SegmentedControl` (ya con cinco segmentos) y, si está,
+  el `DateRangePicker` bajan a una segunda línea, alineados a la izquierda.
 - Métricas: a 950 px pasan a **2 × 2**.
 - Rejilla inferior: por debajo de **1024 px** pasa a una columna — primero las **dos gráficas
   apiladas** (cada una ≈220 px de trazo, mínimo ≈200 px), después los contadores. La región hace

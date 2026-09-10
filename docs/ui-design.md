@@ -168,7 +168,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante; prop `emphasis` (`inline` por defecto, `display` para la prueba en curso) |
 | `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
 | `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |
-| `SegmentedControl` | intervalos 24 h / 7 d / 30 d / personalizado | |
+| `SegmentedControl` | intervalos (detalle de disco: 1 h / 24 h / 7 d / 30 d / personalizado; informes: sin 1 h) | |
 | `DiskCard` | tarjeta de disco del panel | recibe `href`; cabecera de 52 px que hereda el color del estado con `sparkline` de **actividad de disco** de fondo (`activitySeries` opcional; ventana ≈ 5 min, se refresca en vivo desde `metrics:updated` — ADR-051; se dibuja también sin SMART fresco); dato ausente como «—» discreto, no «No disponible» a 23 px |
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
@@ -198,7 +198,7 @@ catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export
 
 | Componente | Lo exige | Por qué no se puede componer |
 |---|---|---|
-| `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo |
+| `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo; etiquetas «Desde»/«Hasta» **en línea** con el campo (no encima), para alinearse con el `SegmentedControl` cuando comparten fila |
 | `FilterBar` | US-021 (filtrar eventos por disco, volumen, nivel y proveedor) | requiere selección múltiple, que `Select` no ofrece |
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
 

@@ -292,6 +292,39 @@ mod tests {
     }
 
     #[test]
+    fn un_muestreo_que_se_interrumpe_cada_pocos_segundos_nunca_llega_a_valido() {
+        // Regresión de ADR-056: mientras el muestreo vivía en el hilo del planificador, un ciclo de
+        // recopilación (métricas rápidas con varios discos, o SMART) lo bloqueaba más que el umbral
+        // de hueco. Cada bloqueo vaciaba la ventana, así que nunca acumulaba la cobertura que
+        // exige `Valido` y no se persistía ni una fila. Con muestreo en hilo propio esto no ocurre;
+        // la prueba deja constancia de por qué el diseño anterior no servía.
+        let mut w = ventana(30);
+        let base = Instant::now();
+        let mut t = base;
+        for _ronda in 0..6 {
+            // ~25 s de muestreo limpio a 1 s…
+            for _ in 0..25 {
+                reg(&mut w, t, 20.0);
+                t += Duration::from_secs(1);
+                assert_ne!(
+                    w.agregado(t).estado,
+                    EstadoActividad::Valido,
+                    "aún no cubre los 27 s"
+                );
+            }
+            // …y un salto de 5 s (> 3 s de umbral) que simula el bloqueo del ciclo.
+            t += Duration::from_secs(5);
+            reg(&mut w, t, 20.0);
+            t += Duration::from_secs(1);
+            assert_eq!(
+                w.agregado(t).muestras,
+                1,
+                "el salto vació la ventana: se vuelve a empezar de cero"
+            );
+        }
+    }
+
+    #[test]
     fn la_ventana_decae_a_no_disponible_sin_nuevas_muestras() {
         // Fuente degradada: dejan de llegar muestras y las que había envejecen fuera de la ventana.
         let mut w = ventana(30);

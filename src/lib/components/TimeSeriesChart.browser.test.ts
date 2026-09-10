@@ -17,6 +17,14 @@ describe("TimeSeriesChart", () => {
     expect(container.querySelector("rect")).not.toBeNull();
   });
 
+  it("sin puntos y con `textoVacio`, muestra ese mensaje en vez del genérico", async () => {
+    await render(TimeSeriesChart, {
+      props: { points: [], from: 0, to: 1000, unit: "%", textoVacio: "Recopilando datos…" }
+    });
+    await expect.element(page.getByText("Recopilando datos…")).toBeInTheDocument();
+    await expect.element(page.getByText(es["chart.noSamples"])).not.toBeInTheDocument();
+  });
+
   it("un hueco explícito (valor null) se dibuja como banda, no se interpola", async () => {
     const { container } = await render(TimeSeriesChart, {
       props: {

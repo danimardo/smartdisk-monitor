@@ -53,7 +53,11 @@
     /** Título visible de la gráfica y prefijo de su etiqueta accesible. Obligatorio cuando la
      *  pantalla apila varias gráficas (detalle de disco: temperatura y actividad) para que cada
      *  `role="img"` se distinga; vacío mientras haya una sola y el contexto la identifique. */
-    titulo = "" as string
+    titulo = "" as string,
+    /** Texto del estado vacío. Por defecto «Sin muestras en el intervalo»; una pantalla que sabe
+     *  que el historial aún se está poblando (actividad recién arrancada) pasa aquí su propio
+     *  mensaje de «recopilando». */
+    textoVacio = "" as string
   } = $props();
 
   const GUTTER = 34; // ancho del eje Y, fuera del área de trazo
@@ -270,7 +274,7 @@
         class="text-xs"
         style="fill: var(--sdm-text-dim)"
       >
-        {t("chart.noSamples")}
+        {textoVacio || t("chart.noSamples")}
       </text>
     {/if}
 

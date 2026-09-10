@@ -132,12 +132,13 @@
     }
   }
 
-  type Rango = "24h" | "7d" | "30d" | "custom";
+  type Rango = "1h" | "24h" | "7d" | "30d" | "custom";
   let rango = $state<Rango>("24h");
   let customFrom = $state("");
   let customTo = $state("");
 
   const opcionesRango = [
+    { id: "1h", label: t("range.1h") },
     { id: "24h", label: t("range.24h") },
     { id: "7d", label: t("range.7d") },
     { id: "30d", label: t("range.30d") },
@@ -152,7 +153,7 @@
         to: new Date(`${hasta}T23:59:59.999Z`).toISOString()
       };
     }
-    const horas = r === "24h" ? 24 : r === "7d" ? 24 * 7 : 24 * 30;
+    const horas = r === "1h" ? 1 : r === "24h" ? 24 : r === "7d" ? 24 * 7 : 24 * 30;
     return {
       from: new Date(ahora.getTime() - horas * 60 * 60 * 1000).toISOString(),
       to: ahora.toISOString()
@@ -401,6 +402,7 @@
             min={0}
             max={100}
             resolutionLabel={resolucionActividad}
+            textoVacio={rango === "custom" ? "" : t("chart.collectingActivity")}
           />
         {:else}
           {@render cargaOFallo(serieActividad)}

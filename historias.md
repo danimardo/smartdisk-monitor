@@ -845,7 +845,8 @@ Como usuario quiero consultar gráficas históricas para detectar tendencias de 
 Criterios de aceptación:
 
 - Se pueden elegir disco, métrica e intervalo.
-- Existen intervalos de 24 horas, 7 días, 30 días y personalizado.
+- Existen intervalos de 24 horas, 7 días, 30 días y personalizado; el detalle de disco añade **1 hora**
+  para inspeccionar el pasado reciente.
 - La zona horaria presentada es la local.
 - Las discontinuidades se muestran como ausencia de datos, no como cero.
 
@@ -1419,13 +1420,16 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
   `Avg. Disk sec/Write`.
 - La **actividad** (`% Idle Time`, del que se deriva `activity_percent = 100 − idle`, acotado a
   0–100; no se usa `% Disk Time`, que supera el 100 % con varias operaciones simultáneas) se lee
-  desde una **consulta PDH persistente** abierta durante toda la ejecución y muestreada en cada tick
-  del bucle en segundo plano (1 s; 4 s en batería). Por cada disco se mantiene una **ventana
-  deslizante** en memoria del tamaño de la cadencia de métricas rápidas, de la que se derivan
-  **media** y **pico**; el panel muestra el pico, el detalle media y pico, y la serie histórica
-  guarda la media —sin fila cuando la ventana aún no cubre la cadencia—. Estado en memoria, no
-  persistido: un reinicio arranca con la ventana vacía (spec `007-actividad-disco-representativa`,
-  ADR-050, `docs/open-questions.md` D.4).
+  desde una **consulta PDH persistente** abierta durante toda la ejecución y muestreada por un
+  **hilo dedicado** (`iniciar_muestreo_actividad`) cada 1 s (4 s en batería), **independiente del
+  planificador de trabajos**: un ciclo SMART o de métricas rápidas bloquea su hilo varios segundos
+  y abriría un hueco que vaciaría la ventana antes de que sea representativa (ADR-056, corrige
+  ADR-050). Por cada disco se mantiene una **ventana deslizante** en memoria del tamaño de la
+  cadencia de métricas rápidas, de la que se derivan **media** y **pico**; el panel muestra el pico,
+  el detalle media y pico, y la serie histórica guarda la media —sin fila cuando la ventana aún no
+  cubre la cadencia; el hilo lo registra en el log si un disco no llega nunca a ese estado—. Estado
+  en memoria, no persistido: un reinicio arranca con la ventana vacía (spec
+  `007-actividad-disco-representativa`, ADR-050/056, `docs/open-questions.md` D.4).
 - La instancia del contador (`"0 C: D:"`) se asocia al dispositivo por su número de disco físico,
   no por la letra de unidad, que puede cambiar.
 - Mantiene cada fuente separada para poder indicar procedencia y confianza.
@@ -6174,6 +6178,64 @@ persiste: `activity_percent` es una serie con la misma retención y agregación 
 - El boceto aprobado (`design/…/mockups/smartdisk-v3.html`, pestaña Detalle) queda desincronizado
   hasta reeditarlo: describía una sola gráfica.
 
+### ADR-056 — El muestreo de la actividad de disco vive en un hilo dedicado, no en el del planificador
+
+Estado: aceptada. Fecha: 2026-09-10. Enmienda a ADR-050 (spec `007-actividad-disco-representativa`).
+Recogida en `docs/open-questions.md` D.4.
+
+#### El problema
+
+ADR-050 situó la consulta PDH persistente y la ventana deslizante de actividad **en el hilo del
+planificador de trabajos** (`commands::iniciar_planificador`), muestreadas una vez por iteración del
+bucle. Sobre hardware real la serie `activity_percent` **dejó de escribirse por completo** el mismo
+día que se desplegó: 0 filas en 30 h de marcha, mientras temperatura, caudal y latencias —del mismo
+ciclo— seguían guardándose.
+
+Causa: ese bucle duerme 1 s por iteración **salvo cuando toca un trabajo**, y entonces
+`ejecutar_ciclo` corre síncrono. `refresh_metricas_rendimiento` hace `perf_counters::leer()` por
+disco y cada `leer()` duerme 1 s (dos muestras para una tasa) — con 4 discos, ~4 s de bloqueo cada
+30 s; un ciclo SMART bloquea decenas de segundos cada 5 min. Entre el fin del ciclo y el siguiente
+muestreo, `Instant::now()` ha avanzado más que `umbral_hueco` (3× el intervalo de muestreo = 3 s en
+red), así que `VentanaActividad::registrar` lo interpreta como un hueco real y vacía la ventana. La
+ventana nunca acumulaba los ~27 s de cobertura (`FRACCION_COBERTURA_VALIDA = 0.9`) que exige
+`EstadoActividad::Valido`, y la persistencia —condicionada a `Valido`— no escribía ni una fila.
+Además falló **en silencio** casi un mes (principio VIII).
+
+#### La decisión
+
+El muestreo de actividad se mueve a **su propio hilo** (`commands::iniciar_muestreo_actividad`,
+`spawn_blocking`), arrancado desde `lib.rs` junto al planificador y parado por la misma señal
+`AppState.detener_planificador`. Ese hilo solo muestrea: cada 1 s (4 s en batería) alimenta las
+ventanas desde la consulta PDH persistente, publica el agregado vivo en `AppState.actividad` y, una
+vez por ciclo de métricas rápidas, persiste la media de cada ventana `Valido`
+(`persistir_medias_actividad`). Ningún trabajo de recopilación puede ya abrir un hueco en el
+muestreo. La persistencia de `activity_percent` sale de `refresh_metricas_rendimiento` (que pierde
+el parámetro `actividad`).
+
+**Observabilidad** (principio VIII): el muestreador registra en el log cuándo la ventana de un
+disco pasa a ser representativa por primera vez, y avisa una sola vez si un disco lleva más de
+4× la cadencia sin llegar a `Valido` (fuente probablemente degradada). Sin esto, una ventana que
+nunca llega a `Valido` vuelve a ser un hueco silencioso.
+
+#### Alternativas descartadas
+
+- **Subir `umbral_hueco`.** No distingue «el planificador estuvo ocupado 40 s» de «el equipo
+  estuvo suspendido 40 s»; promediar a través de una suspensión real es justo lo que FR-007 prohíbe.
+- **Relajar `EstadoActividad::Valido`.** Enturbia la semántica de la serie (la media dejaría de
+  cubrir la cadencia que declara) y no arregla que el número en vivo se quede siempre en `~parcial`.
+- **Ejecutar los trabajos del planificador en tareas aparte.** Cambio grande que arriesga la
+  serialización de la recopilación que garantiza ADR-042; desproporcionado para este arreglo.
+
+#### Consecuencias
+
+- Un segundo hilo en segundo plano, del mismo tipo (`spawn_blocking`, E/S síncrona) y con la misma
+  parada que el planificador. `MuestreadorActividad` ya no se instancia en `iniciar_planificador`.
+- El historial de `activity_percent` de septiembre (~1 mes) es **irrecuperable**: nunca se capturó.
+  La serie se rellena desde el primer arranque con el build corregido.
+- Sin cambios de contrato IPC, modelo de datos, permisos de Tauri ni dependencias. La semántica de
+  la serie no cambia: media de la ventana deslizante, una fila por ciclo de métricas rápidas, hueco
+  cuando la ventana no es representativa.
+
 
 ---
 
@@ -6418,13 +6480,12 @@ consulta PDH, tomaba una ventana de 1 s y la cerraba, y solo corría en `METRICA
 defecto). Una fotografía de 1 s de hace hasta 30 s marca 0–1 % aunque el disco esté trabajando.
 Spec `007-actividad-disco-representativa`, ADR-050.
 
-Se pasa a una **consulta PDH persistente** con **muestreo continuo** desde el bucle en segundo plano
-(`iniciar_planificador`, que ya despierta cada 1 s) y una **ventana deslizante** por disco de la que
-se derivan **media** y **pico**. Valores adoptados:
+Se pasa a una **consulta PDH persistente** con **muestreo continuo** y una **ventana deslizante**
+por disco de la que se derivan **media** y **pico**. Valores adoptados:
 
 | Parámetro | Valor | Nota |
 |---|---|---|
-| Intervalo de muestreo | **1 s** (un muestreo por tick del bucle) | En batería, 1 de cada 4 ticks → **4 s** (coherente con D.2). |
+| Intervalo de muestreo | **1 s** | Desde un **hilo dedicado** (ADR-056), no el del planificador — ver corrección abajo. En batería, 1 de cada 4 ticks → **4 s** (coherente con D.2). |
 | Tamaño de la ventana | **= `schedule.metrics_fast_seconds`** (30 s de fábrica; 10–300 s, D.1) | La cifra agrega «lo que va del último intervalo mostrado». |
 | Umbral de hueco | **> 3 × el intervalo de muestreo** (≈3 s en red, ≈12 s en batería) | Por encima, se descartan las muestras anteriores al hueco antes de agregar (suspensión, bloqueo del subsistema de rendimiento). A escala de muestreo reproduce el 2,5× de E.1. |
 | Estado del dato | `válido` si la muestra más antigua tiene ≥ el tamaño de la ventana de antigüedad; `parcial` con datos si aún no; `no disponible` si la ventana está vacía | Arranque, reanudación tras pausa y tras un hueco pasan por `parcial`, nunca por 0 (constitución §I). |
@@ -6441,6 +6502,17 @@ Reglas asociadas:
 - Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
   todos los discos (estado `parcial` ≤ una cadencia): compromiso aceptado para no gestionar
   contadores PDH vivos uno a uno.
+
+> **Corrección (2026-09-10, ADR-056):** el muestreo **no** puede vivir en el hilo del planificador.
+> Medido sobre hardware real: `activity_percent` dejó de escribirse el mismo día del despliegue
+> (0 filas en 30 h, mientras temperatura y caudal seguían). Causa: cuando toca un trabajo, el bucle
+> del planificador se bloquea síncrono —métricas rápidas hacen `sleep(1 s)` por disco (~4 s con 4
+> discos, cada 30 s); SMART, decenas de segundos cada 5 min— más que el «umbral de hueco» de 3 s, y
+> `VentanaActividad::registrar` vacía la ventana en cada bloqueo. Nunca alcanzaba los ~27 s de
+> cobertura que exige `válido`, así que no se persistía ni una fila, y en silencio. El muestreo
+> pasa a **su propio hilo** (`iniciar_muestreo_actividad`), independiente de los trabajos, con
+> log de principio VIII cuando una ventana no llega a ser representativa. El texto original decía
+> «un muestreo por tick del bucle \[del planificador\]»; se conserva aquí la razón del cambio.
 
 #### D.5 · Onda de actividad de fondo de la `DiskCard` · `DECIDIDO` (2026-09-09)
 
@@ -7781,7 +7853,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `ProgressBar` | operación en curso | siempre con leyenda y tiempo restante; prop `emphasis` (`inline` por defecto, `display` para la prueba en curso) |
 | `Sidebar` | navegación principal (riel de 74 px, v3) | material de chrome; solo iconos con `title`+`aria-label`; selección con material elevado e icono en acento, **nunca** barra de color lateral; navega con `<a href>`; sin lista de discos ni texto de estado global |
 | `Toolbar` | barra de herramientas unificada | `title`/`subtitle` **de la ruta**; píldora de estado global con icono (única fuente); acción primaria; sin botón «?» (Acerca de va al riel) ni ranura de controles contextuales |
-| `SegmentedControl` | intervalos 24 h / 7 d / 30 d / personalizado | |
+| `SegmentedControl` | intervalos (detalle de disco: 1 h / 24 h / 7 d / 30 d / personalizado; informes: sin 1 h) | |
 | `DiskCard` | tarjeta de disco del panel | recibe `href`; cabecera de 52 px que hereda el color del estado con `sparkline` de **actividad de disco** de fondo (`activitySeries` opcional; ventana ≈ 5 min, se refresca en vivo desde `metrics:updated` — ADR-051; se dibuja también sin SMART fresco); dato ausente como «—» discreto, no «No disponible» a 23 px |
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
@@ -7811,7 +7883,7 @@ catálogo (solo tokens, ambos temas, `null` admitido, etiqueta accesible, export
 
 | Componente | Lo exige | Por qué no se puede componer |
 |---|---|---|
-| `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo |
+| `DateRangePicker` | US-020, US-050 (intervalo "personalizado") | no hay ningún control de fecha en el catálogo; etiquetas «Desde»/«Hasta» **en línea** con el campo (no encima), para alinearse con el `SegmentedControl` cuando comparten fila |
 | `FilterBar` | US-021 (filtrar eventos por disco, volumen, nivel y proveedor) | requiere selección múltiple, que `Select` no ofrece |
 | `VirtualList` | US-021 (un servidor genera miles de eventos) | renderizar 5.000 `EventRow` bloquea la interfaz |
 
@@ -9948,6 +10020,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "events.level.error": "Error",
   "events.level.warning": "Aviso",
   "events.level.info": "Info",
+  "range.1h": "1 h",
   "range.24h": "24 h",
   "range.7d": "7 d",
   "range.30d": "30 d",
@@ -9969,6 +10042,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "chart.gapRange": "sin datos {from} – {to}",
   "chart.readout": "{value} {unit} · {when}",
   "chart.noSamples": "Sin muestras en el intervalo",
+  "chart.collectingActivity": "Recopilando datos de actividad…",
   "chart.emptyLabel": "Gráfica sin datos en el intervalo elegido.",
   "chart.summaryLabel": "Serie de {from} a {to} en {unit}. Mínimo {min}, máximo {max}, último valor {last}. Use las flechas para recorrer los puntos.",
   "chart.titledSummary": "{title}. {body}",
@@ -10545,6 +10619,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "events.level.error": "Error",
   "events.level.warning": "Warning",
   "events.level.info": "Info",
+  "range.1h": "1 h",
   "range.24h": "24 h",
   "range.7d": "7 d",
   "range.30d": "30 d",
@@ -10566,6 +10641,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "chart.gapRange": "no data {from} – {to}",
   "chart.readout": "{value} {unit} · {when}",
   "chart.noSamples": "No samples in the range",
+  "chart.collectingActivity": "Collecting activity data…",
   "chart.emptyLabel": "No data in the selected range.",
   "chart.summaryLabel": "Series from {from} to {to} in {unit}. Minimum {min}, maximum {max}, latest {last}. Use the arrow keys to step through the points.",
   "chart.titledSummary": "{title}. {body}",

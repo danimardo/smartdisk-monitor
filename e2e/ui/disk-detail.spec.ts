@@ -67,6 +67,21 @@ test.describe("detalle de disco", () => {
     expect(iconos).toBeGreaterThanOrEqual(4);
   });
 
+  test("el detalle de disco ofrece el rango de 1 hora y al elegirlo vuelve a pedir las series", async ({
+    page
+  }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto(`/disks/${detalleDisco0.id}`);
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}\\.`) })).toBeVisible();
+
+    const antes = (await llamadas(page)).filter((l) => l.comando === "get_metric_series").length;
+    await page.getByRole("radio", { name: es["range.1h"] }).click();
+    await expect(page.getByRole("radio", { name: es["range.1h"] })).toHaveAttribute("aria-checked", "true");
+    await expect
+      .poll(async () => (await llamadas(page)).filter((l) => l.comando === "get_metric_series").length)
+      .toBeGreaterThanOrEqual(antes + 2);
+  });
+
   test("el rango personalizado muestra el selector de fechas", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto(`/disks/${detalleDisco0.id}`);

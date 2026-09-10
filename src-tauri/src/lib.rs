@@ -152,6 +152,12 @@ pub fn run() {
             // persiste) y se detiene con `RunEvent::Exit`/`ExitRequested`, más abajo.
             commands::iniciar_planificador(app.handle().clone());
 
+            // El muestreo de la actividad de disco vive en su **propio** hilo, no en el del
+            // planificador: un ciclo SMART o de métricas rápidas bloquea ese hilo varios segundos
+            // y abriría un hueco que vacía la ventana deslizante antes de que sea representativa
+            // (ADR-056, corrige ADR-050).
+            commands::iniciar_muestreo_actividad(app.handle().clone());
+
             // Cerrar con la X no termina la aplicación por defecto: sigue monitorizando en la
             // bandeja (`docs/product-specification.md` §3), salvo que `lifecycle.close_action`
             // diga lo contrario (US-072, T099, `docs/open-questions.md` J.19/J.32) — se lee en

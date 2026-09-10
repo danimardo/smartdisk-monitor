@@ -237,13 +237,12 @@ consulta PDH, tomaba una ventana de 1 s y la cerraba, y solo corría en `METRICA
 defecto). Una fotografía de 1 s de hace hasta 30 s marca 0–1 % aunque el disco esté trabajando.
 Spec `007-actividad-disco-representativa`, ADR-050.
 
-Se pasa a una **consulta PDH persistente** con **muestreo continuo** desde el bucle en segundo plano
-(`iniciar_planificador`, que ya despierta cada 1 s) y una **ventana deslizante** por disco de la que
-se derivan **media** y **pico**. Valores adoptados:
+Se pasa a una **consulta PDH persistente** con **muestreo continuo** y una **ventana deslizante**
+por disco de la que se derivan **media** y **pico**. Valores adoptados:
 
 | Parámetro | Valor | Nota |
 |---|---|---|
-| Intervalo de muestreo | **1 s** (un muestreo por tick del bucle) | En batería, 1 de cada 4 ticks → **4 s** (coherente con D.2). |
+| Intervalo de muestreo | **1 s** | Desde un **hilo dedicado** (ADR-056), no el del planificador — ver corrección abajo. En batería, 1 de cada 4 ticks → **4 s** (coherente con D.2). |
 | Tamaño de la ventana | **= `schedule.metrics_fast_seconds`** (30 s de fábrica; 10–300 s, D.1) | La cifra agrega «lo que va del último intervalo mostrado». |
 | Umbral de hueco | **> 3 × el intervalo de muestreo** (≈3 s en red, ≈12 s en batería) | Por encima, se descartan las muestras anteriores al hueco antes de agregar (suspensión, bloqueo del subsistema de rendimiento). A escala de muestreo reproduce el 2,5× de E.1. |
 | Estado del dato | `válido` si la muestra más antigua tiene ≥ el tamaño de la ventana de antigüedad; `parcial` con datos si aún no; `no disponible` si la ventana está vacía | Arranque, reanudación tras pausa y tras un hueco pasan por `parcial`, nunca por 0 (constitución §I). |
@@ -260,6 +259,17 @@ Reglas asociadas:
 - Un cambio de inventario **reconstruye la consulta entera** y reinicia brevemente la ventana de
   todos los discos (estado `parcial` ≤ una cadencia): compromiso aceptado para no gestionar
   contadores PDH vivos uno a uno.
+
+> **Corrección (2026-09-10, ADR-056):** el muestreo **no** puede vivir en el hilo del planificador.
+> Medido sobre hardware real: `activity_percent` dejó de escribirse el mismo día del despliegue
+> (0 filas en 30 h, mientras temperatura y caudal seguían). Causa: cuando toca un trabajo, el bucle
+> del planificador se bloquea síncrono —métricas rápidas hacen `sleep(1 s)` por disco (~4 s con 4
+> discos, cada 30 s); SMART, decenas de segundos cada 5 min— más que el «umbral de hueco» de 3 s, y
+> `VentanaActividad::registrar` vacía la ventana en cada bloqueo. Nunca alcanzaba los ~27 s de
+> cobertura que exige `válido`, así que no se persistía ni una fila, y en silencio. El muestreo
+> pasa a **su propio hilo** (`iniciar_muestreo_actividad`), independiente de los trabajos, con
+> log de principio VIII cuando una ventana no llega a ser representativa. El texto original decía
+> «un muestreo por tick del bucle \[del planificador\]»; se conserva aquí la razón del cambio.
 
 ### D.5 · Onda de actividad de fondo de la `DiskCard` · `DECIDIDO` (2026-09-09)
 

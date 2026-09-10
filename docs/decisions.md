@@ -2245,3 +2245,61 @@ persiste: `activity_percent` es una serie con la misma retención y agregación 
   la región hace scroll, como ya contempla `07-detalle-disco.md` §6 para el resto de la pantalla.
 - El boceto aprobado (`design/…/mockups/smartdisk-v3.html`, pestaña Detalle) queda desincronizado
   hasta reeditarlo: describía una sola gráfica.
+
+## ADR-056 — El muestreo de la actividad de disco vive en un hilo dedicado, no en el del planificador
+
+Estado: aceptada. Fecha: 2026-09-10. Enmienda a ADR-050 (spec `007-actividad-disco-representativa`).
+Recogida en `docs/open-questions.md` D.4.
+
+### El problema
+
+ADR-050 situó la consulta PDH persistente y la ventana deslizante de actividad **en el hilo del
+planificador de trabajos** (`commands::iniciar_planificador`), muestreadas una vez por iteración del
+bucle. Sobre hardware real la serie `activity_percent` **dejó de escribirse por completo** el mismo
+día que se desplegó: 0 filas en 30 h de marcha, mientras temperatura, caudal y latencias —del mismo
+ciclo— seguían guardándose.
+
+Causa: ese bucle duerme 1 s por iteración **salvo cuando toca un trabajo**, y entonces
+`ejecutar_ciclo` corre síncrono. `refresh_metricas_rendimiento` hace `perf_counters::leer()` por
+disco y cada `leer()` duerme 1 s (dos muestras para una tasa) — con 4 discos, ~4 s de bloqueo cada
+30 s; un ciclo SMART bloquea decenas de segundos cada 5 min. Entre el fin del ciclo y el siguiente
+muestreo, `Instant::now()` ha avanzado más que `umbral_hueco` (3× el intervalo de muestreo = 3 s en
+red), así que `VentanaActividad::registrar` lo interpreta como un hueco real y vacía la ventana. La
+ventana nunca acumulaba los ~27 s de cobertura (`FRACCION_COBERTURA_VALIDA = 0.9`) que exige
+`EstadoActividad::Valido`, y la persistencia —condicionada a `Valido`— no escribía ni una fila.
+Además falló **en silencio** casi un mes (principio VIII).
+
+### La decisión
+
+El muestreo de actividad se mueve a **su propio hilo** (`commands::iniciar_muestreo_actividad`,
+`spawn_blocking`), arrancado desde `lib.rs` junto al planificador y parado por la misma señal
+`AppState.detener_planificador`. Ese hilo solo muestrea: cada 1 s (4 s en batería) alimenta las
+ventanas desde la consulta PDH persistente, publica el agregado vivo en `AppState.actividad` y, una
+vez por ciclo de métricas rápidas, persiste la media de cada ventana `Valido`
+(`persistir_medias_actividad`). Ningún trabajo de recopilación puede ya abrir un hueco en el
+muestreo. La persistencia de `activity_percent` sale de `refresh_metricas_rendimiento` (que pierde
+el parámetro `actividad`).
+
+**Observabilidad** (principio VIII): el muestreador registra en el log cuándo la ventana de un
+disco pasa a ser representativa por primera vez, y avisa una sola vez si un disco lleva más de
+4× la cadencia sin llegar a `Valido` (fuente probablemente degradada). Sin esto, una ventana que
+nunca llega a `Valido` vuelve a ser un hueco silencioso.
+
+### Alternativas descartadas
+
+- **Subir `umbral_hueco`.** No distingue «el planificador estuvo ocupado 40 s» de «el equipo
+  estuvo suspendido 40 s»; promediar a través de una suspensión real es justo lo que FR-007 prohíbe.
+- **Relajar `EstadoActividad::Valido`.** Enturbia la semántica de la serie (la media dejaría de
+  cubrir la cadencia que declara) y no arregla que el número en vivo se quede siempre en `~parcial`.
+- **Ejecutar los trabajos del planificador en tareas aparte.** Cambio grande que arriesga la
+  serialización de la recopilación que garantiza ADR-042; desproporcionado para este arreglo.
+
+### Consecuencias
+
+- Un segundo hilo en segundo plano, del mismo tipo (`spawn_blocking`, E/S síncrona) y con la misma
+  parada que el planificador. `MuestreadorActividad` ya no se instancia en `iniciar_planificador`.
+- El historial de `activity_percent` de septiembre (~1 mes) es **irrecuperable**: nunca se capturó.
+  La serie se rellena desde el primer arranque con el build corregido.
+- Sin cambios de contrato IPC, modelo de datos, permisos de Tauri ni dependencias. La semántica de
+  la serie no cambia: media de la ventana deslizante, una fila por ciclo de métricas rápidas, hueco
+  cuando la ventana no es representativa.

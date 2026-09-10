@@ -149,7 +149,8 @@ Como usuario quiero consultar gráficas históricas para detectar tendencias de 
 Criterios de aceptación:
 
 - Se pueden elegir disco, métrica e intervalo.
-- Existen intervalos de 24 horas, 7 días, 30 días y personalizado.
+- Existen intervalos de 24 horas, 7 días, 30 días y personalizado; el detalle de disco añade **1 hora**
+  para inspeccionar el pasado reciente.
 - La zona horaria presentada es la local.
 - Las discontinuidades se muestran como ausencia de datos, no como cero.
 

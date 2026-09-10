@@ -99,13 +99,16 @@ La comunicación UI-backend usa DTO tipados coherentes con `src/lib/design/types
   `Avg. Disk sec/Write`.
 - La **actividad** (`% Idle Time`, del que se deriva `activity_percent = 100 − idle`, acotado a
   0–100; no se usa `% Disk Time`, que supera el 100 % con varias operaciones simultáneas) se lee
-  desde una **consulta PDH persistente** abierta durante toda la ejecución y muestreada en cada tick
-  del bucle en segundo plano (1 s; 4 s en batería). Por cada disco se mantiene una **ventana
-  deslizante** en memoria del tamaño de la cadencia de métricas rápidas, de la que se derivan
-  **media** y **pico**; el panel muestra el pico, el detalle media y pico, y la serie histórica
-  guarda la media —sin fila cuando la ventana aún no cubre la cadencia—. Estado en memoria, no
-  persistido: un reinicio arranca con la ventana vacía (spec `007-actividad-disco-representativa`,
-  ADR-050, `docs/open-questions.md` D.4).
+  desde una **consulta PDH persistente** abierta durante toda la ejecución y muestreada por un
+  **hilo dedicado** (`iniciar_muestreo_actividad`) cada 1 s (4 s en batería), **independiente del
+  planificador de trabajos**: un ciclo SMART o de métricas rápidas bloquea su hilo varios segundos
+  y abriría un hueco que vaciaría la ventana antes de que sea representativa (ADR-056, corrige
+  ADR-050). Por cada disco se mantiene una **ventana deslizante** en memoria del tamaño de la
+  cadencia de métricas rápidas, de la que se derivan **media** y **pico**; el panel muestra el pico,
+  el detalle media y pico, y la serie histórica guarda la media —sin fila cuando la ventana aún no
+  cubre la cadencia; el hilo lo registra en el log si un disco no llega nunca a ese estado—. Estado
+  en memoria, no persistido: un reinicio arranca con la ventana vacía (spec
+  `007-actividad-disco-representativa`, ADR-050/056, `docs/open-questions.md` D.4).
 - La instancia del contador (`"0 C: D:"`) se asocia al dispositivo por su número de disco físico,
   no por la letra de unidad, que puede cambiar.
 - Mantiene cada fuente separada para poder indicar procedencia y confianza.
