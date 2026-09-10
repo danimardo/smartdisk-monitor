@@ -7858,7 +7858,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `HealthDonut` | reparto de estados del equipo | acompañar de leyenda numérica. **En v3 sale del panel general** (lo sustituye el bloque «Reparto de estados», que con 2–4 discos se lee mejor); se conserva en el catálogo |
 | `AlertCard` | grupo de alertas en lista | píldora de severidad con icono (`severityIcon[severity]`: `info→shield`, `warn→alert`, `crit→bolt`); contador `×N` en `.sdm-num`; claves técnicas solo en el detalle |
 | `EventRow` | evento de Windows | nivel como **cuadrado de 26 px con icono** (`eventLevelIcon`) en el color del token, `aria-label` con el nombre del nivel — el color nunca viaja solo; altura de fila **fija en 42 px** (la `VirtualList` no recalcula); etiqueta "asociación inferida" a `text-2xs` sobre `bg-unknown-soft` cuando `mappingConfidence !== "exact"` |
-| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live`. Prop opcional `titulo`: título visible y prefijo de la etiqueta accesible — **obligatoria cuando una pantalla apila varias** (detalle de disco: temperatura y actividad) para distinguir cada `role="img"` |
+| `TimeSeriesChart` | gráficas históricas | trazo curvo por tramo (comparte `rutaSuave`/`tramos` con `Sparkline`); huecos como huecos; umbral del fabricante discontinuo; cursor de lectura (ratón + teclado) con el valor del punto en un globo `ChartTip` + región `aria-live`. Prop opcional `titulo`: **solo** prefijo de la etiqueta accesible (no un título visible — el encabezado lo pone el llamante, p. ej. la cabecera de su panel); **obligatoria cuando una pantalla apila varias** (detalle de disco: temperatura y actividad) para distinguir cada `role="img"`. `textoVacio` sustituye el «Sin muestras» genérico (actividad recién arrancada → «Recopilando datos…») |
 | `ChartTip` | globo de lectura de una gráfica | valor + instante del punto señalado, posicionado en píxeles por el llamante; `pointer-events-none`, `aria-hidden` (lo anuncia la región `aria-live` de la gráfica); voltea en los bordes; lo comparten todas las gráficas |
 | `Tooltip` | ayuda sobre un elemento al pasar el ratón / al enfocar (patrón WAI-ARIA) | dos modos: `focusable` (disparador `<button>`, ratón **y** teclado, `Escape`, `aria-describedby`, cumple WCAG 1.4.13) y `focusable={false}` (disparador `<span>`, **solo ratón**, para dentro de un `<a>`). Filo de color opcional por `HealthState`. Fondo casi opaco (`--sdm-glass-strong`): lleva párrafos y el material translúcido normal dificultaba la lectura. Lo usa `MetricCard` (detalle de disco). En la `DiskCard` del panel las métricas llevan un tooltip local ligero (mismo aspecto, sin componente): con 20 discos serían 60 instancias y el panel debe pintarse rápido (SC-006). Distinto de `ChartTip`, que sigue al puntero sobre un lienzo |
 | `ConfirmDialog` | confirmación previa | declarar acción, destino, impacto y comando literal |
@@ -7873,7 +7873,7 @@ Importa siempre desde el barrel: `import { Card, DiskCard } from "$lib/component
 | `Markdown` | render de un subconjunto de Markdown (respuesta del LLM, spec 005) | analizador propio en `src/lib/design/markdown.ts` (encabezados, listas, código, cita, negrita, cursiva, enlace); **nunca `{@html}`**; los enlaces se muestran como texto + URL entre paréntesis, sin `href`. Sin biblioteca de terceros |
 | `ExplicacionModal` | modal de la ayuda con IA (spec 005) | `role="dialog" aria-modal`, foco atrapado, `Escape`, devuelve el foco al disparador; fases progreso (con «Cancelar»), resultado (`Markdown` + modelo + advertencia de IA), error (frase + detalle + «Reintentar»), y vista previa / revisión de FR-010/FR-026 |
 | `AboutDialog` | «Acerca de» del riel (US-061) | mismo patrón de modal informativo que `ExplicacionModal` (`role="dialog" aria-modal`, foco devuelto, `Escape`, cruz); foto del autor como avatar (`src/lib/assets/`, único raster empaquetado — ADR-052) + nombre + biografía breve; pie con créditos (MIT, terceros, autor de `get_app_info`) y enlaces como **texto plano**; «Copiar información» copia solo lo diagnóstico |
-| `BenchmarkResults` | rejilla de resultados de la prueba de Rendimiento (spec 008 / ADR-053) | `<table>` (`<th scope>` reales, navegable por teclado) **pintada como la rejilla de CrystalDiskMark**, con los tokens de tema: filas = perfiles (notación `SEQ1M Q8T1`), columnas = Lectura / Escritura. Celda: cifra grande (MB/s o IOPS según un `SegmentedControl` global, recordado en `localStorage`) + latencia (µs < 1 ms, si no ms) + barra proporcional al máximo de la ejecución (`bg-accent-soft`). `Tooltip` en encabezados y etiquetas de perfil (qué mide cada uno). Se llena **celda a celda** con `running`: celda pendiente = «midiendo» / «—»; `notRun` = «no ejecutado», **nunca 0**; `*` + nota si una fila alcanzó el tope de datos. Solo en la pantalla de Pruebas (activa e historial) |
+| `BenchmarkResults` | rejilla de resultados de la prueba de Rendimiento (spec 008 / ADR-053) | `<table>` (`<th scope>` reales, navegable por teclado) **pintada como la rejilla de CrystalDiskMark**, con los tokens de tema: filas = perfiles (notación `SEQ1M Q8T1`), columnas = Lectura / Escritura. Celda: cifra grande (MB/s o IOPS según un `SegmentedControl` global, recordado en `localStorage`) + latencia (µs < 1 ms, si no ms) + barra proporcional al máximo de la ejecución (`bg-accent-soft`). `Tooltip` en encabezados y etiquetas de perfil (qué mide cada uno). Se llena **celda a celda** con `running`: celda pendiente = «midiendo» / «—»; `notRun` = «no ejecutado», **nunca 0**; `*` + nota si una fila alcanzó el tope de datos. Solo en la pantalla de Pruebas (activa e historial). En el historial va **precedida del volumen en grande** (`<h3>` `.sdm-display`); el componente en sí no lleva título |
 
 #### Autorizados y pendientes de construir
 
@@ -8020,11 +8020,15 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
 2. **Detalle de disco** (v3) — cabecera de identidad (`Card` de una fila: cuadrado de `Icon` con el
    color del estado, alias `.sdm-display`, `StatusPill` con icono, línea de identidad, botón «Probar
    disco»); fila de 4 `MetricCard` con icono y sparkline de 24 h; rejilla `1.6fr 1fr` con **dos
-   `TimeSeriesChart` apilados** —temperatura y actividad (`activity_percent`, eje 0–100 %, sin
-   umbral, color de acento; ADR-055)— a la izquierda y panel de contadores con `DataRow` a la
-   derecha. El `SegmentedControl` de intervalo va **junto a las gráficas** (único, gobierna las
-   dos), ya no en la `Toolbar`. Cada gráfica apilada lleva `titulo` para que su `role="img"` se
-   distinga.
+   `TimeSeriesChart` apilados, cada uno en su propio panel `bg-glass-3` (`rounded-inner`, `p-4`)
+   con encabezado `<h3>` que incluye la unidad** —«Temperatura · °C» y «Actividad · %»— a la
+   izquierda, y panel de contadores con `DataRow` a la derecha. Los paneles separados dejan claro
+   que son dos magnitudes distintas. Temperatura: eje 0–100 %, umbral del fabricante, color según
+   estado térmico. Actividad (`activity_percent`, ADR-055/056): **eje con suelo en 0 y techo
+   ajustado a los datos** (la actividad de un disco parado es ~0 y con eje fijo no se vería), sin
+   umbral, color de acento. El `SegmentedControl` de intervalo (**1 h / 24 h / 7 d / 30 d /
+   personalizado**) va **encima de los dos paneles** (único, gobierna las dos gráficas), ya no en
+   la `Toolbar`.
 3. **Alertas** — lista de `AlertCard` (columna fija ~470 px) + detalle: severidad, titular, explicación humana,
    rejilla de hechos (los dos primeros — valor y umbral — en `text-metric` con `.sdm-display`), acciones
    (Reconocer / Silenciar / Archivar / **Ignorar**, y **Dejar de ignorar** en el detalle de una
@@ -8038,7 +8042,10 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    emphasis="display"`; rejilla de métricas en cuadros `bg-glass-3`; aviso de parada automática en
    `bg-warn-soft` con `Icon` (nunca un badge `text-white`). Debajo, las tres tarjetas de prueba (cada
    una con su cuadrado de `Icon`, `testIcon`), y el historial con columna de icono de estado. Sin
-   prueba en curso, el bloque no se muestra y las tarjetas suben.
+   prueba en curso, el bloque no se muestra y las tarjetas suben. En el historial, al desplegar «Ver
+   la tabla completa» de una prueba de Rendimiento, la rejilla `BenchmarkResults` va **precedida de
+   un encabezado con el volumen en grande** (`<h3>` `.sdm-display` `text-xl`) + tipo y fecha en
+   secundario, para identificar de un vistazo de qué disco es la prueba.
 5. **Ajustes** — secciones apiladas, cada una en su `Card`; controles internos sobre `bg-glass-3`
    (no material sobre material). «Borrar todos los datos» separada al final con `border="crit"` y
    ~32 px extra de separación; el fondo no se tiñe.

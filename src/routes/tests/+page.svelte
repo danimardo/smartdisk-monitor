@@ -456,7 +456,15 @@
                   <summary class="cursor-pointer text-2xs font-semibold text-fg-dim">
                     {t("tests.benchmark.showTable")}
                   </summary>
-                  <div class="mt-2">
+                  <div class="mt-3 flex flex-col gap-3">
+                    <header class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <h3 class="sdm-display m-0 text-xl tracking-tight">{objetivoLabel(run)}</h3>
+                      <span class="text-xs text-fg-dim">
+                        {t(TIPO_LABEL_KEY[run.type] ?? "common.notAvailable")} · {formatDateTime(
+                          run.startedAt
+                        )}
+                      </span>
+                    </header>
                     <BenchmarkResults result={tabla} />
                   </div>
                 </details>

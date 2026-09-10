@@ -89,8 +89,8 @@ describe("TimeSeriesChart", () => {
     expect(container.querySelectorAll("rect").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("con `titulo`, lo muestra visible y lo antepone a la etiqueta accesible (dos gráficas apiladas)", async () => {
-    await render(TimeSeriesChart, {
+  it("`titulo` antepone a la etiqueta accesible pero NO se pinta (el encabezado lo pone el llamante)", async () => {
+    const { container } = await render(TimeSeriesChart, {
       props: {
         points: [
           { t: 0, v: 10 },
@@ -99,13 +99,14 @@ describe("TimeSeriesChart", () => {
         from: 0,
         to: 1000,
         unit: "%",
-        titulo: "Actividad"
+        titulo: "Actividad · %"
       }
     });
-    await expect.element(page.getByText("Actividad", { exact: true })).toBeVisible();
     await expect
       .element(page.getByRole("img"))
-      .toHaveAttribute("aria-label", expect.stringMatching(/^Actividad\. /));
+      .toHaveAttribute("aria-label", expect.stringMatching(/^Actividad · %\. /));
+    // No hay ningún texto visible «Actividad · %» dentro del componente.
+    expect(container.textContent).not.toContain("Actividad · %");
   });
 
   it("sin `titulo`, la etiqueta accesible es solo la lectura textual (una sola gráfica)", async () => {

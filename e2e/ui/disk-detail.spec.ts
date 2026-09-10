@@ -16,9 +16,11 @@ test.describe("detalle de disco", () => {
     await expect(page.getByText(es["disk.temperature"]).first()).toBeVisible();
     await expect(page.getByText(es["smart.counter.power_cycles"])).toBeVisible();
 
-    // Las dos gráficas históricas se distinguen por su nombre accesible (título + lectura textual).
-    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.temperature"]}\\.`) })).toBeVisible();
-    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}\\.`) })).toBeVisible();
+    // Cada gráfica en su propio panel con encabezado (unidad incluida) y su `role="img"` distinto.
+    await expect(page.getByRole("heading", { name: `${es["disk.temperature"]} · °C` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: `${es["disk.activity"]} · %` })).toBeVisible();
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.temperature"]}`) })).toBeVisible();
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}`) })).toBeVisible();
 
     const series = (await llamadas(page))
       .filter((l) => l.comando === "get_metric_series")
@@ -31,7 +33,7 @@ test.describe("detalle de disco", () => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto(`/disks/${detalleDisco0.id}`);
     await expect(page.getByRole("heading", { name: detalleDisco0.model })).toBeVisible();
-    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}\\.`) })).toBeVisible();
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}`) })).toBeVisible();
 
     const seriesAntes = (await llamadas(page)).filter((l) => l.comando === "get_metric_series").length;
 
@@ -72,7 +74,7 @@ test.describe("detalle de disco", () => {
   }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto(`/disks/${detalleDisco0.id}`);
-    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}\\.`) })).toBeVisible();
+    await expect(page.getByRole("img", { name: new RegExp(`^${es["disk.activity"]}`) })).toBeVisible();
 
     const antes = (await llamadas(page)).filter((l) => l.comando === "get_metric_series").length;
     await page.getByRole("radio", { name: es["range.1h"] }).click();

@@ -50,9 +50,10 @@
     color = "var(--sdm-accent)",
     /** Resolución servida por el backend; se muestra para que el usuario sepa que ve agregados. */
     resolutionLabel = "" as string,
-    /** Título visible de la gráfica y prefijo de su etiqueta accesible. Obligatorio cuando la
-     *  pantalla apila varias gráficas (detalle de disco: temperatura y actividad) para que cada
-     *  `role="img"` se distinga; vacío mientras haya una sola y el contexto la identifique. */
+    /** Prefijo de la etiqueta accesible (`role="img"`), **no** un título visible: el llamante pone
+     *  el encabezado (p. ej. la cabecera de su panel). Obligatorio cuando la pantalla apila varias
+     *  gráficas (detalle de disco: temperatura y actividad) para que cada `role="img"` se
+     *  distinga con un lector de pantalla. */
     titulo = "" as string,
     /** Texto del estado vacío. Por defecto «Sin muestras en el intervalo»; una pantalla que sabe
      *  que el historial aún se está poblando (actividad recién arrancada) pasa aquí su propio
@@ -170,9 +171,6 @@
 </script>
 
 <figure class="relative m-0 flex flex-col gap-3">
-  {#if titulo}
-    <p class="text-xs font-medium text-fg-dim">{titulo}</p>
-  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- La gráfica es interactiva a propósito: cursor de lectura con ratón y teclado, como exige la

@@ -52,6 +52,8 @@ test.describe("pruebas y diagnóstico", () => {
 
     const historial = page.locator("section", { hasText: es["tests.history.title"] });
     await expect(historial.getByText("Medido con DiskSpd 2.3.0")).toBeVisible();
+    // La rejilla desplegada lleva encima el volumen en grande, para saber de qué disco es.
+    await expect(historial.getByRole("heading", { name: "Sistema (C:)" })).toBeVisible();
     // Encabezado de columna real (Lectura/Escritura) y de fila (notación CDM del perfil).
     await expect(
       historial

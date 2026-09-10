@@ -33,24 +33,30 @@ Cuatro bloques, `gap` 18 px:
    22 px** y línea de procedencia.
 3. **Rejilla `1.6fr 1fr`** — a la izquierda, el `SegmentedControl` de intervalo (único, gobierna
    las dos gráficas; segmentos **`1 h` / `24 h` / `7 d` / `30 d` / `Personalizado`**) y **dos
-   `TimeSeriesChart` apilados** (`gap` 20 px): temperatura arriba, actividad debajo. A la derecha,
-   los contadores. En modo personalizado, el `DateRangePicker` comparte fila con el
-   `SegmentedControl` y sus etiquetas «Desde»/«Hasta» van **en línea** con el campo (no encima),
-   para que los campos queden alineados con las píldoras.
-4. Cada gráfica apilada usa su alto por defecto (≈220 px de trazo + título + pie); la columna crece
-   con las dos y la región hace scroll cuando no cabe.
+   paneles apilados** (`gap` 20 px), cada uno con fondo `bg-glass-3`, `rounded-inner`, `p-4` y un
+   encabezado `<h3>` con la unidad —«Temperatura · °C» arriba, «Actividad · %» debajo—, con su
+   `TimeSeriesChart` dentro. A la derecha, los contadores. En modo personalizado, el
+   `DateRangePicker` comparte fila con el `SegmentedControl` y sus etiquetas «Desde»/«Hasta» van
+   **en línea** con el campo (no encima), para que los campos queden alineados con las píldoras.
+4. Cada panel usa el alto por defecto de su gráfica (≈220 px de trazo + pie) más el encabezado; la
+   columna crece con los dos y la región hace scroll cuando no cabe.
 
-La gráfica de **actividad** (`activity_percent`, ADR-055): eje fijo **0–100 %**, **sin líneas de
-umbral**, **color de acento siempre** (no sigue el estado del disco, a diferencia de la
-temperatura). Título visible «Actividad»; los huecos «sin datos» se pintan como banda, igual que en
-temperatura.
+Los **paneles separados** son lo que deja claro que son dos magnitudes distintas: sin ellos, mismo
+color, mismo ancho y ejes parecidos hacían que parecieran una sola gráfica.
+
+La gráfica de **actividad** (`activity_percent`, ADR-055/056): **eje con suelo en 0 y techo
+ajustado a los datos** (con eje fijo 0–100 % la actividad de un disco parado —~0 %— no se vería),
+**sin líneas de umbral**, **color de acento siempre** (no sigue el estado del disco). Los huecos
+«sin datos» se pintan como banda; con la serie recién arrancada, «Recopilando datos…» en vez de
+«Sin muestras».
 
 ## 3. Cambios por componente
 
 - **`TimeSeriesChart`** — el cambio más importante del rediseño. Ver `componentes/Sparkline.md` §2
   para el trazado por tramos. **Se apilan dos** en el detalle (temperatura y actividad, ADR-055),
-  cada uno con la prop `titulo` para que su `role="img"` se distinga con un lector de pantalla (el
-  título se antepone a la lectura textual equivalente). Resumen:
+  cada uno dentro de su panel `bg-glass-3` con encabezado propio. La prop `titulo` es **solo** el
+  prefijo de la etiqueta accesible (no un título visible: lo pone el `<h3>` del panel), para que su
+  `role="img"` se distinga con un lector de pantalla. Resumen:
   - **eje Y** de 26 px de ancho con cuatro marcas (`text-2xs`, `tabular-nums`), fuera del área de trazo;
   - **relleno degradado** bajo la curva (`stop-opacity` .32 → 0) con el color de la serie;
   - **grosor 2,6 px** con `vector-effect="non-scaling-stroke"`, para que `preserveAspectRatio="none"`

@@ -370,43 +370,48 @@
       {/snippet}
 
       <div class="flex flex-col gap-5">
-        {#if serieTemp.serie}
-          <TimeSeriesChart
-            titulo={t("disk.temperature")}
-            points={serieTemp.serie.points}
-            from={new Date(serieTemp.serie.fromUtc).getTime()}
-            to={new Date(serieTemp.serie.toUtc).getTime()}
-            expectedIntervalMs={serieTemp.serie.expectedIntervalMs}
-            unit="°C"
-            min={0}
-            max={100}
-            color={tempState === "warn" || tempState === "crit" ? "var(--sdm-warn)" : "var(--sdm-accent)"}
-            warnThreshold={tempThresholds.warn}
-            warnLabel={t("chart.tempWarnLabel", { value: formatTemperature(tempThresholds.warn) })}
-            critThreshold={tempThresholds.crit}
-            critLabel={t("chart.tempCritLabel", { value: formatTemperature(tempThresholds.crit) })}
-            resolutionLabel={resolucionTemp}
-          />
-        {:else}
-          {@render cargaOFallo(serieTemp)}
-        {/if}
+        <section class="flex flex-col gap-3 rounded-inner bg-glass-3 p-4">
+          <h3 class="m-0 text-sm font-semibold tracking-tight">{`${t("disk.temperature")} · °C`}</h3>
+          {#if serieTemp.serie}
+            <TimeSeriesChart
+              titulo={`${t("disk.temperature")} · °C`}
+              points={serieTemp.serie.points}
+              from={new Date(serieTemp.serie.fromUtc).getTime()}
+              to={new Date(serieTemp.serie.toUtc).getTime()}
+              expectedIntervalMs={serieTemp.serie.expectedIntervalMs}
+              unit="°C"
+              min={0}
+              max={100}
+              color={tempState === "warn" || tempState === "crit" ? "var(--sdm-warn)" : "var(--sdm-accent)"}
+              warnThreshold={tempThresholds.warn}
+              warnLabel={t("chart.tempWarnLabel", { value: formatTemperature(tempThresholds.warn) })}
+              critThreshold={tempThresholds.crit}
+              critLabel={t("chart.tempCritLabel", { value: formatTemperature(tempThresholds.crit) })}
+              resolutionLabel={resolucionTemp}
+            />
+          {:else}
+            {@render cargaOFallo(serieTemp)}
+          {/if}
+        </section>
 
-        {#if serieActividad.serie}
-          <TimeSeriesChart
-            titulo={t("disk.activity")}
-            points={serieActividad.serie.points}
-            from={new Date(serieActividad.serie.fromUtc).getTime()}
-            to={new Date(serieActividad.serie.toUtc).getTime()}
-            expectedIntervalMs={serieActividad.serie.expectedIntervalMs}
-            unit="%"
-            min={0}
-            max={100}
-            resolutionLabel={resolucionActividad}
-            textoVacio={rango === "custom" ? "" : t("chart.collectingActivity")}
-          />
-        {:else}
-          {@render cargaOFallo(serieActividad)}
-        {/if}
+        <section class="flex flex-col gap-3 rounded-inner bg-glass-3 p-4">
+          <h3 class="m-0 text-sm font-semibold tracking-tight">{`${t("disk.activity")} · %`}</h3>
+          {#if serieActividad.serie}
+            <TimeSeriesChart
+              titulo={`${t("disk.activity")} · %`}
+              points={serieActividad.serie.points}
+              from={new Date(serieActividad.serie.fromUtc).getTime()}
+              to={new Date(serieActividad.serie.toUtc).getTime()}
+              expectedIntervalMs={serieActividad.serie.expectedIntervalMs}
+              unit="%"
+              min={0}
+              resolutionLabel={resolucionActividad}
+              textoVacio={rango === "custom" ? "" : t("chart.collectingActivity")}
+            />
+          {:else}
+            {@render cargaOFallo(serieActividad)}
+          {/if}
+        </section>
       </div>
     </div>
 

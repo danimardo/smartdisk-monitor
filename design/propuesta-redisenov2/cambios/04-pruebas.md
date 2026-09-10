@@ -41,7 +41,12 @@ bloque vacío de «ninguna prueba en curso».
   contenido, jerarquía distinta.
 - **`ConfirmDialog`** — sin cambios de estructura. Sigue declarando acción, destino, impacto y comando
   literal (`estado-dialogo-prueba`). Solo hereda tokens.
-- **Historial** — columna de icono de estado al principio; el resto de columnas igual.
+- **Historial** — columna de icono de estado al principio; el resto de columnas igual. Al desplegar
+  «Ver la tabla completa» de una prueba de Rendimiento (spec 008 / ADR-053), la rejilla
+  `BenchmarkResults` va **precedida de un encabezado**: el volumen en grande (`<h3>` `.sdm-display`
+  `text-xl`) + tipo de prueba y fecha en `text-xs` secundario. Sin él, la rejilla estilo
+  CrystalDiskMark no dice de un vistazo de qué disco es (el objetivo solo estaba como texto gris
+  pequeño en la fila plegada).
 
 ## 4. Estados
 
