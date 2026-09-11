@@ -188,6 +188,8 @@ describe("la superficie completa del contrato", () => {
     cancelTest: "cancel_test",
     getTestRuns: "get_test_runs",
     exportReport: "export_report",
+    previewInformeIa: "preview_informe_ia",
+    cancelarInforme: "cancelar_informe",
     previewDiagnosticZip: "preview_diagnostic_zip",
     createDiagnosticZip: "create_diagnostic_zip",
     pauseMonitoring: "pause_monitoring",

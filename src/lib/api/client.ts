@@ -182,7 +182,29 @@ export const exportReport = (params: {
   deviceIds: string[] | null;
   includeSerials: boolean;
   destinationPath: string;
+  /** Solo para `format: "html"`: clave de regla de alerta → texto legible (spec 009). El backend
+   *  no posee ninguna traducción (ADR-030); una clave ausente cae a la clave cruda. */
+  alertLabels?: Record<string, string> | null;
+  /** `format: "html"` únicamente: añade un resumen por disco con IA. Exige `previewConfirmada`
+   *  (la interfaz llama antes a `previewInformeIa`); si falta, el backend rechaza con
+   *  `report.preview_required` (spec 009). */
+  includeAiSummary?: boolean;
+  previewConfirmada?: boolean;
 }) => call("export_report", z.string(), params);
+
+/** Vista previa (sin red) del texto exacto y anonimizado que se enviaría por cada disco al pedir
+ *  el resumen con IA del informe (spec 009, principio XVI). La casilla «incluir resumen con IA»
+ *  la llama antes de ofrecer la confirmación única que cubre todo el informe. */
+export const previewInformeIa = (params: {
+  fromUtc: string;
+  toUtc: string;
+  deviceIds: string[] | null;
+  alertLabels?: Record<string, string> | null;
+}) => call("preview_informe_ia", S.previewInformeIa, params);
+
+/** Cancela la exportación de informe con resumen IA en curso (spec 009, US3). Inofensivo sin
+ *  exportación en curso. */
+export const cancelarInforme = () => callVoid("cancelar_informe");
 
 /** No escribe nada: US-051 exige enseñar el contenido antes de guardar. */
 export const previewDiagnosticZip = (includeIdentifiers: boolean) =>

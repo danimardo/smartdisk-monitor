@@ -472,12 +472,52 @@ pub struct DetalleEvento<'a> {
     pub nivel: &'a str,
 }
 
-/// Qué se le pide explicar: una alerta, los contadores SMART de un disco, o un suceso de Windows.
+/// Una alerta del disco ya con descripción legible (la interfaz la resolvió; este módulo no
+/// conoce claves de regla, spec `009-informe-mejorado`).
+#[derive(Debug, Clone, Copy)]
+pub struct AlertaParaModelo<'a> {
+    pub descripcion: &'a str,
+    /// `"warn"` | `"crit"`.
+    pub severidad: &'a str,
+    pub primera_vez: &'a str,
+    pub ultima_vez: &'a str,
+    pub veces: i64,
+}
+
+/// Resumen numérico de una métrica en el intervalo del informe (mín/media/máx/pico), o «sin
+/// datos» si la serie estaba vacía. `etiqueta` ya incluye la unidad, p. ej. «Temperatura (°C)».
+#[derive(Debug, Clone, Copy)]
+pub struct ResumenNumerico<'a> {
+    pub etiqueta: &'a str,
+    pub minimo: Option<f64>,
+    pub media: Option<f64>,
+    pub maximo: Option<f64>,
+    pub pico: Option<f64>,
+}
+
+/// El payload del resumen con IA del informe imprimible (spec `009-informe-mejorado`, principio
+/// XVI 1.11.0): **un solo disco** por valor de este tipo — nunca se combinan dos en una consulta.
+/// Alcance exacto que autoriza la enmienda: alertas del intervalo + contenido de los sucesos que
+/// las originaron + contadores SMART + resumen numérico de temperatura y actividad. Ya anonimizado
+/// por quien lo construye.
+#[derive(Debug, Clone, Copy)]
+pub struct DetalleInforme<'a> {
+    pub alertas: &'a [AlertaParaModelo<'a>],
+    pub contenidos_suceso: &'a [&'a str],
+    pub contadores: &'a [ContadorSmart<'a>],
+    pub resumenes: &'a [ResumenNumerico<'a>],
+    pub desde_local: &'a str,
+    pub hasta_local: &'a str,
+}
+
+/// Qué se le pide explicar: una alerta, los contadores SMART de un disco, un suceso de Windows, o
+/// —spec 009— el periodo completo de un disco para el informe imprimible.
 #[derive(Debug, Clone, Copy)]
 pub enum Detalle<'a> {
     Alerta(DetalleAlerta<'a>),
     Smart(&'a [ContadorSmart<'a>]),
     Evento(DetalleEvento<'a>),
+    Informe(DetalleInforme<'a>),
 }
 
 const SYSTEM_ES: &str = "Eres un asistente que explica el estado de un disco de ordenador a una \
@@ -500,6 +540,34 @@ Rules: always answer in English. Use Markdown with headings (##) and lists. Be b
 words). Do NOT invent data, values or causes that are not in the text I give you. Do NOT use \
 jargon without explaining it.";
 
+/// Prompt del resumen del informe (spec 009): a diferencia de `SYSTEM_ES`, pide **texto plano**,
+/// no Markdown — el informe incrusta la respuesta como texto HTML-escapado con saltos de línea
+/// (principio XVI: «texto o markdown seguro, jamás HTML»; ver ADR-057, D10 de `research.md`), y
+/// unos `**`/`##` literales en un `<div>` sin renderizar quedarían como ruido visual.
+const SYSTEM_INFORME_ES: &str = "Eres un asistente que resume, para una persona SIN conocimientos \
+técnicos, cómo ha ido un disco de ordenador durante un periodo, a partir de sus alertas, sus \
+contadores SMART y sus sucesos de Windows. Con los datos que te den:\n\
+- Resume en pocas frases, en lenguaje llano, cómo está el disco y qué ha pasado en el periodo.\n\
+- Di claramente si hay algo urgente, algo a vigilar, o si todo está normal.\n\
+- Si no hay incidencias, dilo también así de claro: no rellenes con generalidades.\n\
+Reglas: responde SIEMPRE en español, en TEXTO PLANO (sin Markdown: nada de `#`, `*`, listas ni \
+tablas; como mucho un salto de línea entre ideas). Sé breve (menos de 120 palabras). NO inventes \
+datos, valores ni causas que no estén en el texto que te doy. NO uses tecnicismos sin explicarlos. \
+Esto es orientación para la persona, no un diagnóstico.";
+
+const SYSTEM_INFORME_EN: &str = "You are an assistant that summarizes, for a person with NO \
+technical background, how a computer disk has been doing over a period, from its alerts, its \
+SMART counters and its Windows events. With the data you are given:\n\
+- Summarize in a few plain-language sentences how the disk is doing and what happened in the \
+period.\n\
+- Clearly say whether there is something urgent, something to keep an eye on, or whether \
+everything is normal.\n\
+- If there are no issues, say so just as clearly: do not pad with generalities.\n\
+Rules: always answer in English, in PLAIN TEXT (no Markdown: no `#`, `*`, lists or tables; at most \
+one line break between ideas). Be brief (under 120 words). Do NOT invent data, values or causes \
+that are not in the text I give you. Do NOT use jargon without explaining it. This is guidance for \
+the person, not a diagnosis.";
+
 /// Compone el par `(system, user)` para la petición. **Ensambla el `user` en bruto** en orden
 /// `resumen → volcado → suceso`; **no anonimiza**: el comando aplica `Anonimizador` +
 /// [`redactar_identificadores`] sobre el texto completo después (spec `006`, §D1). Que el suceso
@@ -512,9 +580,11 @@ pub fn componer_consulta(
     volcado: Option<&str>,
     suceso: Option<&str>,
 ) -> (String, String) {
-    let system = match idioma {
-        Idioma::Es => SYSTEM_ES,
-        Idioma::En => SYSTEM_EN,
+    let system = match (idioma, detalle) {
+        (Idioma::Es, Detalle::Informe(_)) => SYSTEM_INFORME_ES,
+        (Idioma::En, Detalle::Informe(_)) => SYSTEM_INFORME_EN,
+        (Idioma::Es, _) => SYSTEM_ES,
+        (Idioma::En, _) => SYSTEM_EN,
     };
 
     let mut user = String::new();
@@ -559,6 +629,70 @@ pub fn componer_consulta(
                 "Suceso del registro de eventos de Windows: proveedor {}, id {}, nivel {}\n",
                 e.proveedor, e.event_id, e.nivel
             ));
+        }
+        Detalle::Informe(d) => {
+            user.push_str(&format!(
+                "Periodo del informe: {} a {}\n",
+                d.desde_local, d.hasta_local
+            ));
+            if d.alertas.is_empty() {
+                user.push_str("Alertas en el periodo: ninguna.\n");
+            } else {
+                user.push_str("Alertas en el periodo:\n");
+                for a in d.alertas {
+                    user.push_str(&format!(
+                        "- {} (severidad: {}, {} veces, de {} a {})\n",
+                        a.descripcion, a.severidad, a.veces, a.primera_vez, a.ultima_vez
+                    ));
+                }
+            }
+            if !d.contadores.is_empty() {
+                user.push_str("Contadores SMART:\n");
+                for c in d.contadores {
+                    user.push_str("- ");
+                    user.push_str(c.nombre);
+                    user.push_str(" = ");
+                    match c.valor {
+                        Some(v) => user.push_str(&formato_num(v)),
+                        None => user.push_str("sin dato"),
+                    }
+                    if let Some(u) = c.unidad {
+                        user.push(' ');
+                        user.push_str(u);
+                    }
+                    if c.significativo {
+                        user.push_str(" (subiendo)");
+                    }
+                    user.push('\n');
+                }
+            }
+            for r in d.resumenes {
+                user.push_str(r.etiqueta);
+                user.push_str(": ");
+                match (r.minimo, r.media, r.maximo) {
+                    (Some(mn), Some(me), Some(mx)) => user.push_str(&format!(
+                        "mínimo {}, media {}, máximo {}",
+                        formato_num(mn),
+                        formato_num(me),
+                        formato_num(mx)
+                    )),
+                    _ => user.push_str("sin datos en el periodo"),
+                }
+                if let Some(p) = r.pico {
+                    user.push_str(&format!(", pico {}", formato_num(p)));
+                }
+                user.push('\n');
+            }
+            if !d.contenidos_suceso.is_empty() {
+                user.push_str("\nSucesos de Windows relacionados:\n");
+                for (i, s) in d.contenidos_suceso.iter().enumerate() {
+                    let s = s.trim();
+                    if s.is_empty() {
+                        continue;
+                    }
+                    user.push_str(&format!("--- Suceso {} ---\n{}\n", i + 1, s));
+                }
+            }
         }
     }
 
@@ -1351,6 +1485,128 @@ mod tests {
             Some("algo"),
         );
         assert!(user.contains("Disco: modelo Samsung SSD 990 PRO 2TB"));
+    }
+
+    #[test]
+    fn componer_consulta_informe_lleva_alertas_contadores_resumenes_y_sucesos_de_un_disco() {
+        let alertas = [AlertaParaModelo {
+            descripcion: "Desgaste elevado",
+            severidad: "warn",
+            primera_vez: "2026-09-01T00:00:00Z",
+            ultima_vez: "2026-09-04T00:00:00Z",
+            veces: 3,
+        }];
+        let contadores = [ContadorSmart {
+            nombre: "power_cycles",
+            valor: Some(812.0),
+            unidad: None,
+            significativo: false,
+        }];
+        let resumenes = [
+            ResumenNumerico {
+                etiqueta: "Temperatura (°C)",
+                minimo: Some(38.0),
+                media: Some(41.0),
+                maximo: Some(46.0),
+                pico: Some(46.0),
+            },
+            ResumenNumerico {
+                etiqueta: "Actividad (%)",
+                minimo: None,
+                media: None,
+                maximo: None,
+                pico: None,
+            },
+        ];
+        let sucesos = ["Mensaje del suceso de Windows número uno."];
+        let detalle = DetalleInforme {
+            alertas: &alertas,
+            contenidos_suceso: &sucesos,
+            contadores: &contadores,
+            resumenes: &resumenes,
+            desde_local: "2026-09-01 00:00",
+            hasta_local: "2026-09-04 00:00",
+        };
+        let (system, user) = componer_consulta(
+            &Detalle::Informe(detalle),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
+        assert!(
+            system.contains("TEXTO PLANO"),
+            "pide texto plano, no markdown"
+        );
+        assert!(user.contains("Desgaste elevado"));
+        assert!(user.contains("power_cycles"));
+        assert!(user.contains("Temperatura (°C): mínimo 38, media 41, máximo 46"));
+        assert!(user.contains("Actividad (%): sin datos en el periodo"));
+        assert!(user.contains("Mensaje del suceso de Windows número uno."));
+        assert!(
+            user.contains("Samsung SSD 990 PRO 2TB"),
+            "el contexto del disco sigue presente"
+        );
+    }
+
+    #[test]
+    fn componer_consulta_informe_de_un_disco_no_lleva_nada_de_otro() {
+        let alertas_d1 = [AlertaParaModelo {
+            descripcion: "Alerta del disco 1",
+            severidad: "warn",
+            primera_vez: "2026-09-01T00:00:00Z",
+            ultima_vez: "2026-09-01T00:00:00Z",
+            veces: 1,
+        }];
+        let detalle_d1 = DetalleInforme {
+            alertas: &alertas_d1,
+            contenidos_suceso: &[],
+            contadores: &[],
+            resumenes: &[],
+            desde_local: "2026-09-01 00:00",
+            hasta_local: "2026-09-04 00:00",
+        };
+        let (_, user_d1) = componer_consulta(
+            &Detalle::Informe(detalle_d1),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
+
+        let alertas_d2 = [AlertaParaModelo {
+            descripcion: "Alerta del disco 2, muy distinta",
+            severidad: "crit",
+            primera_vez: "2026-09-02T00:00:00Z",
+            ultima_vez: "2026-09-02T00:00:00Z",
+            veces: 5,
+        }];
+        let detalle_d2 = DetalleInforme {
+            alertas: &alertas_d2,
+            contenidos_suceso: &[],
+            contadores: &[],
+            resumenes: &[],
+            desde_local: "2026-09-01 00:00",
+            hasta_local: "2026-09-04 00:00",
+        };
+        let (_, user_d2) = componer_consulta(
+            &Detalle::Informe(detalle_d2),
+            &disco_de_prueba(),
+            Idioma::Es,
+            None,
+            None,
+        );
+
+        assert!(user_d1.contains("Alerta del disco 1"));
+        assert!(
+            !user_d1.contains("disco 2"),
+            "el payload de d1 no lleva nada de d2"
+        );
+        assert!(user_d2.contains("Alerta del disco 2"));
+        assert!(
+            !user_d2.contains("disco 1"),
+            "el payload de d2 no lleva nada de d1"
+        );
     }
 
     #[test]

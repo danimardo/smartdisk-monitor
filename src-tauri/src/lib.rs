@@ -91,6 +91,8 @@ pub fn run() {
             commands::get_test_runs,
             // informes
             commands::export_report,
+            commands::preview_informe_ia,
+            commands::cancelar_informe,
             commands::preview_diagnostic_zip,
             commands::create_diagnostic_zip,
             // ciclo de vida

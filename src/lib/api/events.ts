@@ -23,6 +23,7 @@ export type {
   AlertsChanged,
   InventoryChanged,
   TestProgress,
+  ReportProgress,
   SourceDegraded,
   MonitoringPaused
 } from "./event-types";

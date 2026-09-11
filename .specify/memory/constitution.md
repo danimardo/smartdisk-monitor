@@ -569,6 +569,10 @@ condiciones. Incumplir una es un defecto, no un matiz.
   explícito e inequívoco (pulsar «Explícamelo en lenguaje claro»). Nada en segundo plano, nada al
   arrancar, nada al detectarse una alerta, ningún reintento automático que la persona no haya
   pedido.
+
+  Generar el **informe imprimible con resumen por disco** es también un gesto explícito válido: la
+  persona activa la casilla «incluir resumen con IA» —apagada de fábrica— y confirma la exportación
+  tras ver la vista previa. Con la casilla apagada no hay ninguna llamada al modelo.
 - **Un solo proveedor, un solo destino.** La capacidad tiene un host fijo declarado en la pila. No
   es un cliente HTTP de propósito general: no puede alcanzar ninguna otra dirección.
 - **Solo el detalle técnico del suceso que se explica.** Se envía el detalle técnico de la alerta o
@@ -579,6 +583,15 @@ condiciones. Incumplir una es un defecto, no un matiz.
   inventario completo, el historial de otras métricas, la configuración, datos de otras pantallas
   ni de otros discos. El bloque de metadatos de sistema del suceso —nombre del equipo, principal de
   seguridad, identificadores de proceso— no se envía.
+
+  Para el **resumen del informe imprimible** el alcance por llamada es **un solo disco**: sus
+  alertas del intervalo del informe y el mensaje y los campos de datos de los sucesos de Windows
+  que las originaron, sus contadores SMART, y el resumen numérico (mínimo, media, máximo, pico) de
+  temperatura y actividad de ese intervalo. **Nunca se combinan varios discos en una misma
+  petición**, ni entra el inventario completo, la configuración ni datos de otras pantallas. Es la
+  misma clase de información —la que la persona ve en el detalle de ese disco y en el informe— con
+  el alcance ampliado del suceso puntual al conjunto de ese disco en el intervalo. El bloque de
+  metadatos de sistema de cada suceso sigue sin enviarse.
 - **Anonimización obligatoria antes de que el texto salga del proceso.** Rigen las mismas reglas
   del principio IX y del XV: números de serie, identificador mundial del disco (WWN), nombre del
   equipo, nombre de usuario, rutas con perfil de usuario, etiquetas de volumen, identificadores de
@@ -597,6 +610,9 @@ condiciones. Incumplir una es un defecto, no un matiz.
 
   El botón «Usar la clave de demostración» es ese consentimiento cuando se elige la clave compartida;
   la vista previa del texto exacto antes de la primera consulta se muestra igual.
+
+  En el informe con resumen IA, la vista previa muestra el texto exacto y **anonimizado** de **cada
+  disco** que se enviará; una sola confirmación cubre la generación completa del informe.
 - **La clave vive en el almacén de credenciales de Windows (DPAPI).** Nunca en SQLite, nunca en un
   fichero, nunca en `localStorage`. En `settings` solo se guarda que la función está activa y qué
   modelo se ha elegido.
@@ -801,6 +817,7 @@ sola razón, sin necesidad de más argumento.
 | 1.8.1 | 2026-09-08 | Precisión (patch) de la tabla de pila (spec `005-explicacion-ia`): la única dependencia nueva es `reqwest` 0.13 (`native-tls`, `json` — SChannel, la pila TLS del sistema; `rustls` se descartó porque arrastra `aws-lc-sys`), ya en el árbol vía `tauri`; el almacén de credenciales se hace con FFI a mano contra `advapi32`, sin crate nuevo. La vía elegida (llamada desde Rust) no requiere permiso de *capabilities*. No cambia ni relaja ninguna norma. ADR-046 |
 | 1.9.0 | 2026-09-08 | Principio XVI, dos viñetas (spec `006-explicacion-ia-contexto-crudo`): «detalle técnico visible» se amplía para incluir el volcado crudo de `smartctl` y el mensaje y los campos de datos del suceso de Windows que originó la alerta —información que la persona ya puede abrir en pantalla—, manteniendo la prohibición de inventario, historial, configuración, otras pantallas y otros discos, y descartando el bloque de metadatos de sistema del suceso. La cláusula de anonimización añade WWN, SID y rutas de dispositivo a la lista de sustituciones y reconoce un modo **opcional** «enviar sin revisar», apagado de fábrica y con consentimiento propio, que omite solo la revisión manual del texto libre residual (la anonimización por campos y patrones se sigue aplicando). Es `minor` porque **amplía** una excepción ya existente y añade un opt-in que relaja al margen la garantía «sin datos identificables» para quien lo active; ninguna otra norma se toca. Requiere ADR-047 |
 | 1.10.0 | 2026-09-10 | Principio XVI, viñeta «Apagada de fábrica»: se permite compilar en la Release una **clave de demostración compartida**, capada a modelos gratuitos y **declarada no secreta**, que la persona activa con un gesto explícito (botón «Usar la clave de demostración»); la invariante «sin clave en el almacén de credenciales, sin ruta de red» se conserva, y el resto del principio (destino único, disparo explícito, alcance del dato, anonimización, vista previa) no cambia. El principio XII se precisa en consecuencia. Es `minor` porque **añade** una vía de activación a una excepción ya existente sin relajar ninguna garantía de red automática ni de privacidad. Requiere ADR-054 |
+| 1.11.0 | 2026-09-10 | Principio XVI, tres viñetas (spec `009-informe-mejorado`): se añade un **segundo uso** de la ayuda con IA —el resumen por disco del informe imprimible—. «Iniciada por la persona» reconoce la casilla opt-in «incluir resumen con IA» (apagada de fábrica) más la confirmación de la exportación como gesto explícito válido. «Solo el detalle técnico del suceso» amplía el alcance, **solo para este uso**, del suceso puntual al conjunto de **un disco** en el intervalo del informe (alertas + sucesos de Windows que las originaron + contadores SMART + resumen numérico de temperatura y actividad); nunca varios discos en una misma petición, nunca inventario, configuración ni otras pantallas. «La persona ve qué se envía» precisa que la vista previa muestra el texto anonimizado de cada disco y una sola confirmación cubre el informe entero. El resto del principio (proveedor y destino únicos, clave en el almacén, llamada desde el backend, anonimización obligatoria en el dominio, respuesta no confiable, degradación) no cambia. Es `minor` porque **añade** un uso a una excepción ya existente con garantías equivalentes. Requiere ADR-057 |
 
 ### Cumplimiento
 
@@ -817,4 +834,4 @@ razonables**. Si dos principios entran en conflicto, decide el orden de priorida
 
 ---
 
-**Versión**: 1.9.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-08
+**Versión**: 1.11.0 | **Ratificada**: 2026-09-04 | **Última enmienda**: 2026-09-10

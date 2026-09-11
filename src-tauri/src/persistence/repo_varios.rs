@@ -131,6 +131,38 @@ pub fn list_events_for_device(
     filas.collect()
 }
 
+/// Eventos de un disco dentro de `[desde_utc, hasta_utc]` para el informe (spec 009), en orden
+/// cronológico, con el mensaje. Devuelve como mucho `limite` (los más recientes) y cuántos se han
+/// omitido por el tope, para que el informe diga «y N más».
+pub fn eventos_de_dispositivo_en_rango(
+    conn: &Connection,
+    device_id: &str,
+    desde_utc: &str,
+    hasta_utc: &str,
+    limite: i64,
+) -> rusqlite::Result<(Vec<SystemEvent>, u32)> {
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM system_events
+         WHERE device_id = ?1 AND occurred_at_utc BETWEEN ?2 AND ?3",
+        params![device_id, desde_utc, hasta_utc],
+        |r| r.get(0),
+    )?;
+    let mut stmt = conn.prepare(
+        "SELECT * FROM system_events
+         WHERE device_id = ?1 AND occurred_at_utc BETWEEN ?2 AND ?3
+         ORDER BY occurred_at_utc DESC LIMIT ?4",
+    )?;
+    let mut filas: Vec<SystemEvent> = stmt
+        .query_map(
+            params![device_id, desde_utc, hasta_utc, limite],
+            row_to_event,
+        )?
+        .collect::<rusqlite::Result<_>>()?;
+    filas.reverse(); // se leyeron los más recientes; el informe los muestra en orden cronológico
+    let omitidos = (total - filas.len() as i64).max(0) as u32;
+    Ok((filas, omitidos))
+}
+
 /// Un evento por su `id` autoincremento (no `(channel, record_id)`): lo que usa
 /// `get_event_raw_xml`, que recibe el id que la lista ya entregó.
 pub fn get_event_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<SystemEvent>> {
@@ -550,6 +582,37 @@ mod tests {
             mapping_confidence: MappingConfidence::Unknown,
             dedup_hash: format!("hash-{record_id}"),
         }
+    }
+
+    #[test]
+    fn eventos_de_dispositivo_en_rango_respeta_el_intervalo_y_el_tope() {
+        let conn = conn_de_prueba();
+        for i in 1..=8 {
+            let mut e = evento(i);
+            e.device_id = Some("d1".to_string());
+            e.occurred_at_utc = format!("2026-09-04T{:02}:00:00Z", 5 + i); // 06:00 .. 13:00
+            insert_event_if_new(&conn, &e).unwrap();
+        }
+        // Uno fuera del rango, uno de otro disco.
+        let mut fuera = evento(20);
+        fuera.device_id = Some("d1".to_string());
+        fuera.occurred_at_utc = "2026-09-04T23:00:00Z".to_string();
+        insert_event_if_new(&conn, &fuera).unwrap();
+
+        let (filas, omitidos) = eventos_de_dispositivo_en_rango(
+            &conn,
+            "d1",
+            "2026-09-04T07:00:00Z",
+            "2026-09-04T12:00:00Z",
+            3,
+        )
+        .unwrap();
+        // En [07:00, 12:00] caen los eventos 07..12 = 6; se piden 3 (los más recientes) → 3 omitidos.
+        assert_eq!(filas.len(), 3);
+        assert_eq!(omitidos, 3);
+        // Devueltos en orden cronológico ascendente.
+        assert!(filas[0].occurred_at_utc < filas[2].occurred_at_utc);
+        assert!(filas.iter().all(|e| e.message.is_some()));
     }
 
     #[test]

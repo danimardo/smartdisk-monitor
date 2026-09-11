@@ -310,6 +310,32 @@ pedido y resolución servida está en [`open-questions.md`](open-questions.md) �
 - ZIP de diagnóstico con configuración, eventos, SMART bruto y logs.
 - El ZIP oculta por defecto números de serie, nombre del equipo, usuarios y rutas personales.
 
+### Contenido del informe HTML por disco (spec `009-informe-mejorado`, ADR-057)
+
+CSV y JSON siguen siendo el volcado completo, sin cambios. El HTML es un **resumen legible**, no
+otra forma del mismo volcado: por cada disco incluido lleva
+
+- identidad y salud **a fecha de hoy** (independiente del intervalo del informe): estado,
+  temperatura, desgaste, horas de encendido, capacidad y espacio libre de sus volúmenes — con nota
+  de antigüedad si la última lectura es vieja, nunca «No disponible» si alguna vez hubo lectura;
+- contadores SMART relevantes, con su valor al final del intervalo y su variación dentro de él;
+- alertas del intervalo con **frase legible**, no la clave de regla en crudo;
+- eventos de Windows del intervalo asociados a ese disco (tope 50, con recuento de los omitidos);
+- dos mini-gráficas SVG embebidas (temperatura y actividad), sin recursos remotos.
+
+### Resumen con IA por disco (opcional)
+
+Si la ayuda con IA está configurada, la pantalla de Informes ofrece una casilla «incluir resumen
+con IA», apagada de fábrica. Al activarla y exportar en HTML se muestra la **vista previa** del
+texto exacto y anonimizado que se enviaría por cada disco; una sola confirmación cubre todo el
+informe. El backend hace entonces **una llamada al modelo por disco** (nunca combinando discos),
+con alertas del intervalo, el contenido de los sucesos de Windows que las originaron, contadores
+SMART y el resumen numérico de temperatura y actividad — todo del mismo disco. La respuesta se
+incrusta como texto plano en la sección del disco, marcada como orientación de IA con su modelo, y
+**nunca** se renderiza como markdown u HTML. La exportación muestra el progreso disco a disco y se
+puede cancelar. Un fallo de un disco concreto (sin clave, sin red, cuota agotada) no impide generar
+el informe: ese disco lleva una nota y el resto sigue su curso, sin reintento automático.
+
 ## 10. Instalación y distribución
 
 - Instalador para Windows x64, para todos los usuarios.

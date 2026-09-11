@@ -638,6 +638,32 @@ pedido y resolución servida está en [`open-questions.md`](docs/open-questions.
 - ZIP de diagnóstico con configuración, eventos, SMART bruto y logs.
 - El ZIP oculta por defecto números de serie, nombre del equipo, usuarios y rutas personales.
 
+#### Contenido del informe HTML por disco (spec `009-informe-mejorado`, ADR-057)
+
+CSV y JSON siguen siendo el volcado completo, sin cambios. El HTML es un **resumen legible**, no
+otra forma del mismo volcado: por cada disco incluido lleva
+
+- identidad y salud **a fecha de hoy** (independiente del intervalo del informe): estado,
+  temperatura, desgaste, horas de encendido, capacidad y espacio libre de sus volúmenes — con nota
+  de antigüedad si la última lectura es vieja, nunca «No disponible» si alguna vez hubo lectura;
+- contadores SMART relevantes, con su valor al final del intervalo y su variación dentro de él;
+- alertas del intervalo con **frase legible**, no la clave de regla en crudo;
+- eventos de Windows del intervalo asociados a ese disco (tope 50, con recuento de los omitidos);
+- dos mini-gráficas SVG embebidas (temperatura y actividad), sin recursos remotos.
+
+#### Resumen con IA por disco (opcional)
+
+Si la ayuda con IA está configurada, la pantalla de Informes ofrece una casilla «incluir resumen
+con IA», apagada de fábrica. Al activarla y exportar en HTML se muestra la **vista previa** del
+texto exacto y anonimizado que se enviaría por cada disco; una sola confirmación cubre todo el
+informe. El backend hace entonces **una llamada al modelo por disco** (nunca combinando discos),
+con alertas del intervalo, el contenido de los sucesos de Windows que las originaron, contadores
+SMART y el resumen numérico de temperatura y actividad — todo del mismo disco. La respuesta se
+incrusta como texto plano en la sección del disco, marcada como orientación de IA con su modelo, y
+**nunca** se renderiza como markdown u HTML. La exportación muestra el progreso disco a disco y se
+puede cancelar. Un fallo de un disco concreto (sin clave, sin red, cuota agotada) no impide generar
+el informe: ese disco lleva una nota y el resto sigue su curso, sin reintento automático.
+
 ### 10. Instalación y distribución
 
 - Instalador para Windows x64, para todos los usuarios.
@@ -2247,6 +2273,8 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `db.migration_failed` | migración fallida; se ha restaurado la copia previa | no |
 | `path.invalid` | ruta fuera de las carpetas permitidas | no |
 | `export.write_failed` | no se pudo escribir el destino | sí |
+| `export.cancelled` | la exportación de informe con resumen IA se canceló antes de terminar (`cancelar_informe`); no se escribió fichero | no |
+| `report.preview_required` | `export_report` con `includeAiSummary: true` sin `previewConfirmada: true` | no |
 | `settings.out_of_range` | valor fuera de los límites de `open-questions.md` D.1 | no |
 | `db.query_failed` | fallo de SQLite que no es un bloqueo (`db.locked`, más arriba, es el que sí lo es) | no |
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
@@ -2643,8 +2671,24 @@ invoke<string>("export_report", {          // devuelve la ruta escrita
   fromUtc: string, toUtc: string,
   deviceIds: string[] | null,              // null = todos los monitorizados
   includeSerials: boolean,
-  destinationPath: string
+  destinationPath: string,
+  alertLabels?: Record<string, string> | null,   // solo "html" (spec 009): clave de regla → texto legible
+  includeAiSummary?: boolean,                     // solo "html"; exige previewConfirmada
+  previewConfirmada?: boolean                     // la persona ya vio preview_informe_ia y confirma
 })
+
+invoke<PreviewInformeIaWire>("preview_informe_ia", {   // spec 009, sin red — análogo a preview_diagnostic_zip
+  fromUtc: string, toUtc: string,
+  deviceIds: string[] | null,
+  alertLabels?: Record<string, string> | null
+})
+interface PreviewInformeIaWire {
+  discos: { deviceId: string; deviceLabel: string; textoEnviado: string;
+            fragmentos: { texto: string; motivoKey: string }[]; recortado: boolean }[];
+  redactedFields: string[];
+  totalLlamadas: number;                   // = discos.length
+}
+invoke<void>("cancelar_informe")           // spec 009: corta la exportación con IA en curso, antes del siguiente disco
 
 invoke<DiagnosticPreview>("preview_diagnostic_zip", { includeIdentifiers: boolean })
 interface DiagnosticPreview {
@@ -2657,6 +2701,21 @@ invoke<string>("create_diagnostic_zip", { includeIdentifiers: boolean, destinati
 
 US-051 exige mostrar un resumen del contenido antes de guardar: para eso está
 `preview_diagnostic_zip`, que no escribe nada.
+
+**Resumen con IA por disco** (spec `009-informe-mejorado`, principio XVI, segundo uso — ADR-057):
+opt-in, apagado de fábrica, solo con `format: "html"` y solo si la ayuda con IA está activa
+(`estado_ia().activa`).
+
+- `csv`/`json` ignoran los tres parámetros nuevos: es el volcado completo, sin cambios.
+- `html` sin `includeAiSummary`: síncrono, sin red — igual que hoy, con contenido ampliado por disco
+  (identidad, salud «a fecha de hoy», contadores SMART con delta, alertas legibles vía
+  `alertLabels`, eventos de Windows, dos mini-gráficas SVG embebidas).
+- `html` con `includeAiSummary: true` sin `previewConfirmada: true` → `report.preview_required`.
+  Con ambos: `export_report` pasa a asíncrono, hace **una llamada al modelo por disco incluido**
+  (nunca combina discos), emite `report:progress` antes de cada una, comprueba `cancelar_informe`
+  antes de cada una, y un fallo de un disco no aborta el informe — ese disco lleva una nota, sin
+  reintento (FR-019, principio XVI).
+- `report.preview_required` / `ia.no_key` / `export.cancelled` se añaden a los códigos de §1.
 
 #### 3.8 Ciclo de vida
 
@@ -2743,6 +2802,10 @@ type ResultadoExplicacion =
   usuario, rutas de perfil) antes de salir del proceso. La marca/modelo/firmware del disco **sí**
   se envían.
 - Errores: los códigos `ia.*` de §1.
+- **Segundo uso de la ayuda con IA** (constitución 1.11.0, ADR-057): el resumen por disco del
+  informe HTML, §3.7 (`preview_informe_ia`/`export_report`). Comparte credencial, modelo y pila de
+  anonimización con este bloque, pero con su propio comando de vista previa y su propio alcance de
+  datos por disco — nunca reutiliza `explicar_detalle_tecnico`.
 
 ---
 
@@ -2757,6 +2820,7 @@ descartar mensajes fuera de orden.
 | `alerts:changed` | `{ emittedAt, changed: AlertGroup[], removed: string[] }` | alta, cambio de severidad o de estado, resolución |
 | `inventory:changed` | `{ emittedAt, added: DiskSummary[], removed: string[], updated: DiskSummary[] }` | alta o retirada de disco o volumen |
 | `test:progress` | `{ emittedAt, testRun: TestRun }` | mientras una prueba avanza |
+| `report:progress` | `{ emittedAt, done: number, total: number, deviceLabel: string }` | antes de la llamada de cada disco en un `export_report` con `includeAiSummary` (spec 009); `done` va de `0` a `total - 1`, no hay evento de «fin» |
 | `source:degraded` | `{ emittedAt, source: SourceHealth }` | una fuente pasa a `timeout` o `error` |
 | `system:accent-changed` | `{ hex }` | el usuario cambia el acento de Windows |
 | `system:theme-changed` | `{ dark: boolean }` | el usuario cambia el tema de Windows |
@@ -6236,6 +6300,83 @@ nunca llega a `Valido` vuelve a ser un hueco silencioso.
   la serie no cambia: media de la ventana deslizante, una fila por ciclo de métricas rápidas, hueco
   cuando la ventana no es representativa.
 
+### ADR-057 — El informe imprimible gana un resumen por disco con IA (y frases legibles de alerta)
+
+Estado: aceptada. Fecha: 2026-09-11 (propuesta el 2026-09-10). Spec `009-informe-mejorado`,
+implementada entera (historias 1-3). Requerida por la constitución 1.11.0 (principio XVI, segundo
+uso de la ayuda con IA).
+
+#### El problema
+
+El informe HTML era, por disco, solo una tabla de alertas con la clave de regla en crudo
+(`smart.error_log`). No reflejaba la salud, los contadores SMART, la temperatura, la actividad ni
+los eventos, aunque la aplicación llevara días recopilándolos. El dueño pidió: (a) un informe
+útil por disco, y (b) cuando la ayuda con IA esté configurada, un resumen en lenguaje llano por
+disco de sus alertas, sucesos y estado SMART.
+
+#### La decisión
+
+1. **Frases legibles de alerta sin romper ADR-030.** El HTML lo sigue generando el backend; la
+   **interfaz le pasa un mapa `clave_de_regla → texto`** en `export_report` (parámetro
+   `alertLabels`), con las claves de `docs/alert-rules.md` §2 ya traducidas. El backend **no
+   posee** una copia del texto —lo recibe para este render, igual que recibe `includeSerials` o el
+   destino—; una clave ausente cae a la clave cruda. ADR-030 (el backend no manda texto de alerta)
+   se respeta en su espíritu.
+
+2. **Contenido del informe por disco.** Identidad; salud «a fecha de hoy» con nota de antigüedad si
+   la última lectura es vieja (nunca «No disponible» si hubo lectura alguna vez); contadores SMART
+   con su valor final y su delta en el intervalo; alertas del disco (`target_device_id`) con frase
+   legible; eventos de Windows del intervalo (tope 50, «y N más»); dos mini-gráficas **SVG
+   embebidas** (temperatura y actividad) generadas en Rust, sin recursos remotos. `schemaVersion`
+   del HTML sube a 2, independiente del de CSV/JSON (que no cambian).
+
+3. **Resumen con IA por disco (opt-in, apagado de fábrica).** Casilla «incluir resumen con IA» en
+   la pantalla de Informes, visible solo si la ayuda con IA está activa. Al exportar HTML con la
+   casilla: `preview_informe_ia` (comando nuevo, **sin red**) devuelve el texto exacto y
+   anonimizado por disco; una vista previa lo muestra; **una** confirmación cubre el informe.
+   Entonces `export_report` (que pasa a `async` para este caso) hace **una llamada por cada disco
+   incluido** —nunca combinando discos—, con el alcance que autoriza el principio XVI 1.11.0.
+   La respuesta se incrusta como **texto HTML-escapado** con `white-space: pre-wrap` (sin renderizar
+   markdown: «texto o markdown seguro, jamás HTML»), marcada como orientación de IA con su
+   procedencia. Un fallo por disco → nota en ese disco (motivo resuelto contra el mismo mapa
+   `alertLabels` que las alertas, con una frase genérica si el frontend no le puso texto), se
+   sigue, **sin reintento**. Progreso por evento `report:progress` y cancelación por
+   `cancelar_informe` (bandera `AppState.informe_cancelado`, comprobada antes de cada disco —
+   nunca aborta una llamada ya en vuelo).
+
+4. **Anonimización.** Reutiliza la pila existente (`Anonimizador` capa 1 + `redactar_identificadores`
+   capa 2), con una adición: `Anonimizador::con_etiqueta_volumen(...)` (categoría ya en el principio
+   XVI desde 1.8.0). Siempre activa, con o sin el toggle «incluir identificadores» del informe (ese
+   toggle solo afecta a las partes no-IA del HTML).
+
+#### Alternativas descartadas
+
+- *La interfaz genera todo el HTML*: tendría que reunir y ensamblar todos los datos (alertas, SMART,
+  eventos, series, resúmenes IA) que ya viven en Rust; mucho más código y superficie.
+- *Diccionario de textos de alerta duplicado en Rust*: la «segunda copia sin mantener» que ADR-030
+  evita; `pnpm verify:i18n` no la cubriría.
+- *Markdown→HTML seguro en Rust para el resumen*: parser + saneador nuevos para un beneficio
+  cosmético; texto escapado con saltos de línea **es** «texto» y cumple al pie de la letra.
+- *Combinar varios discos en una petición de IA*: prohibido por el principio XVI.
+- *Reintento automático ante 429/timeout*: prohibido por el principio XVI («ningún reintento
+  automático que la persona no haya pedido»).
+
+#### Consecuencias
+
+- Contratos nuevos: `export_report` gana `alertLabels`/`includeAiSummary`/`previewConfirmada`;
+  comandos nuevos `preview_informe_ia` y `cancelar_informe`; evento nuevo `report:progress`.
+- Módulos Rust nuevos: `reporting/resumen_metricas.rs`, `reporting/minigrafica.rs`,
+  `reporting/informe_ia.rs`; ampliación de `reporting/anonimizar.rs` y `domain/ia.rs`.
+- **Sin dependencias nuevas** (`reqwest` ya está), **sin permisos de Tauri nuevos** (red desde
+  Rust), **sin cambios de esquema SQLite**.
+- El resumen con IA es lento (una llamada por disco): con la clave de demostración puede toparse
+  con los límites del proveedor; la vista previa lo advierte.
+- El bucle de red de la fase con IA (`resumenes_ia_por_disco`) recibe la llamada al proveedor como
+  closure inyectada, en vez de llamarlo directamente: permite probar la cancelación (bandera antes
+  de cada disco) y el orden del progreso sin tocar la red **ni añadir una dependencia de ejecutor
+  async** — las pruebas usan un `Waker` mínimo hecho a mano, porque sus futuras se resuelven en el
+  primer sondeo (mismo criterio de «extraer la costura en el borde de red» que `resultado_a_seccion`).
+
 
 ---
 
@@ -6770,7 +6911,7 @@ asunción del programador.
 | J.13 | Umbrales de espacio libre para detener la escritura de historial | 1 GB para el aviso y 256 MB para la parada, sobre el volumen donde reside el historial (`storage.free_space_warn_bytes` / `storage.free_space_halt_bytes`, spec 001-monitor-discos-windows). Valores de partida razonables para Windows, **no medidos**; confirmar al implementar la retención (T001, T017-T018) |
 | J.14 | Cómo se representa la agregación de `metric_samples` | `docs/data-model.md` §4 exige conservar mínimo, máximo, promedio, primera y última lectura, pero el esquema solo tenía una columna de valor por fila. Se añade la tabla `metric_aggregates` (migración 0002) con `value_min/max/avg/first/last`, `bucket_start_utc`/`bucket_end_utc` y `resolution`. Los "tres periodos de retención" de US-071 son las tres resoluciones ya definidas (`raw`, `five_minutes`, `hourly`): `retention.raw_days` (7), `retention.five_minutes_days` (90), `retention.hourly_days` (730); pasado el tercero se purga. `value_last - value_first` da el incremento del bucket para contadores acumulativos, sin columna aparte. Valores por defecto, **no medidos** (spec 001-monitor-discos-windows, T015) |
 | J.29 | Cómo conectar los cinco comandos de pruebas (T083): identificadores, exclusión mutua, umbral térmico y columnas sin sitio propio en `test_runs` | **Identificador de `test_run` y sufijo aleatorio del archivo del benchmark** (J.27): `format!("{:x}", OffsetDateTime::now_utc().unix_timestamp_nanos())` — nanosegundos UTC en hexadecimal, sin añadir una dependencia de aleatoriedad (mismo criterio que el LCG de T079); la unicidad real la sigue dando `rutas::confirmar_no_sobrescribe`, no la improbabilidad de colisión. **Exclusión mutua** (`test.busy`, ya previsto en `ui-contract.md` §1: "ya hay una prueba en ese disco"): se aplica por disco físico subyacente vía `device_volume_links`, no solo por el id exacto recibido — antes de arrancar cualquier prueba se comprueba que ni el objetivo ni ningún otro volumen/dispositivo del mismo disco tenga ya un `test_run` en `pending`/`running`/`cancelling`. Esto cubre a la vez la regla genérica del contrato y la regla explícita de `product-specification.md` §6 ("el autotest no se permite simultáneamente con el benchmark de la aplicación"), sin tabla de exclusión aparte. **Umbral térmico "configurado"** de `tests::guardia::limite_critico_efectivo` cuando el fabricante no lo declara (hoy siempre: `vendor_temp_critical_c` no está implementado, J.15/J.16): se reutiliza el mismo valor que ya usa el motor de alertas para `temp.above_configured_crit`, **80 °C** (`alert-rules.md`, `alerts::motor::evaluar_temperatura_configurada_crit`) — mismo concepto normativo, no un valor nuevo. **Columnas sin sitio propio**: `test_runs` (migración 0001) no tiene columna para `command`, `output` ni `outputEncoding` (`ui-contract.md` §3.6); se guardan dentro de `parameters_json` (el comando, fijado al crear la fila) y `result_summary_json` (salida y codificación, solo se conocen al terminar) en vez de abrir una migración nueva. `orphanPath` reutiliza la columna `temp_path` ya existente: mientras la prueba corre, o si el archivo no se pudo borrar al terminar, queda con la ruta; se limpia a `NULL` en cuanto el borrado tiene éxito. `volume.not_found` se añade a la tabla de códigos de `ui-contract.md` §1 en paralelo a `device.not_found`, que hasta ahora solo cubría `device_id`. **Límite conocido, no simulado**: `RazonParada::Space` (T079) solo es alcanzable como rechazo previo (`test.insufficient_space`) antes de crear la fila — `tests::benchmark::ejecutar` no comprueba espacio libre durante la ejecución (T079 solo implementó cancelación y guardia térmica), así que un agotamiento de espacio a mitad de prueba no se detecta hoy (spec 001-monitor-discos-windows, T083). **Actualizado (ADR-053, spec 008)**: el motor propio (`tests::benchmark`) se ha eliminado; la prueba de Rendimiento usa DiskSpd sobre un archivo de tamaño fijo (`-c 1 GiB`) que **no crece**, así que la guardia de espacio durante la ejecución sigue sin existir y sin hacer falta. `RazonParada::Space` ya no existe como estado; `test.insufficient_space` sigue siendo un rechazo previo. El resto de J.29 (identificador de `test_run`, exclusión por disco físico, umbral térmico 80 °C, columnas dentro de `parameters_json`/`result_summary_json`, `orphanPath` sobre `temp_path`) se conserva tal cual con DiskSpd |
-| J.30 | Contenido exacto de la exportación tabular/estructurada (T087): ningún documento fija las columnas o campos | **CSV y JSON son el volcado completo**, una fila/objeto por `(dispositivo, metric_key, marca de tiempo)`: `schemaVersion, deviceId, deviceLabel, metricKey, unit, resolution, timestampUtc, value`. Qué métricas incluir no es una lista fija: `repo_metricas::distinct_metric_keys` devuelve las que de verdad tengan dato del dispositivo en el rango (crudo o agregado), para no inventar columnas vacías ni olvidar una real. **Resolución por rango**, igual que ya hace `get_metric_series_impl` para las gráficas (crudo ≤24 h y dentro de los últimos 7 días; `five_minutes` ≤7 días; `hourly` con reserva a `five_minutes` ≤90 días; `hourly` más allá) — implementada de nuevo en `reporting/export.rs`, sin tocar la función existente de `commands/mod.rs`, para no arriesgar una regresión en la gráfica por una necesidad distinta (el `value` de una fila agregada es `value_avg` con reserva a `value_last`, igual que ya hace `leer_agregados_dispositivo`). **HTML es un resumen legible, no el mismo volcado**: identidad y salud actual del dispositivo más las alertas que se dispararon en el rango — la especificación solo exige que sea "legible e imprimible" (`product-specification.md` §9), no que reproduzca miles de filas; quien necesite el detalle completo tiene el CSV o el JSON. **Dato ausente**: `null` en JSON, cadena literal `"N/A"` en CSV — nunca vacío ni cero, mismo criterio que el resto de la aplicación. `deviceIds: null` en el comando significa todos los dispositivos monitorizados (no los excluidos). **Sin evento de progreso nuevo**: `docs/ui-contract.md` §4 no define uno para exportar, y el escenario de aceptación ("la aplicación sigue respondiendo y muestra progreso", Historia 6 §spec) queda cubierto por la propia naturaleza asíncrona del `invoke` (la interfaz no se bloquea) más un indicador indeterminado local mientras se espera la respuesta — no hace falta inventar `export:progress` para una operación que no tiene fases intermedias que reportar. **Las alertas del resumen HTML muestran `ruleKey` tal cual** (p. ej. `smart.wear_high`), no una frase humana: ADR-030 decidió que el backend nunca manda texto de alerta, solo la clave, y este HTML lo genera el propio backend sin acceso a los diccionarios de `$lib/i18n` — duplicar ahí una traducción sería una segunda copia sin mantener, exactamente lo que ADR-030 quiso evitar (spec 001-monitor-discos-windows, T087/T088) |
+| J.30 | Contenido exacto de la exportación tabular/estructurada (T087): ningún documento fija las columnas o campos | **CSV y JSON son el volcado completo**, una fila/objeto por `(dispositivo, metric_key, marca de tiempo)`: `schemaVersion, deviceId, deviceLabel, metricKey, unit, resolution, timestampUtc, value`. Qué métricas incluir no es una lista fija: `repo_metricas::distinct_metric_keys` devuelve las que de verdad tengan dato del dispositivo en el rango (crudo o agregado), para no inventar columnas vacías ni olvidar una real. **Resolución por rango**, igual que ya hace `get_metric_series_impl` para las gráficas (crudo ≤24 h y dentro de los últimos 7 días; `five_minutes` ≤7 días; `hourly` con reserva a `five_minutes` ≤90 días; `hourly` más allá) — implementada de nuevo en `reporting/export.rs`, sin tocar la función existente de `commands/mod.rs`, para no arriesgar una regresión en la gráfica por una necesidad distinta (el `value` de una fila agregada es `value_avg` con reserva a `value_last`, igual que ya hace `leer_agregados_dispositivo`). **Dato ausente**: `null` en JSON, cadena literal `"N/A"` en CSV — nunca vacío ni cero, mismo criterio que el resto de la aplicación. `deviceIds: null` en el comando significa todos los dispositivos monitorizados (no los excluidos). Sigue vigente para CSV/JSON, que no cambian. **Superseded 2026-09-11 en lo que toca al HTML** por spec `009-informe-mejorado` (sección Y): el HTML dejó de ser "identidad + alertas con `ruleKey` crudo"; ahora es un resumen por disco con contadores, eventos, mini-gráficas y frase legible de alerta, y sí gana un evento de progreso (`report:progress`) para el caso —solo ese— de la exportación con resumen IA |
 | J.31 | Contenido y disposición del ZIP de diagnóstico (T090): ningún documento fija los ficheros que lleva dentro | **`smart_snapshots.raw_json_path`/`fields_json` están sin usar**: ningún colector escribe hoy el JSON crudo de `smartctl` a disco ni a la base (`insert_smart_snapshot` siempre los llama con `None`, T036). El ZIP no puede leer un archivo que no existe, así que **vuelve a consultar `smartctl` en el momento de generarlo** (`collectors::smartctl::query_device_json`, ya verificado contra hardware real esta sesión) para cada dispositivo con `smartctl_path` — un diagnóstico fresco, no uno reconstruido de una captura que nunca se guardó. **Disposición dentro del ZIP**: `manifest.json` (schemaVersion, generatedAtUtc, versión de la app, `anonymized`, `redactedFields`), `settings.json` (`repo_varios::list_settings`, todas las claves), `events.json` (`repo_varios::list_events` sin filtro, límite alto en vez de paginado: es un volcado, no una pantalla), `smart/<deviceId>.json` (o `smart/<deviceId>.error.txt` si la consulta falla — un fallo de un disco no debe tirar el paquete entero), `logs/<nombre-de-fichero>` (todo lo que haya en `platform::paths::log_dir()`, tal cual lo escribe `tracing_appender::rolling::daily`, FR-029c). **Cada entrada de texto pasa por el mismo `Anonimizador`** antes de escribirse — de ahí que la sustitución sea consistente en todo el paquete (US-051): el mismo número de serie se convierte en el mismo `<SERIE-N>` tanto en `smart/*.json` como en `logs/*` si apareciera ahí. `includeIdentifiers: true` construye un `Anonimizador::sin_anonimizar()`: nada se sustituye, y `redactedFields` viaja vacío en el manifiesto (spec 001-monitor-discos-windows, T090) |
 | J.32 | Forma completa de `Settings` (T095/T096): `ui-contract.md` §3.1 nombra `get_settings`/`set_setting`/`reset_settings` pero nunca escribe la interfaz — ningún documento reúne en un solo sitio todos los campos configurables que ya estaban dispersos (D.1, C.1, J.13, J.14) | Cuatro grupos, alineados con los cuatro valores de `reset_settings({scope})`: **`schedule`** (`metricsFastSeconds`/`smartFullSeconds`/`eventsSeconds`/`discoverySeconds`) reutiliza tal cual los límites ya codificados en `collectors::planificador::{METRICAS_RAPIDAS,SMART_COMPLETO,EVENTOS_WINDOWS,ALTAS_Y_BAJAS}` (D.1) — ese módulo ya decía en su propio comentario "esto lo hace `domain::ajustes`, no este módulo", así que no son límites nuevos, son los que ya existían sin consumidor. **`alerts`**: `tempConfiguredWarnC`/`tempConfiguredCritC` (por defecto 70/80, los mismos literales que hoy tiene hardcodeados `alerts::motor` para `temp.above_configured_warn/crit`; límites nuevos, no medidos: 40-95 °C para el aviso, el crítico entre el aviso y 100 °C) y los cinco campos de capacidad ya decididos en C.1/ADR-019 (`capacityWarnPercent` 10, `capacityCritPercent` 5, `capacityAbsoluteFloorMinCapacityBytes` 256 GiB, `capacityAbsoluteFloorWarnBytes` 20 GiB, `capacityAbsoluteFloorCritBytes` 10 GiB — los mismos valores que ya usa `capacityState()` en `src/lib/design/health.ts`, hoy con el suelo fijo en una constante en vez de leído de `settings`). **`retention`**: los tres periodos de J.14 (7/90/730 días, límites nuevos y razonables: crudo 1-30, cinco minutos 7-365, horario 90-1825) más `storage.free_space_warn_bytes`/`halt_bytes` de J.13 (1 GiB/256 MiB, sin límites de UI porque US-071 solo pide poder cambiar los tres periodos, no estos dos bytes). **Fuera de estos tres grupos** (solo se restauran con `scope: "all"`): `lifecycle.closeAction` (`"minimize"` por defecto, `docs/open-questions.md` J.19 seguía abierta y este valor la cierra: minimizar es "el lado seguro" ya razonado en `lib.rs`) y `closeActionRemembered`, `notifications.soundEnabled` (`false` de fábrica, US-072), `logging.verbose` (ya nombrada en `data-model.md`). **Apariencia no vive en `Settings`**: `theme`/`language`/`useSystemAccent` siguen teniendo su propio `get_appearance_settings()` ya construido; se persisten con el mismo `set_setting(key, value)` genérico (`theme.svelte.ts`/`i18n.svelte.ts` ya devuelven `{key: "settings.appearance.theme"/"settings.appearance.language", value}` a la espera de un consumidor, que es exactamente lo que T097 les da). **Límite conocido, no ampliado por esta historia**: ni `domain::espacio` (guardia de espacio del historial) ni `capacityState()` ni ninguna regla `capacity.low/critical` en el motor de alertas leen hoy estos valores de `settings` en un ciclo real — no existe todavía el bucle de recopilación en producción que los invoque (ninguna tarea de esta historia lo pide); esta historia deja el valor correctamente guardado y validado, listo para cuando ese consumidor exista, igual que ya pasaba con `logging.verbose` antes de FR-029a (spec 001-monitor-discos-windows, T095/T096) |
 | J.33 | Comprobación de "cero peticiones salientes" (T107, SC-014, `quickstart.md` eslabón 10) — el guion exige "instalar en un equipo sin conexión" y "verificar con un monitor de red", que requiere un instalador real construido, instalado y en ejecución bajo un monitor de paquetes: no ejecutado esta sesión | **Auditoría estática, no medición en vivo** — mismo trato honesto que J.28 (autotest SMART): `src-tauri/Cargo.toml` no declara ningún cliente HTTP (`reqwest`/`hyper`/`ureq`) entre sus dependencias directas; `cargo tree --target x86_64-pc-windows-msvc -e normal` confirma que **ni siquiera aparecen como transitivas** en el árbol real de Windows — sí figuran en `Cargo.lock` (`reqwest`, `hyper`, `tokio`), pero por una dependencia opcional de `tauri` que el propio manifiesto de `tauri` acota a `cfg(target_os = "android", ...apple...)`: nunca se compilan para Windows. Búsqueda en todo `src-tauri/src`: cero usos de `std::net`, `TcpStream`, `UdpSocket` o una URL `http(s)://` real (las únicas coincidencias son un espacio de nombres XML dentro de una fixture de evento de Windows capturada, y las propias aserciones de test que comprueban que el HTML exportado *no* contiene ninguna). En el frontend: cero `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource` en todo `src/`; `package.json` solo depende de `@tauri-apps/api`, `@tauri-apps/plugin-dialog` y `zod`, ninguno de red. La CSP de `tauri.conf.json` cierra en profundidad: `connect-src 'self' ipc: http://ipc.localhost`, sin ningún origen remoto permitido aunque algo lo intentara. **Pendiente de la medición real** que el guion pide: construir el instalador (`pnpm app:build`), instalarlo en una máquina sin red y confirmar con un monitor de paquetes (Wireshark o similar) que no sale ni un byte — requiere una acción invasiva (instalación elevada de un binario real en el sistema) que esta sesión no ha ejecutado sin autorización explícita (spec 001-monitor-discos-windows, T107) |
@@ -7678,6 +7819,70 @@ clave; explicar una alerta (vista previa la primera vez, luego no); explicar el 
 elegir un modelo de pago (aviso) y uno gratuito; fallo de red (el modal degrada, la pantalla
 sigue); fragmento de texto libre no anonimizable (diálogo de revisión).
 
+### Y. Informe HTML por disco y resumen con IA — decisiones adoptadas (spec `009-informe-mejorado`, ADR-057)
+
+#### Y.1 · Textos legibles de alerta: mapa desde el frontend, no un diccionario en Rust
+
+`DECIDIDO`. `export_report` gana `alertLabels?: Record<string, string>`, construido en
+`reports/+page.svelte` a partir de las claves `alert.rule.<regla>.title` que ya existen en
+`es.json`/`en.json` (las mismas que usa `AlertCard`). El backend no guarda ninguna copia del
+texto —lo recibe para ese render, igual que `includeSerials` o el destino— y una clave ausente cae
+a la clave cruda. Evita la «segunda copia sin mantener» que ADR-030 ya había descartado para este
+mismo problema en J.30, sin necesitar tampoco un diccionario mínimo en Rust (la tercera opción que
+se había dejado abierta al escribir la spec).
+
+#### Y.2 · Tope de 50 eventos de Windows por disco en el informe
+
+`DECIDIDO`. Mismo espíritu que el tope de 1.500 puntos de serie (E.1): un informe legible, no un
+volcado. Por encima del tope se listan los más recientes y se dice cuántos se omiten
+(`eventos_omitidos: u32`); quien necesite el histórico completo tiene el CSV/JSON o la pantalla de
+Eventos.
+
+#### Y.3 · `schemaVersion` del HTML sube a 2, independiente del de CSV/JSON
+
+`DECIDIDO`. `SCHEMA_VERSION_HTML = "2"` en `reporting/export.rs`, separada de `SCHEMA_VERSION`
+("1") que siguen usando CSV y JSON — el contenido del HTML cambió de forma; el de CSV/JSON no.
+
+#### Y.4 · El resumen con IA se incrusta como texto escapado, nunca como markdown renderizado
+
+`DECIDIDO`. El principio XVI exige «texto o markdown seguro, jamás HTML», pero este informe no
+tiene el analizador de subconjunto de Markdown que sí usa el componente `<Markdown>` de la
+pantalla (X.6): habría que llevarlo a Rust o generar HTML inseguro. Se optó por lo más simple que
+cumple la letra del principio: el modelo recibe la instrucción explícita de responder en texto
+plano (`SYSTEM_INFORME_ES`/`SYSTEM_INFORME_EN`, sin pedir Markdown), y la respuesta se escapa como
+HTML y se pinta con `white-space: pre-wrap` — un texto con saltos de línea **es** «texto», y
+escaparlo es más barato que sanear Markdown→HTML en Rust solo para este caso.
+
+#### Y.5 · Una llamada por disco, nunca combinando discos
+
+`DECIDIDO`. Impuesto directamente por la constitución 1.11.0: el alcance por disco es exactamente
+el que autoriza la enmienda (alertas + contenido de sucesos que las originaron + contadores SMART
++ resumen numérico de temperatura y actividad, todo del mismo disco), y combinar dos discos en una
+petición mezclaría datos de identidades distintas en un solo texto enviado a un tercero.
+
+#### Y.6 · El motivo de un resumen no disponible se resuelve contra el mismo `alertLabels`
+
+`DECIDIDO`. `ResumenIaSeccion::NoDisponible { motivo_key }` guarda la clave i18n del motivo
+(`error.ia.timeout`, `error.ia.provider`, …), y el HTML la busca en el mismo mapa que ya recibe
+para las alertas en vez de inventar un segundo parámetro: el frontend puede añadir esas claves al
+mapa si quiere una frase concreta; sin ellas, una nota genérica basta y la exportación no falla.
+
+#### Y.7 · Cancelación: se comprueba antes de cada disco, nunca a mitad de una llamada en vuelo
+
+`DECIDIDO`. Una sola bandera (`AppState.informe_cancelado`, no un mapa por exportación: solo puede
+haber una a la vez, la interfaz deshabilita el botón mientras corre) que `export_report` resetea
+al empezar la fase de IA y comprueba antes de la llamada de cada disco. Cancelar no aborta una
+petición HTTP ya en vuelo del disco actual —se deja terminar y su respuesta se descarta—, así que
+el retardo máximo tras cancelar es el tiempo límite de `chat_completions` (60 s).
+
+#### Y.8 · Pendiente de verificar a mano
+
+El resumen con IA (`preview_informe_ia` con red real activada en `export_report`) no se prueba de
+punta a punta en `cargo test` por el mismo motivo que X.10: necesita red y una clave real. Recorrido
+en `specs/009-informe-mejorado/quickstart.md`: informe HTML abierto sin conexión (escenario 1);
+resumen con IA con 4 discos y un fallo forzado en uno (escenario 3, verifica la nota de
+degradación); IA apagada = cero tráfico de red (escenario 4).
+
 
 ---
 
@@ -8057,7 +8262,16 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    `disks`, `alerts` y `ai` compactas junto al encabezado, ocultas por debajo de 720 px de cuerpo
    (el paso `ai` —ayuda con IA, spec 005— se añadió con su escena el 2026-09-09). El guardián de
    redirección vive en `+layout.ts` (`open-questions.md` §V).
-7. **Informes**: hereda tokens; sin composición nueva.
+7. **Informes** — hereda tokens; sin composición nueva salvo el modal del resumen con IA (spec
+   `009-informe-mejorado`). Casilla «incluir resumen con IA» solo si la ayuda con IA está activa,
+   dentro de la `Card` de HTML. Modal de vista previa: mismo patrón que `ConfirmDialog`/
+   `ExplicacionModal` (velo + panel `.sdm-material-overlay` con foco propio), no un componente
+   nuevo del catálogo porque su contenido —lista de discos con su texto anonimizado— no encaja en
+   ninguno existente. Al confirmar, el **mismo modal** cambia de fase: la lista de discos da paso a
+   `ProgressBar` (indeterminada hasta el primer `report:progress`, luego con el disco actual) en un
+   contenedor `role="status" aria-live="polite"`, y el botón pasa a «Cancelar» (llama a
+   `cancelar_informe`); el velo y Escape dejan de cerrar el modal mientras corre, para no perder de
+   vista una exportación en curso.
 
 #### Comportamiento con muchos discos
 
@@ -10416,6 +10630,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "error.testToolOutputUnreadable": "La herramienta de medición terminó pero su resultado no se pudo interpretar.",
   "error.pathInvalid": "La ruta no es válida para esta operación.",
   "error.exportWriteFailed": "No se pudo escribir el destino elegido.",
+  "error.exportCancelled": "Exportación cancelada.",
   "error.ia.noKey": "La ayuda con IA no está activada.",
   "error.ia.noSharedKey": "Esta versión no incluye una clave de demostración. Pega tu propia clave de OpenRouter.",
   "error.ia.invalidKeyFormat": "Esa clave no tiene el formato que espera OpenRouter.",
@@ -10426,6 +10641,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "error.ia.emptyResponse": "El modelo no ha devuelto ninguna explicación.",
   "error.ia.provider": "OpenRouter ha devuelto un error al generar la explicación.",
   "error.ia.credentialStore": "No se ha podido guardar o leer la clave en el Administrador de credenciales de Windows.",
+  "error.report.previewRequired": "Antes hay que ver y confirmar la vista previa de lo que se enviaría a la IA.",
   "reports.range.title": "Intervalo",
   "reports.devices.title": "Discos incluidos",
   "reports.includeSerials.label": "Incluir números de serie",
@@ -10436,6 +10652,13 @@ Fichero de origen: `src/lib/i18n/es.json`
   "reports.format.jsonDesc": "El mismo volcado que el CSV, estructurado por disco y con sus muestras anidadas.",
   "reports.format.html": "HTML",
   "reports.format.htmlDesc": "Resumen legible e imprimible: identidad de cada disco y sus alertas en el intervalo.",
+  "reports.ai.label": "Incluir resumen con IA",
+  "reports.ai.hint": "Se hará una llamada al modelo por cada uno de los {count} discos incluidos, con vista previa antes de enviar nada.",
+  "reports.ai.preview.title": "Vista previa del resumen con IA",
+  "reports.ai.preview.body": "Esto es exactamente lo que se enviaría por cada uno de los {count} discos, ya anonimizado. Se hace una llamada por disco.",
+  "reports.ai.preview.confirm": "Confirmar y exportar",
+  "reports.ai.progress.starting": "Empezando…",
+  "reports.ai.progress.caption": "Resumiendo disco {done} de {total}: {device}",
   "reports.cta.export": "Exportar",
   "reports.export.savedAt": "Guardado en {path}",
   "reports.diagnostic.title": "Paquete de diagnóstico",
@@ -10457,6 +10680,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "diagnostic.redacted.serialNumber": "números de serie",
   "diagnostic.redacted.computerName": "nombre de equipo",
   "diagnostic.redacted.userPaths": "usuario y rutas personales",
+  "diagnostic.redacted.volumeLabel": "etiquetas de volumen",
   "settings.appearance.title": "Apariencia",
   "settings.appearance.theme.light": "Claro",
   "settings.appearance.theme.dark": "Oscuro",
@@ -11015,6 +11239,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "error.testToolOutputUnreadable": "The measurement tool finished but its output couldn't be interpreted.",
   "error.pathInvalid": "The path isn't valid for this operation.",
   "error.exportWriteFailed": "The chosen destination couldn't be written.",
+  "error.exportCancelled": "Export cancelled.",
   "error.ia.noKey": "AI help isn't turned on.",
   "error.ia.noSharedKey": "This build doesn't include a demo key. Paste your own OpenRouter key.",
   "error.ia.invalidKeyFormat": "That key isn't in the format OpenRouter expects.",
@@ -11025,6 +11250,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "error.ia.emptyResponse": "The model didn't return an explanation.",
   "error.ia.provider": "OpenRouter returned an error while generating the explanation.",
   "error.ia.credentialStore": "Couldn't save or read the key in Windows Credential Manager.",
+  "error.report.previewRequired": "You need to see and confirm the preview of what would be sent to the AI first.",
   "reports.range.title": "Interval",
   "reports.devices.title": "Disks included",
   "reports.includeSerials.label": "Include serial numbers",
@@ -11035,6 +11261,13 @@ Fichero de origen: `src/lib/i18n/en.json`
   "reports.format.jsonDesc": "The same dump as the CSV, structured by disk with its samples nested.",
   "reports.format.html": "HTML",
   "reports.format.htmlDesc": "Readable, printable summary: each disk's identity and its alerts in the interval.",
+  "reports.ai.label": "Include AI summary",
+  "reports.ai.hint": "This makes one model call per disk, for each of the {count} disks included, with a preview before anything is sent.",
+  "reports.ai.preview.title": "AI summary preview",
+  "reports.ai.preview.body": "This is exactly what would be sent for each of the {count} disks, already anonymized. One call is made per disk.",
+  "reports.ai.preview.confirm": "Confirm and export",
+  "reports.ai.progress.starting": "Starting…",
+  "reports.ai.progress.caption": "Summarizing disk {done} of {total}: {device}",
   "reports.cta.export": "Export",
   "reports.export.savedAt": "Saved to {path}",
   "reports.diagnostic.title": "Diagnostic package",
@@ -11056,6 +11289,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "diagnostic.redacted.serialNumber": "serial numbers",
   "diagnostic.redacted.computerName": "computer name",
   "diagnostic.redacted.userPaths": "username and personal paths",
+  "diagnostic.redacted.volumeLabel": "volume labels",
   "settings.appearance.title": "Appearance",
   "settings.appearance.theme.light": "Light",
   "settings.appearance.theme.dark": "Dark",

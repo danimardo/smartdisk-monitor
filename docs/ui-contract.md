@@ -58,6 +58,8 @@ con el error y el resto de la interfaz sigue funcionando (`AGENTS.md` §5).
 | `db.migration_failed` | migración fallida; se ha restaurado la copia previa | no |
 | `path.invalid` | ruta fuera de las carpetas permitidas | no |
 | `export.write_failed` | no se pudo escribir el destino | sí |
+| `export.cancelled` | la exportación de informe con resumen IA se canceló antes de terminar (`cancelar_informe`); no se escribió fichero | no |
+| `report.preview_required` | `export_report` con `includeAiSummary: true` sin `previewConfirmada: true` | no |
 | `settings.out_of_range` | valor fuera de los límites de `open-questions.md` D.1 | no |
 | `db.query_failed` | fallo de SQLite que no es un bloqueo (`db.locked`, más arriba, es el que sí lo es) | no |
 | `windows_storage.failed` | falló la consulta de inventario vía PowerShell | sí |
@@ -454,8 +456,24 @@ invoke<string>("export_report", {          // devuelve la ruta escrita
   fromUtc: string, toUtc: string,
   deviceIds: string[] | null,              // null = todos los monitorizados
   includeSerials: boolean,
-  destinationPath: string
+  destinationPath: string,
+  alertLabels?: Record<string, string> | null,   // solo "html" (spec 009): clave de regla → texto legible
+  includeAiSummary?: boolean,                     // solo "html"; exige previewConfirmada
+  previewConfirmada?: boolean                     // la persona ya vio preview_informe_ia y confirma
 })
+
+invoke<PreviewInformeIaWire>("preview_informe_ia", {   // spec 009, sin red — análogo a preview_diagnostic_zip
+  fromUtc: string, toUtc: string,
+  deviceIds: string[] | null,
+  alertLabels?: Record<string, string> | null
+})
+interface PreviewInformeIaWire {
+  discos: { deviceId: string; deviceLabel: string; textoEnviado: string;
+            fragmentos: { texto: string; motivoKey: string }[]; recortado: boolean }[];
+  redactedFields: string[];
+  totalLlamadas: number;                   // = discos.length
+}
+invoke<void>("cancelar_informe")           // spec 009: corta la exportación con IA en curso, antes del siguiente disco
 
 invoke<DiagnosticPreview>("preview_diagnostic_zip", { includeIdentifiers: boolean })
 interface DiagnosticPreview {
@@ -468,6 +486,21 @@ invoke<string>("create_diagnostic_zip", { includeIdentifiers: boolean, destinati
 
 US-051 exige mostrar un resumen del contenido antes de guardar: para eso está
 `preview_diagnostic_zip`, que no escribe nada.
+
+**Resumen con IA por disco** (spec `009-informe-mejorado`, principio XVI, segundo uso — ADR-057):
+opt-in, apagado de fábrica, solo con `format: "html"` y solo si la ayuda con IA está activa
+(`estado_ia().activa`).
+
+- `csv`/`json` ignoran los tres parámetros nuevos: es el volcado completo, sin cambios.
+- `html` sin `includeAiSummary`: síncrono, sin red — igual que hoy, con contenido ampliado por disco
+  (identidad, salud «a fecha de hoy», contadores SMART con delta, alertas legibles vía
+  `alertLabels`, eventos de Windows, dos mini-gráficas SVG embebidas).
+- `html` con `includeAiSummary: true` sin `previewConfirmada: true` → `report.preview_required`.
+  Con ambos: `export_report` pasa a asíncrono, hace **una llamada al modelo por disco incluido**
+  (nunca combina discos), emite `report:progress` antes de cada una, comprueba `cancelar_informe`
+  antes de cada una, y un fallo de un disco no aborta el informe — ese disco lleva una nota, sin
+  reintento (FR-019, principio XVI).
+- `report.preview_required` / `ia.no_key` / `export.cancelled` se añaden a los códigos de §1.
 
 ### 3.8 Ciclo de vida
 
@@ -554,6 +587,10 @@ type ResultadoExplicacion =
   usuario, rutas de perfil) antes de salir del proceso. La marca/modelo/firmware del disco **sí**
   se envían.
 - Errores: los códigos `ia.*` de §1.
+- **Segundo uso de la ayuda con IA** (constitución 1.11.0, ADR-057): el resumen por disco del
+  informe HTML, §3.7 (`preview_informe_ia`/`export_report`). Comparte credencial, modelo y pila de
+  anonimización con este bloque, pero con su propio comando de vista previa y su propio alcance de
+  datos por disco — nunca reutiliza `explicar_detalle_tecnico`.
 
 ---
 
@@ -568,6 +605,7 @@ descartar mensajes fuera de orden.
 | `alerts:changed` | `{ emittedAt, changed: AlertGroup[], removed: string[] }` | alta, cambio de severidad o de estado, resolución |
 | `inventory:changed` | `{ emittedAt, added: DiskSummary[], removed: string[], updated: DiskSummary[] }` | alta o retirada de disco o volumen |
 | `test:progress` | `{ emittedAt, testRun: TestRun }` | mientras una prueba avanza |
+| `report:progress` | `{ emittedAt, done: number, total: number, deviceLabel: string }` | antes de la llamada de cada disco en un `export_report` con `includeAiSummary` (spec 009); `done` va de `0` a `total - 1`, no hay evento de «fin» |
 | `source:degraded` | `{ emittedAt, source: SourceHealth }` | una fuente pasa a `timeout` o `error` |
 | `system:accent-changed` | `{ hex }` | el usuario cambia el acento de Windows |
 | `system:theme-changed` | `{ dark: boolean }` | el usuario cambia el tema de Windows |

@@ -227,7 +227,7 @@ describe("alertGroup", () => {
 });
 
 describe("eventSchemas", () => {
-  it("cubre exactamente los nueve eventos del contrato", () => {
+  it("cubre exactamente los diez eventos del contrato", () => {
     expect(Object.keys(S.eventSchemas).sort()).toEqual(
       [
         "alerts:changed",
@@ -235,6 +235,7 @@ describe("eventSchemas", () => {
         "metrics:updated",
         "monitoring:paused",
         "monitoring:resumed",
+        "report:progress",
         "source:degraded",
         "system:accent-changed",
         "system:theme-changed",

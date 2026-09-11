@@ -11,6 +11,7 @@ import type {
   inventoryChanged,
   metricsUpdated,
   monitoringPaused,
+  reportProgress,
   sourceDegraded,
   testProgress
 } from "./schemas";
@@ -19,5 +20,6 @@ export type MetricsUpdated = z.infer<typeof metricsUpdated>;
 export type AlertsChanged = z.infer<typeof alertsChanged>;
 export type InventoryChanged = z.infer<typeof inventoryChanged>;
 export type TestProgress = z.infer<typeof testProgress>;
+export type ReportProgress = z.infer<typeof reportProgress>;
 export type SourceDegraded = z.infer<typeof sourceDegraded>;
 export type MonitoringPaused = z.infer<typeof monitoringPaused>;

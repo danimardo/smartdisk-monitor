@@ -12,6 +12,9 @@ use crate::domain::tipos::{AggregateResolution, Device};
 use crate::persistence::{repo_agregados, repo_metricas};
 
 pub const SCHEMA_VERSION: &str = "1";
+/// El HTML es un resumen legible para personas; su estructura cambia de forma independiente del
+/// volcado CSV/JSON (spec 009). Subir esto **no** toca `SCHEMA_VERSION` de CSV/JSON.
+pub const SCHEMA_VERSION_HTML: &str = "2";
 const NO_DISPONIBLE: &str = "N/A";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,17 +33,138 @@ pub struct RangoExport {
 }
 
 impl RangoExport {
-    fn desde_como_texto(&self) -> String {
+    pub(crate) fn desde_como_texto(&self) -> String {
         self.desde.format(&Rfc3339).unwrap_or_default()
     }
 
-    fn hasta_como_texto(&self) -> String {
+    pub(crate) fn hasta_como_texto(&self) -> String {
         self.hasta.format(&Rfc3339).unwrap_or_default()
     }
 }
 
 pub fn etiqueta_dispositivo(d: &Device) -> String {
     d.alias.clone().unwrap_or_else(|| d.model.clone())
+}
+
+/// Resolución servida para una serie del informe y su cadencia en ms, con la **misma cascada** que
+/// `filas_dispositivo` y `commands::get_metric_series_impl` (`docs/open-questions.md` E.1). El
+/// informe la comparte entre el resumen numérico y las mini-gráficas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolucionInforme {
+    Raw,
+    FiveMinutes,
+    Hourly,
+}
+
+impl ResolucionInforme {
+    pub fn cadencia_ms(self, metric_key: &str) -> i64 {
+        match self {
+            // Temperatura sale del ciclo SMART (300 s); actividad y demás rápidas, 30 s.
+            Self::Raw if metric_key == "temperature_celsius" => 300_000,
+            Self::Raw => 30_000,
+            Self::FiveMinutes => 300_000,
+            Self::Hourly => 3_600_000,
+        }
+    }
+}
+
+/// Serie `(timestamp_utc, valor)` de una métrica de un dispositivo en el rango, ya elegida la
+/// resolución. Devuelve también la resolución y su cadencia, para el eje y los huecos.
+pub fn serie_device(
+    conn: &rusqlite::Connection,
+    device_id: &str,
+    metric_key: &str,
+    rango: RangoExport,
+) -> rusqlite::Result<(Vec<(String, f64)>, ResolucionInforme)> {
+    let from_utc = rango.desde_como_texto();
+    let to_utc = rango.hasta_como_texto();
+    let ahora = time::OffsetDateTime::now_utc();
+    let ancho = rango.hasta - rango.desde;
+    let dentro_de_siete_dias = rango.desde >= ahora - time::Duration::days(7);
+
+    let (filas, resolucion): (Vec<(String, f64)>, ResolucionInforme) =
+        if ancho <= time::Duration::hours(24) && dentro_de_siete_dias {
+            (
+                repo_metricas::device_series(conn, device_id, metric_key, &from_utc, &to_utc)?
+                    .into_iter()
+                    .filter_map(|m| {
+                        m.value_real
+                            .or(m.value_integer.map(|v| v as f64))
+                            .map(|v| (m.sampled_at_utc, v))
+                    })
+                    .collect(),
+                ResolucionInforme::Raw,
+            )
+        } else if ancho <= time::Duration::days(7) {
+            (
+                agregados_serie(
+                    conn,
+                    device_id,
+                    metric_key,
+                    AggregateResolution::FiveMinutes,
+                    &from_utc,
+                    &to_utc,
+                )?,
+                ResolucionInforme::FiveMinutes,
+            )
+        } else if ancho <= time::Duration::days(90) {
+            let cinco = agregados_serie(
+                conn,
+                device_id,
+                metric_key,
+                AggregateResolution::FiveMinutes,
+                &from_utc,
+                &to_utc,
+            )?;
+            if cinco.is_empty() {
+                (
+                    agregados_serie(
+                        conn,
+                        device_id,
+                        metric_key,
+                        AggregateResolution::Hourly,
+                        &from_utc,
+                        &to_utc,
+                    )?,
+                    ResolucionInforme::Hourly,
+                )
+            } else {
+                (cinco, ResolucionInforme::FiveMinutes)
+            }
+        } else {
+            (
+                agregados_serie(
+                    conn,
+                    device_id,
+                    metric_key,
+                    AggregateResolution::Hourly,
+                    &from_utc,
+                    &to_utc,
+                )?,
+                ResolucionInforme::Hourly,
+            )
+        };
+    Ok((filas, resolucion))
+}
+
+fn agregados_serie(
+    conn: &rusqlite::Connection,
+    device_id: &str,
+    metric_key: &str,
+    resolucion: AggregateResolution,
+    from_utc: &str,
+    to_utc: &str,
+) -> rusqlite::Result<Vec<(String, f64)>> {
+    Ok(repo_agregados::device_aggregates(
+        conn, device_id, metric_key, resolucion, from_utc, to_utc,
+    )?
+    .into_iter()
+    .filter_map(|a| {
+        a.value_avg
+            .or(a.value_last)
+            .map(|v| (a.bucket_start_utc, v))
+    })
+    .collect())
 }
 
 /// Todas las filas de un dispositivo en el rango, para todas las métricas que de verdad tengan

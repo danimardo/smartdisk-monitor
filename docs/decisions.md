@@ -2303,3 +2303,80 @@ nunca llega a `Valido` vuelve a ser un hueco silencioso.
 - Sin cambios de contrato IPC, modelo de datos, permisos de Tauri ni dependencias. La semántica de
   la serie no cambia: media de la ventana deslizante, una fila por ciclo de métricas rápidas, hueco
   cuando la ventana no es representativa.
+
+## ADR-057 — El informe imprimible gana un resumen por disco con IA (y frases legibles de alerta)
+
+Estado: aceptada. Fecha: 2026-09-11 (propuesta el 2026-09-10). Spec `009-informe-mejorado`,
+implementada entera (historias 1-3). Requerida por la constitución 1.11.0 (principio XVI, segundo
+uso de la ayuda con IA).
+
+### El problema
+
+El informe HTML era, por disco, solo una tabla de alertas con la clave de regla en crudo
+(`smart.error_log`). No reflejaba la salud, los contadores SMART, la temperatura, la actividad ni
+los eventos, aunque la aplicación llevara días recopilándolos. El dueño pidió: (a) un informe
+útil por disco, y (b) cuando la ayuda con IA esté configurada, un resumen en lenguaje llano por
+disco de sus alertas, sucesos y estado SMART.
+
+### La decisión
+
+1. **Frases legibles de alerta sin romper ADR-030.** El HTML lo sigue generando el backend; la
+   **interfaz le pasa un mapa `clave_de_regla → texto`** en `export_report` (parámetro
+   `alertLabels`), con las claves de `docs/alert-rules.md` §2 ya traducidas. El backend **no
+   posee** una copia del texto —lo recibe para este render, igual que recibe `includeSerials` o el
+   destino—; una clave ausente cae a la clave cruda. ADR-030 (el backend no manda texto de alerta)
+   se respeta en su espíritu.
+
+2. **Contenido del informe por disco.** Identidad; salud «a fecha de hoy» con nota de antigüedad si
+   la última lectura es vieja (nunca «No disponible» si hubo lectura alguna vez); contadores SMART
+   con su valor final y su delta en el intervalo; alertas del disco (`target_device_id`) con frase
+   legible; eventos de Windows del intervalo (tope 50, «y N más»); dos mini-gráficas **SVG
+   embebidas** (temperatura y actividad) generadas en Rust, sin recursos remotos. `schemaVersion`
+   del HTML sube a 2, independiente del de CSV/JSON (que no cambian).
+
+3. **Resumen con IA por disco (opt-in, apagado de fábrica).** Casilla «incluir resumen con IA» en
+   la pantalla de Informes, visible solo si la ayuda con IA está activa. Al exportar HTML con la
+   casilla: `preview_informe_ia` (comando nuevo, **sin red**) devuelve el texto exacto y
+   anonimizado por disco; una vista previa lo muestra; **una** confirmación cubre el informe.
+   Entonces `export_report` (que pasa a `async` para este caso) hace **una llamada por cada disco
+   incluido** —nunca combinando discos—, con el alcance que autoriza el principio XVI 1.11.0.
+   La respuesta se incrusta como **texto HTML-escapado** con `white-space: pre-wrap` (sin renderizar
+   markdown: «texto o markdown seguro, jamás HTML»), marcada como orientación de IA con su
+   procedencia. Un fallo por disco → nota en ese disco (motivo resuelto contra el mismo mapa
+   `alertLabels` que las alertas, con una frase genérica si el frontend no le puso texto), se
+   sigue, **sin reintento**. Progreso por evento `report:progress` y cancelación por
+   `cancelar_informe` (bandera `AppState.informe_cancelado`, comprobada antes de cada disco —
+   nunca aborta una llamada ya en vuelo).
+
+4. **Anonimización.** Reutiliza la pila existente (`Anonimizador` capa 1 + `redactar_identificadores`
+   capa 2), con una adición: `Anonimizador::con_etiqueta_volumen(...)` (categoría ya en el principio
+   XVI desde 1.8.0). Siempre activa, con o sin el toggle «incluir identificadores» del informe (ese
+   toggle solo afecta a las partes no-IA del HTML).
+
+### Alternativas descartadas
+
+- *La interfaz genera todo el HTML*: tendría que reunir y ensamblar todos los datos (alertas, SMART,
+  eventos, series, resúmenes IA) que ya viven en Rust; mucho más código y superficie.
+- *Diccionario de textos de alerta duplicado en Rust*: la «segunda copia sin mantener» que ADR-030
+  evita; `pnpm verify:i18n` no la cubriría.
+- *Markdown→HTML seguro en Rust para el resumen*: parser + saneador nuevos para un beneficio
+  cosmético; texto escapado con saltos de línea **es** «texto» y cumple al pie de la letra.
+- *Combinar varios discos en una petición de IA*: prohibido por el principio XVI.
+- *Reintento automático ante 429/timeout*: prohibido por el principio XVI («ningún reintento
+  automático que la persona no haya pedido»).
+
+### Consecuencias
+
+- Contratos nuevos: `export_report` gana `alertLabels`/`includeAiSummary`/`previewConfirmada`;
+  comandos nuevos `preview_informe_ia` y `cancelar_informe`; evento nuevo `report:progress`.
+- Módulos Rust nuevos: `reporting/resumen_metricas.rs`, `reporting/minigrafica.rs`,
+  `reporting/informe_ia.rs`; ampliación de `reporting/anonimizar.rs` y `domain/ia.rs`.
+- **Sin dependencias nuevas** (`reqwest` ya está), **sin permisos de Tauri nuevos** (red desde
+  Rust), **sin cambios de esquema SQLite**.
+- El resumen con IA es lento (una llamada por disco): con la clave de demostración puede toparse
+  con los límites del proveedor; la vista previa lo advierte.
+- El bucle de red de la fase con IA (`resumenes_ia_por_disco`) recibe la llamada al proveedor como
+  closure inyectada, en vez de llamarlo directamente: permite probar la cancelación (bandera antes
+  de cada disco) y el orden del progreso sin tocar la red **ni añadir una dependencia de ejecutor
+  async** — las pruebas usan un `Waker` mínimo hecho a mano, porque sus futuras se resuelven en el
+  primer sondeo (mismo criterio de «extraer la costura en el borde de red» que `resultado_a_seccion`).

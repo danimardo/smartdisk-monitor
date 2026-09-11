@@ -429,6 +429,22 @@ export const diagnosticPreview = z.object({
   redactedFields: z.array(z.string())
 });
 
+/** Vista previa de `preview_informe_ia` (spec 009): el texto exacto y ya anonimizado que se
+ *  enviaría por cada disco. Sin red — análoga a `diagnosticPreview`. */
+export const previewInformeIa = z.object({
+  discos: z.array(
+    z.object({
+      deviceId: z.string(),
+      deviceLabel: z.string(),
+      textoEnviado: z.string(),
+      fragmentos: z.array(fragmentoDudoso),
+      recortado: z.boolean()
+    })
+  ),
+  redactedFields: z.array(z.string()),
+  totalLlamadas: z.number().nonnegative()
+});
+
 export const appInfo = z.object({
   name: z.string(),
   version: z.string(),
@@ -468,6 +484,15 @@ export const inventoryChanged = z.object({
 });
 
 export const testProgress = z.object({ ...emitted, testRun });
+/** `report:progress` (spec 009, US3): solo durante `export_report` con IA, antes de la llamada de
+ *  cada disco. `done` va de `0` a `total - 1`; el fin de la exportación lo marca la promesa de
+ *  `export_report`, no un evento de «fin». */
+export const reportProgress = z.object({
+  ...emitted,
+  done: z.number().nonnegative(),
+  total: z.number().nonnegative(),
+  deviceLabel: z.string()
+});
 export const sourceDegraded = z.object({ ...emitted, source: sourceHealth });
 export const monitoringPaused = z.object({ ...emitted, since: isoUtc.nullable() });
 export const accentChanged = z.object({ hex: z.string().regex(/^#[0-9a-fA-F]{6}$/) });
@@ -480,6 +505,7 @@ export const eventSchemas = {
   "alerts:changed": alertsChanged,
   "inventory:changed": inventoryChanged,
   "test:progress": testProgress,
+  "report:progress": reportProgress,
   "source:degraded": sourceDegraded,
   "system:accent-changed": accentChanged,
   "system:theme-changed": themeChanged,

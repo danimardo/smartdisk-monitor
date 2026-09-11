@@ -137,4 +137,17 @@ export interface DiagnosticPreview {
   redactedFields: string[];
 }
 
+/** Vista previa de `preview_informe_ia` (spec 009): el texto exacto y anonimizado por disco. */
+export interface PreviewInformeIa {
+  discos: {
+    deviceId: string;
+    deviceLabel: string;
+    textoEnviado: string;
+    fragmentos: { texto: string; motivoKey: string }[];
+    recortado: boolean;
+  }[];
+  redactedFields: string[];
+  totalLlamadas: number;
+}
+
 export type AlertStatusFilter = AlertStatus[];

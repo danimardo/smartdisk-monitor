@@ -6327,6 +6327,7 @@ fn dispositivos_para_informe(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn export_report_impl(
     conn: &rusqlite::Connection,
     format: &str,
@@ -6335,6 +6336,7 @@ fn export_report_impl(
     device_ids: Option<&[String]>,
     include_serials: bool,
     destination_path: &str,
+    alert_labels: Option<&std::collections::HashMap<String, String>>,
 ) -> AppResult<String> {
     let rango = parsear_rango(from_utc, to_utc)?;
     let dispositivos = dispositivos_para_informe(conn, device_ids)?;
@@ -6348,7 +6350,18 @@ fn export_report_impl(
         }
         "html" => {
             let alertas = repo_alertas::list_groups(conn).map_err(rusqlite_err_to_app_error)?;
-            crate::reporting::informe::generar_html(&dispositivos, &alertas, rango, include_serials)
+            let vacio = std::collections::HashMap::new();
+            let labels = alert_labels.unwrap_or(&vacio);
+            crate::reporting::informe::generar_html(
+                conn,
+                &dispositivos,
+                &alertas,
+                rango,
+                include_serials,
+                labels,
+                None,
+            )
+            .map_err(rusqlite_err_to_app_error)?
         }
         _ => {
             return Err(Box::new(
@@ -6369,17 +6382,107 @@ fn export_report_impl(
     Ok(destination_path.to_string())
 }
 
+/// Espejo de `PreviewDiscoWire` de `preview_informe_ia` (spec `009`, contrato
+/// `contracts/preview_informe_ia.md`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewDiscoWire {
+    pub device_id: String,
+    pub device_label: String,
+    pub texto_enviado: String,
+    pub fragmentos: Vec<crate::domain::ia::FragmentoDudosoWire>,
+    pub recortado: bool,
+}
+
+/// Espejo de `PreviewInformeIaWire` (spec `009`, contrato `contracts/preview_informe_ia.md`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewInformeIaWire {
+    pub discos: Vec<PreviewDiscoWire>,
+    pub redacted_fields: Vec<String>,
+    pub total_llamadas: i64,
+}
+
+/// Vista previa del texto exacto y anonimizado que se enviaría por cada disco (spec `009`,
+/// principio XVI): **sin red**, análoga a `preview_diagnostic_zip`. La casilla «incluir resumen
+/// con IA» de la pantalla de Informes la llama antes de ofrecer la confirmación única que cubre
+/// todo el informe.
+#[tauri::command]
+pub fn preview_informe_ia(
+    state: State<AppState>,
+    from_utc: String,
+    to_utc: String,
+    device_ids: Option<Vec<String>>,
+    alert_labels: Option<std::collections::HashMap<String, String>>,
+) -> AppResult<PreviewInformeIaWire> {
+    if crate::platform::credenciales::leer().is_none() {
+        return Err(Box::new(AppError::new("ia.no_key", "error.ia.noKey")));
+    }
+    let conn = state
+        .conn
+        .lock()
+        .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+    let rango = parsear_rango(&from_utc, &to_utc)?;
+    let dispositivos = dispositivos_para_informe(&conn, device_ids.as_deref())?;
+    let alertas = repo_alertas::list_groups(&conn).map_err(rusqlite_err_to_app_error)?;
+    let vacio = std::collections::HashMap::new();
+    let labels = alert_labels.as_ref().unwrap_or(&vacio);
+
+    let anon = crate::reporting::informe_ia::anonimizador_base(&conn)
+        .map_err(rusqlite_err_to_app_error)?;
+    let previews =
+        crate::reporting::informe_ia::preview_datos(&conn, rango, &dispositivos, &alertas, labels)
+            .map_err(rusqlite_err_to_app_error)?;
+
+    Ok(PreviewInformeIaWire {
+        discos: previews
+            .into_iter()
+            .map(|p| PreviewDiscoWire {
+                device_id: p.device_id,
+                device_label: p.device_label,
+                texto_enviado: p.texto_enviado,
+                fragmentos: p.fragmentos,
+                recortado: p.recortado,
+            })
+            .collect(),
+        redacted_fields: anon
+            .campos_afectados()
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        total_llamadas: dispositivos.len() as i64,
+    })
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn export_report(
-    state: State<AppState>,
+pub async fn export_report(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
     format: String,
     from_utc: String,
     to_utc: String,
     device_ids: Option<Vec<String>>,
     include_serials: bool,
     destination_path: String,
+    alert_labels: Option<std::collections::HashMap<String, String>>,
+    include_ai_summary: Option<bool>,
+    preview_confirmada: Option<bool>,
 ) -> AppResult<String> {
+    if format == "html" && include_ai_summary.unwrap_or(false) {
+        return exportar_informe_con_ia(
+            &app,
+            &state,
+            &from_utc,
+            &to_utc,
+            device_ids.as_deref(),
+            include_serials,
+            &destination_path,
+            alert_labels.as_ref(),
+            preview_confirmada.unwrap_or(false),
+        )
+        .await;
+    }
     let conn = state
         .conn
         .lock()
@@ -6392,7 +6495,213 @@ pub fn export_report(
         device_ids.as_deref(),
         include_serials,
         &destination_path,
+        alert_labels.as_ref(),
     )
+}
+
+/// Cancela la exportación de informe con resumen IA en curso (spec `009`, US3, contrato
+/// `contracts/cancelar_informe.md`). Inofensivo sin exportación en curso: la próxima resetea la
+/// bandera. Una sola exportación a la vez, así que no hace falta identificar cuál.
+#[tauri::command]
+pub fn cancelar_informe(state: State<AppState>) {
+    state
+        .informe_cancelado
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Espejo de `report:progress` (`contracts/evento-report-progress.md`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportProgressEvent {
+    emitted_at: String,
+    done: i64,
+    total: i64,
+    device_label: String,
+}
+
+fn emitir_report_progress(app: &tauri::AppHandle, done: usize, total: usize, device_label: &str) {
+    if let Err(e) = app.emit(
+        "report:progress",
+        ReportProgressEvent {
+            emitted_at: ahora_rfc3339(),
+            done: done as i64,
+            total: total as i64,
+            device_label: device_label.to_string(),
+        },
+    ) {
+        tracing::warn!(error = %e, "no se pudo emitir report:progress");
+    }
+}
+
+/// Resultado de la fase de red de la exportación con IA (T031/T039-T042): los resúmenes de cada
+/// disco, o `Cancelado` si la bandera de cancelación estaba a `true` antes de alcanzar el turno de
+/// algún disco — en ese caso el llamador no escribe el fichero.
+enum FaseIaResultado {
+    Completado(std::collections::HashMap<String, crate::reporting::informe_ia::ResumenIaSeccion>),
+    Cancelado,
+}
+
+/// Bucle de la fase de red: comprueba la cancelación **antes** de la llamada de cada disco, nunca
+/// a mitad de una ya en vuelo (contrato `cancelar_informe.md`: "no aborta una petición HTTP ya en
+/// vuelo"), y emite el progreso justo antes de esa llamada. `llamar` es la única E/S de red,
+/// inyectada para poder probar la cancelación y el orden del progreso sin tocar la red — mismo
+/// criterio que `resultado_a_seccion`, extraída por el mismo motivo.
+async fn resumenes_ia_por_disco<F, Fut>(
+    payloads: Vec<(String, String, String, String)>, // device_id, device_label, system, user
+    cancelado: &std::sync::atomic::AtomicBool,
+    mut on_progreso: impl FnMut(usize, usize, &str),
+    mut llamar: F,
+) -> FaseIaResultado
+where
+    F: FnMut(String, String) -> Fut,
+    Fut: std::future::Future<
+        Output = Result<crate::domain::ia::RespuestaChat, crate::domain::ia::ErrorTransporte>,
+    >,
+{
+    let total = payloads.len();
+    let mut resumenes = std::collections::HashMap::new();
+    for (done, (device_id, device_label, system, user)) in payloads.into_iter().enumerate() {
+        if cancelado.load(std::sync::atomic::Ordering::Relaxed) {
+            return FaseIaResultado::Cancelado;
+        }
+        on_progreso(done, total, &device_label);
+        let t0 = std::time::Instant::now();
+        let respuesta = llamar(system, user).await;
+        let seccion = crate::reporting::informe_ia::resultado_a_seccion(respuesta);
+        tracing::debug!(
+            generado = matches!(
+                seccion,
+                crate::reporting::informe_ia::ResumenIaSeccion::Generado { .. }
+            ),
+            ms = t0.elapsed().as_millis() as u64,
+            "resumen IA de un disco del informe"
+        );
+        resumenes.insert(device_id, seccion);
+    }
+    FaseIaResultado::Completado(resumenes)
+}
+
+/// Exportación HTML con resumen IA por disco (spec `009`, US2/US3). Tres fases para no retener el
+/// candado de `state.conn` durante la red (`.claude/rules/backend-rust.md`): (1) candado breve —
+/// resolver discos/alertas y componer el payload `(system, user)` de cada disco, ya anonimizado;
+/// (2) sin candado — una llamada al modelo por disco, en serie, nunca combinando discos, con
+/// progreso y cancelación; (3) candado breve — ensamblar el HTML con los resúmenes (o sus notas de
+/// degradación) y escribirlo. Un fallo de un disco no aborta el informe (FR-019, sin reintento
+/// automático — principio XVI); una cancelación sí lo aborta, sin escribir fichero.
+#[allow(clippy::too_many_arguments)]
+async fn exportar_informe_con_ia(
+    app: &tauri::AppHandle,
+    state: &State<'_, AppState>,
+    from_utc: &str,
+    to_utc: &str,
+    device_ids: Option<&[String]>,
+    include_serials: bool,
+    destination_path: &str,
+    alert_labels: Option<&std::collections::HashMap<String, String>>,
+    preview_confirmada: bool,
+) -> AppResult<String> {
+    if !preview_confirmada {
+        return Err(Box::new(AppError::new(
+            "report.preview_required",
+            "error.report.previewRequired",
+        )));
+    }
+    let Some(clave) = crate::platform::credenciales::leer() else {
+        return Err(Box::new(AppError::new("ia.no_key", "error.ia.noKey")));
+    };
+
+    let rango = parsear_rango(from_utc, to_utc)?;
+    let vacio = std::collections::HashMap::new();
+    let labels = alert_labels.unwrap_or(&vacio).clone();
+
+    // Fase 1: candado breve.
+    let (dispositivos, alertas, modelo, payloads) = {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        let dispositivos = dispositivos_para_informe(&conn, device_ids)?;
+        let alertas = repo_alertas::list_groups(&conn).map_err(rusqlite_err_to_app_error)?;
+        let modelo = leer_ajuste_string(
+            &conn,
+            "settings.ai.model",
+            crate::domain::ia::MODELO_AUTOMATICO,
+        );
+        let anon = crate::reporting::informe_ia::anonimizador_base(&conn)
+            .map_err(rusqlite_err_to_app_error)?;
+        let mut payloads = Vec::with_capacity(dispositivos.len());
+        for d in &dispositivos {
+            let (system, user, _recortado) = crate::reporting::informe_ia::payload_disco(
+                &conn, d, rango, &alertas, &labels, &anon,
+            )
+            .map_err(rusqlite_err_to_app_error)?;
+            payloads.push((
+                d.id.clone(),
+                crate::reporting::export::etiqueta_dispositivo(d),
+                system,
+                user,
+            ));
+        }
+        (dispositivos, alertas, modelo, payloads)
+    };
+
+    // Fase 2: sin candado — la red. Resetea la bandera al empezar (contrato `cancelar_informe.md`:
+    // una llamada sin exportación en curso es inofensiva porque la próxima la vuelve a poner a
+    // `false` aquí).
+    state
+        .informe_cancelado
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let resumenes = match resumenes_ia_por_disco(
+        payloads,
+        &state.informe_cancelado,
+        |done, total, device_label| emitir_report_progress(app, done, total, device_label),
+        |system, user| {
+            let clave = clave.clone();
+            let modelo = modelo.clone();
+            async move {
+                crate::platform::ia_openrouter::chat_completions(&clave, &modelo, &system, &user)
+                    .await
+            }
+        },
+    )
+    .await
+    {
+        FaseIaResultado::Completado(r) => r,
+        FaseIaResultado::Cancelado => {
+            return Err(Box::new(AppError::new(
+                "export.cancelled",
+                "error.exportCancelled",
+            )))
+        }
+    };
+
+    // Fase 3: candado breve — ensamblar y escribir.
+    let contenido = {
+        let conn = state
+            .conn
+            .lock()
+            .expect("el mutex de la conexión no se envenena: sin pánicos dentro");
+        crate::reporting::informe::generar_html(
+            &conn,
+            &dispositivos,
+            &alertas,
+            rango,
+            include_serials,
+            &labels,
+            Some(&resumenes),
+        )
+        .map_err(rusqlite_err_to_app_error)?
+    };
+
+    std::fs::write(destination_path, contenido).map_err(|e| {
+        Box::new(
+            AppError::new("export.write_failed", "error.exportWriteFailed")
+                .with_detail(e.to_string())
+                .retryable(),
+        )
+    })?;
+
+    Ok(destination_path.to_string())
 }
 
 /// Espejo de `DiagnosticPreview` en `src/lib/api/types.ts`.
@@ -8153,6 +8462,7 @@ mod tests_informes {
             None,
             false,
             destino.to_str().unwrap(),
+            None,
         )
         .unwrap_err();
         assert_eq!(err.code, "ipc.schema_mismatch");
@@ -8173,6 +8483,7 @@ mod tests_informes {
             None,
             false,
             destino.to_str().unwrap(),
+            None,
         )
         .unwrap();
 
@@ -8196,6 +8507,7 @@ mod tests_informes {
             None,
             false,
             destino.to_str().unwrap(),
+            None,
         )
         .unwrap();
 
@@ -8220,6 +8532,7 @@ mod tests_informes {
             None,
             false,
             destino.to_str().unwrap(),
+            None,
         )
         .unwrap();
 
@@ -8244,6 +8557,7 @@ mod tests_informes {
             None,
             false,
             destino.to_str().unwrap(),
+            None,
         )
         .unwrap_err();
         assert_eq!(err.code, "export.write_failed");
@@ -8271,6 +8585,122 @@ mod tests_informes {
         assert_eq!(
             clave_descripcion_entrada("logs/smartdisk.log.2026-09-04"),
             "diagnostic.entry.logs"
+        );
+    }
+
+    /// Sin ejecutor async en las dependencias (ninguna nueva sin justificación — `AGENTS.md`
+    /// «Límites duros»): un `Waker` que no hace nada basta porque las futuras de estas pruebas se
+    /// resuelven en el primer sondeo — nunca quedan `Pending` de verdad (la cancelación corta
+    /// antes de la única `.await` real, y el resto de esperas son `std::future::ready`).
+    fn sondear_una_vez<F: std::future::Future>(fut: F) -> std::task::Poll<F::Output> {
+        use std::task::{Context, RawWaker, RawWakerVTable, Waker};
+        fn no_op(_: *const ()) {}
+        fn clonar(_: *const ()) -> RawWaker {
+            RawWaker::new(std::ptr::null(), &VTABLE)
+        }
+        static VTABLE: RawWakerVTable = RawWakerVTable::new(clonar, no_op, no_op, no_op);
+        let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
+        let mut cx = Context::from_waker(&waker);
+        let mut fut = Box::pin(fut);
+        fut.as_mut().poll(&mut cx)
+    }
+
+    /// T039: la bandera de cancelación se comprueba **antes** de la llamada de cada disco
+    /// (contrato `cancelar_informe.md`) — con la bandera ya a `true`, no se llama a la red para
+    /// ningún disco y el resultado es `Cancelado`.
+    #[test]
+    fn cancelar_antes_de_empezar_no_llama_a_la_red_de_ningun_disco() {
+        let cancelado = std::sync::atomic::AtomicBool::new(true);
+        let payloads = vec![
+            (
+                "d1".to_string(),
+                "Disco 1".to_string(),
+                "sys".to_string(),
+                "usr".to_string(),
+            ),
+            (
+                "d2".to_string(),
+                "Disco 2".to_string(),
+                "sys".to_string(),
+                "usr".to_string(),
+            ),
+        ];
+        let llamadas_red = std::cell::RefCell::new(0u32);
+        let progreso = std::cell::RefCell::new(0u32);
+        let resultado = sondear_una_vez(resumenes_ia_por_disco(
+            payloads,
+            &cancelado,
+            |_, _, _| *progreso.borrow_mut() += 1,
+            |_system, _user| {
+                *llamadas_red.borrow_mut() += 1;
+                std::future::ready(Err(crate::domain::ia::ErrorTransporte::Timeout))
+            },
+        ));
+        assert!(matches!(
+            resultado,
+            std::task::Poll::Ready(FaseIaResultado::Cancelado)
+        ));
+        assert_eq!(*llamadas_red.borrow(), 0, "no debe llamarse a la red");
+        assert_eq!(*progreso.borrow(), 0, "no debe emitirse progreso");
+    }
+
+    /// Sin cancelación, el progreso se emite en orden antes de cada llamada y cada disco recibe
+    /// exactamente su propio texto (nunca el de otro — principio XVI).
+    #[test]
+    fn sin_cancelar_emite_progreso_en_orden_y_cada_disco_recibe_su_propio_texto() {
+        let cancelado = std::sync::atomic::AtomicBool::new(false);
+        let payloads = vec![
+            (
+                "d1".to_string(),
+                "Disco 1".to_string(),
+                "sys-d1".to_string(),
+                "usr-d1".to_string(),
+            ),
+            (
+                "d2".to_string(),
+                "Disco 2".to_string(),
+                "sys-d2".to_string(),
+                "usr-d2".to_string(),
+            ),
+        ];
+        let progreso = std::cell::RefCell::new(Vec::new());
+        let textos_llamados = std::cell::RefCell::new(Vec::new());
+        let resultado = sondear_una_vez(resumenes_ia_por_disco(
+            payloads,
+            &cancelado,
+            |done, total, etiqueta| {
+                progreso
+                    .borrow_mut()
+                    .push((done, total, etiqueta.to_string()))
+            },
+            |system, user| {
+                textos_llamados.borrow_mut().push((system, user));
+                std::future::ready(Ok(crate::domain::ia::RespuestaChat {
+                    model: Some("modelo-x".to_string()),
+                    choices: vec![crate::domain::ia::EleccionChat {
+                        message: Some(crate::domain::ia::MensajeChat {
+                            content: Some("ok".to_string()),
+                        }),
+                    }],
+                    error: None,
+                }))
+            },
+        ));
+        let mapa = match resultado {
+            std::task::Poll::Ready(FaseIaResultado::Completado(m)) => m,
+            _ => panic!("se esperaba Completado"),
+        };
+        assert_eq!(mapa.len(), 2);
+        assert_eq!(
+            *progreso.borrow(),
+            vec![(0, 2, "Disco 1".to_string()), (1, 2, "Disco 2".to_string())]
+        );
+        assert_eq!(
+            *textos_llamados.borrow(),
+            vec![
+                ("sys-d1".to_string(), "usr-d1".to_string()),
+                ("sys-d2".to_string(), "usr-d2".to_string())
+            ]
         );
     }
 }

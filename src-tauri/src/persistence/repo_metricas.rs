@@ -241,6 +241,26 @@ pub fn latest_device_sample(
     .optional()
 }
 
+/// Como `latest_device_sample`, pero acotada a `sampled_at_utc <= at_utc`: la línea base para un
+/// delta (spec 009, informe imprimible) — el valor del contador justo antes o al empezar el
+/// intervalo, para no confundir "valor absoluto" con "variación".
+pub fn latest_device_sample_at_or_before(
+    conn: &Connection,
+    device_id: &str,
+    metric_key: &str,
+    at_utc: &str,
+) -> rusqlite::Result<Option<MetricSample>> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT * FROM metric_samples
+         WHERE device_id = ?1 AND metric_key = ?2 AND sampled_at_utc <= ?3
+         ORDER BY sampled_at_utc DESC LIMIT 1",
+        params![device_id, metric_key, at_utc],
+        row_to_sample,
+    )
+    .optional()
+}
+
 /// La lectura más reciente de cada métrica que `source` haya aportado para el dispositivo: una
 /// fila por `metric_key`, la de mayor `sampled_at_utc`. Alimenta los contadores del detalle de
 /// disco (`DeviceDetail.counters`) sin tener que conocer de antemano qué claves existen.

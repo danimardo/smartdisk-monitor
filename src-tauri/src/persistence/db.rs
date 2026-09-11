@@ -104,6 +104,13 @@ pub struct AppState {
     pub actividad: std::sync::Mutex<
         std::collections::HashMap<String, crate::domain::actividad::ActividadDisco>,
     >,
+    /// Señal de cancelación de la exportación de informe con resumen IA en curso (spec `009`,
+    /// US3, contrato `contracts/cancelar_informe.md`). Una sola bandera, no un mapa por
+    /// `test_run_id` como `test_cancel_flags`: solo puede haber una exportación de informe a la
+    /// vez (la interfaz deshabilita el botón mientras corre). `export_report` la resetea a
+    /// `false` al empezar la fase de IA y la comprueba antes de la llamada de cada disco. **No se
+    /// persiste**: como `paused`, una exportación en curso no sobrevive a un reinicio.
+    pub informe_cancelado: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AppState {
@@ -121,6 +128,7 @@ impl AppState {
             recoleccion_smart: std::sync::Mutex::new(()),
             ia_clave_valida: std::sync::Mutex::new(None),
             actividad: std::sync::Mutex::new(std::collections::HashMap::new()),
+            informe_cancelado: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 }

@@ -339,6 +339,28 @@ export const testRunBenchmarkTerminado = {
   orphanPath: null
 };
 
+/** Vista previa de `preview_informe_ia` (spec 009): el texto anonimizado por disco, sin red. */
+export const vistaPreviaInformeIa = {
+  discos: [
+    {
+      deviceId: "disk-0",
+      deviceLabel: "Disco de sistema",
+      textoEnviado: "Resume el estado de este disco.\n\nAlertas: ninguna.\nContadores: power_cycles 812.",
+      fragmentos: [],
+      recortado: false
+    },
+    {
+      deviceId: "disk-1",
+      deviceLabel: "Disco de datos",
+      textoEnviado: "Resume el estado de este disco.\n\nAlertas: Desgaste por encima del umbral.",
+      fragmentos: [{ texto: "192.168.1.1", motivoKey: "ai.review.networkPath" }],
+      recortado: false
+    }
+  ],
+  redactedFields: ["diagnostic.redacted.serialNumber"],
+  totalLlamadas: 2
+};
+
 /** Vista previa del ZIP de diagnóstico, anonimizada por defecto. */
 export const vistaPreviaDiagnostico = {
   entries: [
@@ -483,6 +505,7 @@ export const RESPUESTAS: Record<string, unknown> = {
   run_smart_short_test: "run-autotest-1",
   cancel_test: null,
   export_report: "C:\\destino\\de\\prueba\\informe.csv",
+  preview_informe_ia: vistaPreviaInformeIa,
   preview_diagnostic_zip: vistaPreviaDiagnostico,
   create_diagnostic_zip: "C:\\destino\\de\\prueba\\diagnostico.zip",
   get_settings: settingsDeFabrica,
@@ -523,6 +546,7 @@ export function validar(): void {
   S.testRun.parse(testRunActivo);
   S.testRun.parse(testRunBenchmarkTerminado);
   S.diagnosticPreview.parse(vistaPreviaDiagnostico);
+  S.previewInformeIa.parse(vistaPreviaInformeIa);
   S.appInfo.parse(appInfoDePrueba);
   S.estadoIa.parse(estadoIaActiva);
   S.estadoIa.parse(estadoIaDesactivada);

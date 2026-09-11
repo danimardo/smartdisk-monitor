@@ -16,6 +16,7 @@
 pub const CAMPO_NUMERO_SERIE: &str = "diagnostic.redacted.serialNumber";
 pub const CAMPO_NOMBRE_EQUIPO: &str = "diagnostic.redacted.computerName";
 pub const CAMPO_RUTAS_USUARIO: &str = "diagnostic.redacted.userPaths";
+pub const CAMPO_ETIQUETA_VOLUMEN: &str = "diagnostic.redacted.volumeLabel";
 
 pub struct Anonimizador {
     sustituciones: Vec<(String, String)>,
@@ -73,6 +74,22 @@ impl Anonimizador {
     pub fn con_ruta_usuario(mut self, real: &str) -> Self {
         if !real.is_empty() {
             self.push(real, "<USUARIO>", CAMPO_RUTAS_USUARIO);
+        }
+        self
+    }
+
+    /// Etiqueta de volumen (p. ej. «Sistema», «Datos»). Está en la lista del principio XVI desde
+    /// 1.8.0; el informe con resumen IA (spec 009) es el primer sitio que la necesita, porque
+    /// envía la lista de volúmenes del disco. Marcador numerado, como el número de serie.
+    pub fn con_etiqueta_volumen(mut self, real: &str) -> Self {
+        if !real.is_empty() {
+            let indice = self
+                .sustituciones
+                .iter()
+                .filter(|(_, remplazo)| remplazo.starts_with("<VOLUMEN-"))
+                .count()
+                + 1;
+            self.push(real, &format!("<VOLUMEN-{indice}>"), CAMPO_ETIQUETA_VOLUMEN);
         }
         self
     }
@@ -175,6 +192,25 @@ mod tests {
             .con_ruta_usuario("DANI")
             .con_equipo("DANI-PC");
         assert_eq!(a.aplicar("equipo DANI-PC"), "equipo <EQUIPO>");
+    }
+
+    #[test]
+    fn una_etiqueta_de_volumen_se_sustituye_por_un_marcador_numerado_y_consistente() {
+        let a = Anonimizador::sin_anonimizar()
+            .con_etiqueta_volumen("Sistema")
+            .con_etiqueta_volumen("Datos");
+        assert_eq!(
+            a.aplicar("volumen Sistema (C:), volumen Datos (D:), otra vez Sistema"),
+            "volumen <VOLUMEN-1> (C:), volumen <VOLUMEN-2> (D:), otra vez <VOLUMEN-1>"
+        );
+        assert!(a.campos_afectados().contains(&CAMPO_ETIQUETA_VOLUMEN));
+    }
+
+    #[test]
+    fn una_etiqueta_de_volumen_vacia_no_genera_sustitucion() {
+        let a = Anonimizador::sin_anonimizar().con_etiqueta_volumen("");
+        assert_eq!(a.aplicar("texto"), "texto");
+        assert!(a.campos_afectados().is_empty());
     }
 
     #[test]

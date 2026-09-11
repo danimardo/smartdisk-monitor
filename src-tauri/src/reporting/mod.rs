@@ -8,3 +8,6 @@ pub mod anonimizar;
 pub mod diagnostico;
 pub mod export;
 pub mod informe;
+pub mod informe_ia;
+pub mod minigrafica;
+pub mod resumen_metricas;

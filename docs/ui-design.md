@@ -372,7 +372,16 @@ Estas no son estéticas: vienen de la especificación y su incumplimiento es un 
    `disks`, `alerts` y `ai` compactas junto al encabezado, ocultas por debajo de 720 px de cuerpo
    (el paso `ai` —ayuda con IA, spec 005— se añadió con su escena el 2026-09-09). El guardián de
    redirección vive en `+layout.ts` (`open-questions.md` §V).
-7. **Informes**: hereda tokens; sin composición nueva.
+7. **Informes** — hereda tokens; sin composición nueva salvo el modal del resumen con IA (spec
+   `009-informe-mejorado`). Casilla «incluir resumen con IA» solo si la ayuda con IA está activa,
+   dentro de la `Card` de HTML. Modal de vista previa: mismo patrón que `ConfirmDialog`/
+   `ExplicacionModal` (velo + panel `.sdm-material-overlay` con foco propio), no un componente
+   nuevo del catálogo porque su contenido —lista de discos con su texto anonimizado— no encaja en
+   ninguno existente. Al confirmar, el **mismo modal** cambia de fase: la lista de discos da paso a
+   `ProgressBar` (indeterminada hasta el primer `report:progress`, luego con el disco actual) en un
+   contenedor `role="status" aria-live="polite"`, y el botón pasa a «Cancelar» (llama a
+   `cancelar_informe`); el velo y Escape dejan de cerrar el modal mientras corre, para no perder de
+   vista una exportación en curso.
 
 ### Comportamiento con muchos discos
 
