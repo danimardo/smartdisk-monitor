@@ -22,7 +22,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "tauri": "tauri",
     "app:dev": "tauri dev",
-    "app:build": "tauri build",
+    "app:build": "tauri build && node scripts/rename-installer.mjs",
     "verify:assets": "node scripts/verify-assets.mjs",
     "verify:tokens": "node scripts/verify-tokens.mjs",
     "verify:i18n": "node scripts/verify-i18n.mjs",

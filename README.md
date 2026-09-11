@@ -126,7 +126,9 @@ la asistencia con IA (opcional, apagada de fábrica).
 
 ## Descargar
 
-Instalador para Windows x64 en la [página de Releases](https://github.com/danimardo/smartdisk-monitor/releases).
+Instalador para Windows x64 en la [página de Releases](https://github.com/danimardo/smartdisk-monitor/releases),
+o directamente la [última versión](https://github.com/danimardo/smartdisk-monitor/releases/latest/download/smartdisk-monitor-setup.exe)
+(el nombre del instalador no cambia entre versiones, así que este enlace siempre apunta a la más reciente).
 
 Requiere Windows 10 (1809+), Windows 11 o Windows Server 2016+ con Experiencia de escritorio, y el
 **WebView2 Runtime** (el instalador lo resuelve sin conexión si falta). Se ejecuta siempre con
