@@ -155,8 +155,8 @@ fichero a medias; la exportación sin IA sigue siendo inmediata.
 - [X] T050 [P] `docs/ui-design.md` §7 punto «Informes»: modal de vista previa del envío (mismo patrón que `ConfirmDialog`/`ExplicacionModal`, no un componente nuevo) y su cambio de fase a bloque de progreso. Sin `svelte-ignore` nuevo (se reutiliza el ya cubierto por `docs/known-issues.md` #2)
 - [X] T051 `pnpm docs:build` y `pnpm docs:check`
 - [X] T052 Puertas completas: desde `src-tauri/` `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`; en la raíz `pnpm check`, `pnpm lint`, `pnpm verify`, `pnpm test`, `pnpm test:component`, `pnpm test:e2e`, `pnpm test:a11y`, `pnpm build`, `pnpm docs:check` — todas en verde salvo el fallo preexistente ya documentado de `export.rs` (no relacionado con esta spec)
-- [ ] T053 Validación manual (app real) de `specs/009-informe-mejorado/quickstart.md`: escenario 1 (informe abierto sin red), escenario 3 (IA con 4 discos y un fallo forzado), escenario 4 (IA apagada = cero red). **Pendiente del usuario**: exige la app real con GUI nativa (fuera del alcance de las herramientas de este agente) y, para el escenario 3, una clave de IA real u obtenida con la clave de demostración. Anotar el resultado en la memoria del proyecto
-- [ ] T054 Skill `cierre-tarea`: matriz de documentación y las nueve puertas antes de proponer commit (documentación ya aplicada en T046-T050; pendiente de formalizar tras T053)
+- [X] T053 Validación manual (app real) de `specs/009-informe-mejorado/quickstart.md`: escenario 1 (informe abierto sin red), escenario 3 (IA con 4 discos y un fallo forzado), escenario 4 (IA apagada = cero red). **Confirmado positivamente por el usuario** el 2026-09-11
+- [X] T054 Skill `cierre-tarea`: matriz de documentación y las nueve puertas antes de proponer commit — hecho; commiteado (7662680) y pusheado a `origin/main`
 
 ---
 
