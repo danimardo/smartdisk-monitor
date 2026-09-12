@@ -42,3 +42,8 @@ third-party/diskspd/bin/*.pdb
 # Marketing y multimedia pesada
 Marketing/Videos/
 
+# Registro de desarrollo local (constitución §XV: el log es diagnóstico local, no se versiona) y
+# scratch de sesión de Claude Code (capturas de revisión, borradores intermedios).
+.logs/
+.claude/tmp/
+
