@@ -85,15 +85,15 @@
   {/if}
 
   <div
-    class="mt-1 grid size-10 shrink-0 place-items-center rounded-inner"
+    class="mt-1 flex h-10 min-w-10 shrink-0 items-center justify-center gap-1 rounded-inner px-1.5"
     style="background: {tone.soft}; color: {tone.fg}"
     role="status"
     aria-label={globalLabel}
     title={globalLabel}
   >
     {#if globalCount}
-      <Icon name={globalIcon} size={15} />
       <span class="sdm-num text-2xs font-semibold leading-none">{globalCount}</span>
+      <Icon name={globalIcon} size={15} />
     {:else}
       <Icon name={globalIcon} size={18} />
     {/if}
