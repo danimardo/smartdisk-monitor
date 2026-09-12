@@ -27,6 +27,9 @@
    *  atención» lo decide `estadoParaRecuento` en el chrome, no aquí. */
   const devices = $derived(app.devices.map((d) => ({ ...d, state: estadoConAlertas(d, app.alerts) })));
   const ready = $derived(app.loadedAt !== null);
+  /** Para resolver `deviceLabel()`: un disco excluido de la monitorización sigue conectado y
+   *  puede seguir generando eventos, así que cuenta igual que uno monitorizado. */
+  const dispositivosConocidos = $derived([...app.devices, ...app.excluded]);
 
   /** Con más de 12 discos la `DiskCard` pierde la sparkline de cabecera (`ui-design.md` §7): con
    *  tantas tarjetas la miniatura no aporta y el coste de render sí importa (SC-006). */
@@ -255,7 +258,7 @@
               eventId={ev.eventId}
               occurredAt={ev.occurredAt}
               mappingConfidence={ev.mappingConfidence}
-              deviceLabel={deviceLabel(ev.deviceId, app.devices)}
+              deviceLabel={deviceLabel(ev.deviceId, dispositivosConocidos)}
               href="/events?focus={ev.id}"
             />
           {/each}

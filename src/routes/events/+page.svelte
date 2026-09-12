@@ -47,6 +47,10 @@
     "Microsoft-Windows-StorageSpaces-Driver"
   ];
 
+  /** Para resolver `deviceLabel()`: un disco excluido de la monitorización sigue conectado y
+   *  puede seguir generando eventos, así que cuenta igual que uno monitorizado. */
+  const dispositivosConocidos = $derived([...app.devices, ...app.excluded]);
+
   let eventos = $state<SystemEvent[]>([]);
   let nextCursor = $state<string | null>(null);
   let cargandoMas = $state(false);
@@ -188,7 +192,7 @@
             eventId={evento.eventId}
             occurredAt={evento.occurredAt}
             mappingConfidence={evento.mappingConfidence}
-            deviceLabel={deviceLabel(evento.deviceId, app.devices)}
+            deviceLabel={deviceLabel(evento.deviceId, dispositivosConocidos)}
             highlighted={evento.id === data.focusId}
             onselect={() => seleccionar(evento)}
           />

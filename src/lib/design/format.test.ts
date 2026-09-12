@@ -140,6 +140,8 @@ describe("maskSerial — anonimización de exportaciones", () => {
 });
 
 describe("deviceLabel — etiqueta corta de disco para listas que mezclan varios", () => {
+  beforeEach(() => i18n.init("es", "es-ES"));
+
   const discos = [
     { id: "disk-0", alias: "Sistema", model: "Samsung SSD 990 PRO 2TB" },
     { id: "disk-1", alias: null, model: "WD Blue 1TB" }
@@ -153,13 +155,15 @@ describe("deviceLabel — etiqueta corta de disco para listas que mezclan varios
     expect(deviceLabel("disk-1", discos)).toBe("WD Blue 1TB");
   });
 
-  it("sin deviceId no inventa una etiqueta", () => {
+  it("sin deviceId no inventa una etiqueta: no hay ningún disco de por medio", () => {
     expect(deviceLabel(null, discos)).toBeUndefined();
     expect(deviceLabel(undefined, discos)).toBeUndefined();
   });
 
-  it("un disco que ya no está en el inventario tampoco inventa una etiqueta", () => {
-    expect(deviceLabel("disk-9-desconectado", discos)).toBeUndefined();
+  it("un disco que ya no está en el inventario en memoria lo dice, no lo omite en silencio", () => {
+    // Caso real (J.10 corrección 2026-09-12): el propio suceso puede ser justo el que cuenta que
+    // el disco se desconectó, así que nunca va a estar en la lista de discos presentes.
+    expect(deviceLabel("disk-9-desconectado", discos)).toBe("Disco no conectado");
   });
 });
 

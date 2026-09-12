@@ -9983,15 +9983,23 @@ export function usedPercent(capacityBytes: number | null, freeBytes: number | nu
 }
 
 /** Etiqueta corta de un disco para listas que mezclan varios (eventos de todo el sistema): el
- *  alias si la persona le puso uno, si no el modelo. `undefined` cuando el suceso no tiene disco
- *  asociado o ese disco ya no está en el inventario — nunca se inventa un nombre. */
+ *  alias si la persona le puso uno, si no el modelo. `undefined` solo cuando el suceso no tiene
+ *  ningún disco asociado — nunca se omite en silencio un disco que sí existe.
+ *
+ *  Cuando el `deviceId` no aparece en `devices` (que debe incluir tanto los monitorizados como los
+ *  excluidos, `[...app.devices, ...app.excluded]`), lo más probable es que el disco se haya
+ *  desconectado: es justo lo que cuentan muchos de estos sucesos («el disco se ha extraído de
+ *  forma imprevista»). El frontend no guarda el alias de un disco que ya no está presente, así que
+ *  no se puede nombrar — pero eso no es lo mismo que no haber ninguno, y decirlo evita que la fila
+ *  parezca que la etiqueta simplemente no se aplicó. */
 export function deviceLabel(
   deviceId: string | null | undefined,
   devices: { id: string; alias?: string | null; model: string }[]
 ): string | undefined {
   if (!deviceId) return undefined;
   const disco = devices.find((d) => d.id === deviceId);
-  return disco ? (disco.alias || disco.model) : undefined;
+  if (disco) return disco.alias || disco.model;
+  return t("disk.events.deviceNotConnected");
 }
 ```
 
@@ -10690,6 +10698,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "disk.counters": "Contadores",
   "disk.events.title": "Eventos de este disco",
   "disk.events.empty": "Este disco no tiene eventos recientes",
+  "disk.events.deviceNotConnected": "Disco no conectado",
   "smart.counter.health_passed": "Autoevaluación superada",
   "smart.counter.critical_warning": "Aviso crítico (bits)",
   "smart.counter.media_errors_total": "Errores de medio",
@@ -11312,6 +11321,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "disk.counters": "Counters",
   "disk.events.title": "Events for this disk",
   "disk.events.empty": "This disk has no recent events",
+  "disk.events.deviceNotConnected": "Disk not connected",
   "smart.counter.health_passed": "Self-assessment passed",
   "smart.counter.critical_warning": "Critical warning (bits)",
   "smart.counter.media_errors_total": "Media errors",

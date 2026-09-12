@@ -23,6 +23,22 @@ test.describe("eventos", () => {
     await expect(page.getByTitle("Samsung SSD 990 PRO 2TB").first()).toBeVisible();
   });
 
+  test("un suceso de un disco que ya no está conectado lo dice, en vez de omitir la etiqueta", async ({
+    page
+  }) => {
+    // Caso real (corrección 2026-09-12): el propio disco al que se refiere el suceso puede haberse
+    // desconectado ya —es justo lo que cuentan muchos de estos mensajes—, así que nunca va a
+    // aparecer en el inventario en memoria.
+    const sucesoDeDiscoDesconectado = { ...eventos[0], id: "99", deviceId: "disk-9-desconectado" };
+    await instalarIpcFalso(page, {
+      ...RESPUESTAS,
+      get_system_events: { events: [sucesoDeDiscoDesconectado], nextCursor: null, total: 1 }
+    });
+    await page.goto("/events");
+
+    await expect(page.getByText(es["disk.events.deviceNotConnected"])).toBeVisible();
+  });
+
   test("seleccionar un evento carga su detalle y el XML original", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/events");

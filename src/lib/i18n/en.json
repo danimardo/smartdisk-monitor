@@ -376,6 +376,7 @@
   "disk.counters": "Counters",
   "disk.events.title": "Events for this disk",
   "disk.events.empty": "This disk has no recent events",
+  "disk.events.deviceNotConnected": "Disk not connected",
   "smart.counter.health_passed": "Self-assessment passed",
   "smart.counter.critical_warning": "Critical warning (bits)",
   "smart.counter.media_errors_total": "Media errors",
