@@ -13,20 +13,28 @@
 //! datos), dos barras (en pausa)—, para que se distinga a 16 px y sin depender solo del color. El
 //! dibujo es procedural sobre un búfer RGBA supermuestreado; sin biblioteca de imágenes.
 //!
-//! **Alcance de esta primera versión** (`docs/open-questions.md` J.19): el color se recalcula en
-//! los puntos de sincronización existentes —arranque, `refresh_now`, comandos de alerta,
-//! pausar/reanudar— y no en un ciclo real cada 30 s: el planificador en segundo plano (T020), la
-//! emisión de eventos (T021) y la reanudación automática al arrancar (T022) siguen sin
-//! implementar. El botón de cierre (`X`) minimiza siempre a la bandeja; la pregunta "minimizar o
-//! salir" con opción de recordar (FR-012) queda pendiente de un diálogo propio.
+//! **Corregido tras J.19/T020-T022**: ya hay un ciclo real (el planificador en segundo plano) que
+//! recalcula el icono al cerrar cada ciclo de recopilación, no solo en los puntos de sincronización
+//! manuales de la primera versión (`post_procesar_ciclo`, `commands/mod.rs`). El botón de cierre
+//! (`X`) minimiza siempre a la bandeja; la pregunta "minimizar o salir" con opción de recordar
+//! (FR-012) queda pendiente de un diálogo propio.
+//!
+//! **Corrección B.1** (`docs/open-questions.md`, hallazgo del usuario con tres discos en crítico y
+//! el icono en verde): `DiskSummary.state` nunca lleva fundidas las alertas a propósito —esa fusión
+//! la hace `estadoConAlertas()` en el frontend (`src/lib/design/health.ts`), y este icono no pasa
+//! por el frontend. `estado_fundido()` reproduce aquí el mismo criterio (peor severidad de las
+//! alertas `active`/`acknowledged` del dispositivo o de uno de sus volúmenes) para no heredar el
+//! mismo falso verde que B.1 ya cerró en el panel.
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{image::Image, AppHandle, Manager};
 
+use crate::commands::DiskSummary;
 use crate::domain::salud::tray_state;
-use crate::domain::tipos::HealthState;
+use crate::domain::tipos::{AlertGroup, AlertSeverity, HealthState};
 use crate::persistence::db::AppState;
+use crate::persistence::repo_alertas;
 use crate::platform::rotulos::{locale_actual, t, tp};
 use crate::platform::ventana;
 
@@ -352,9 +360,32 @@ fn construir_menu(
     )
 }
 
+/// Funde el estado de frescura SMART de un disco (`DiskSummary.state`) con la peor severidad de
+/// sus alertas `active`/`acknowledged` — mismo criterio que `estadoConAlertas()` en
+/// `src/lib/design/health.ts` (B.1). Cuentan tanto las alertas dirigidas al dispositivo como a
+/// cualquiera de sus volúmenes: un volumen lleno es un problema del disco que lo contiene.
+fn estado_fundido(disco: &DiskSummary, grupos: &[AlertGroup]) -> HealthState {
+    let peor = grupos
+        .iter()
+        .filter(|g| {
+            g.target_device_id.as_deref() == Some(disco.id.as_str())
+                || g.target_volume_id
+                    .as_deref()
+                    .is_some_and(|vid| disco.volumes.iter().any(|v| v.id == vid))
+        })
+        .map(|g| g.severity)
+        .max_by_key(|s| matches!(s, AlertSeverity::Critical) as u8);
+    match peor {
+        Some(AlertSeverity::Critical) => HealthState::Crit,
+        Some(AlertSeverity::Warning) => HealthState::Warn,
+        None => disco.state,
+    }
+}
+
 /// Recalcula color, menú y texto emergente a partir del estado real y los aplica al icono ya
 /// construido. Se llama tras cada acción que puede cambiar el color: arranque, `refresh_now`,
-/// las seis acciones sobre alertas y pausar/reanudar (`docs/open-questions.md` J.19).
+/// las seis acciones sobre alertas, pausar/reanudar y cada ciclo del planificador en segundo plano
+/// (`docs/open-questions.md` J.19).
 pub fn actualizar(app: &AppHandle) {
     let Some(bandeja) = app.try_state::<BandejaIcono>() else {
         return;
@@ -371,6 +402,12 @@ pub fn actualizar(app: &AppHandle) {
             return;
         }
     };
+    // B.1: sin esto, un disco con SMART "fresco" pero una alerta activa (temperatura, desgaste...)
+    // se queda en verde — el falso verde exacto que reportó el usuario con tres discos en crítico.
+    let grupos = repo_alertas::list_groups_counting_toward_health(&conn).unwrap_or_else(|e| {
+        tracing::warn!(error = ?e, "no se pudieron leer las alertas para el icono de la bandeja");
+        Vec::new()
+    });
     drop(conn);
     let pausado = estado
         .paused
@@ -378,7 +415,11 @@ pub fn actualizar(app: &AppHandle) {
         .expect("el mutex de pausa no se envenena: sin pánicos dentro")
         .is_some();
 
-    let estados: Vec<HealthState> = respuesta.devices.iter().map(|d| d.state).collect();
+    let estados: Vec<HealthState> = respuesta
+        .devices
+        .iter()
+        .map(|d| estado_fundido(d, &grupos))
+        .collect();
     let fallo_recopilador = respuesta.sources.iter().any(|s| {
         matches!(
             s.status,
@@ -474,6 +515,107 @@ pub fn instalar(app: &AppHandle) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::tipos::{DeviceType, MappingConfidence, UnknownReason};
+
+    fn disco_de_prueba(id: &str, state: HealthState, volumen_ids: &[&str]) -> DiskSummary {
+        DiskSummary {
+            id: id.to_string(),
+            alias: None,
+            model: "modelo de prueba".to_string(),
+            device_type: DeviceType::SataSsd,
+            state,
+            temperature_c: None,
+            percentage_used: None,
+            activity: crate::domain::actividad::ActividadDisco::no_disponible(30),
+            power_on_hours: None,
+            vendor_temp_limit_c: None,
+            vendor_temp_critical_c: None,
+            smart_health_passed: None,
+            unknown_reason: Some(UnknownReason::NotYetSampled),
+            last_read_at: None,
+            provenance: None,
+            volumes: volumen_ids
+                .iter()
+                .map(|vid| crate::commands::VolumeSummary {
+                    id: vid.to_string(),
+                    label: "volumen de prueba".to_string(),
+                    drive_letters: vec![],
+                    capacity_bytes: None,
+                    free_bytes: None,
+                    chkdsk_available: false,
+                    is_system_volume: false,
+                    mapping_confidence: MappingConfidence::Unknown,
+                })
+                .collect(),
+        }
+    }
+
+    fn alerta_de_prueba(
+        severity: AlertSeverity,
+        target_device_id: Option<&str>,
+        target_volume_id: Option<&str>,
+    ) -> AlertGroup {
+        AlertGroup {
+            id: "alerta-prueba".to_string(),
+            deduplication_key: "prueba".to_string(),
+            rule_key: "prueba".to_string(),
+            target_device_id: target_device_id.map(str::to_string),
+            target_volume_id: target_volume_id.map(str::to_string),
+            severity,
+            status: crate::domain::tipos::AlertStatus::Active,
+            muted_until: None,
+            cycle: 0,
+            first_occurrence_at_utc: String::new(),
+            last_occurrence_at_utc: String::new(),
+            occurrence_count: 1,
+            acknowledged_at_utc: None,
+            resolved_at_utc: None,
+            archived_at_utc: None,
+            ignored_at_utc: None,
+            last_value_real: None,
+            context_json: None,
+        }
+    }
+
+    // ---- estado_fundido — corrección B.1 ----
+
+    #[test]
+    fn sin_alertas_propias_conserva_el_estado_de_frescura() {
+        let disco = disco_de_prueba("d1", HealthState::Ok, &[]);
+        assert_eq!(estado_fundido(&disco, &[]), HealthState::Ok);
+    }
+
+    #[test]
+    fn una_alerta_critica_del_dispositivo_gana_aunque_smart_este_fresco() {
+        // El caso exacto que reportó el usuario: SMART "ok" pero con una alerta crítica vigente.
+        let disco = disco_de_prueba("d1", HealthState::Ok, &[]);
+        let grupos = [alerta_de_prueba(AlertSeverity::Critical, Some("d1"), None)];
+        assert_eq!(estado_fundido(&disco, &grupos), HealthState::Crit);
+    }
+
+    #[test]
+    fn una_alerta_de_un_volumen_del_disco_tambien_cuenta() {
+        let disco = disco_de_prueba("d1", HealthState::Ok, &["v1"]);
+        let grupos = [alerta_de_prueba(AlertSeverity::Warning, None, Some("v1"))];
+        assert_eq!(estado_fundido(&disco, &grupos), HealthState::Warn);
+    }
+
+    #[test]
+    fn una_alerta_de_otro_disco_no_cuenta() {
+        let disco = disco_de_prueba("d1", HealthState::Ok, &[]);
+        let grupos = [alerta_de_prueba(AlertSeverity::Critical, Some("d2"), None)];
+        assert_eq!(estado_fundido(&disco, &grupos), HealthState::Ok);
+    }
+
+    #[test]
+    fn critica_gana_a_advertencia_del_mismo_disco() {
+        let disco = disco_de_prueba("d1", HealthState::Ok, &[]);
+        let grupos = [
+            alerta_de_prueba(AlertSeverity::Warning, Some("d1"), None),
+            alerta_de_prueba(AlertSeverity::Critical, Some("d1"), None),
+        ];
+        assert_eq!(estado_fundido(&disco, &grupos), HealthState::Crit);
+    }
 
     #[test]
     fn el_resumen_pausado_ignora_los_dispositivos() {

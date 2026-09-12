@@ -60,6 +60,15 @@ el chrome aplican antes de leer `disk.state`. **Cuentan las alertas dirigidas al
 del disco que lo contiene, no una categoría aparte. `deviceState()` se conserva como la definición
 canónica de la regla y la prueba de `health.test.ts` que la fija.
 
+*Corrección 2026-09-12:* la de 2026-09-06 cerró el panel, pero no el icono de la bandeja del
+sistema — no pasa por el frontend, así que no pasaba por `estadoConAlertas()`, y heredaba el mismo
+`DiskSummary.state` sin fundir. Hallazgo del usuario: con tres discos en `crit`, el icono seguía en
+verde y el texto emergente decía «Todo en orden». Cerrado con `estado_fundido()`
+(`src-tauri/src/platform/bandeja.rs`), mismo criterio que `estadoConAlertas()` pero en Rust,
+consultando `repo_alertas::list_groups_counting_toward_health` en el mismo punto donde ya se leían
+los dispositivos (`bandeja::actualizar`). Con esto, tanto el color/glifo del icono como el texto de
+«N discos necesitan atención» del menú reflejan las alertas, no solo la frescura de SMART.
+
 ### B.2 · El silencio no es un estado · `DECIDIDO`
 
 `mutedUntil` es ortogonal a `AlertStatus`: una alerta puede estar activa y silenciada a la vez. El
