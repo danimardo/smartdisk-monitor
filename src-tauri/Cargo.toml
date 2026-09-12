@@ -1,6 +1,6 @@
 [package]
 name = "smartdisk-monitor"
-version = "0.1.5"
+version = "0.2.0"
 description = "Supervisión local de discos para Windows"
 authors = ["Daniel Diez Mardomingo"]
 license = "MIT"
