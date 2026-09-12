@@ -14,7 +14,7 @@
   import { estadoConAlertas, healthToken, selectHeroDisk } from "$lib/design/health";
   import { healthIcon } from "$lib/design/icons";
   import { picoActividadPanel } from "$lib/design/metricHelp";
-  import { formatHours, formatPercent, formatSpanShort } from "$lib/design/format";
+  import { deviceLabel, formatHours, formatPercent, formatSpanShort } from "$lib/design/format";
   import { ultimoTramoVisible, type Punto } from "$lib/design/series";
   import { t } from "$lib/i18n";
   import { app } from "$lib/stores/app.svelte";
@@ -255,6 +255,7 @@
               eventId={ev.eventId}
               occurredAt={ev.occurredAt}
               mappingConfidence={ev.mappingConfidence}
+              deviceLabel={deviceLabel(ev.deviceId, app.devices)}
               href="/events?focus={ev.id}"
             />
           {/each}

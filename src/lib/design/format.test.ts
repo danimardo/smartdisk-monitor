@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { i18n } from "$lib/i18n";
 import {
+  deviceLabel,
   formatAge,
   formatBytes,
   formatHours,
@@ -135,6 +136,30 @@ describe("maskSerial — anonimización de exportaciones", () => {
 
   it("un serial ausente no revela nada", () => {
     expect(maskSerial(null)).toBe("No disponible");
+  });
+});
+
+describe("deviceLabel — etiqueta corta de disco para listas que mezclan varios", () => {
+  const discos = [
+    { id: "disk-0", alias: "Sistema", model: "Samsung SSD 990 PRO 2TB" },
+    { id: "disk-1", alias: null, model: "WD Blue 1TB" }
+  ];
+
+  it("prefiere el alias cuando la persona le puso uno", () => {
+    expect(deviceLabel("disk-0", discos)).toBe("Sistema");
+  });
+
+  it("cae al modelo si no hay alias", () => {
+    expect(deviceLabel("disk-1", discos)).toBe("WD Blue 1TB");
+  });
+
+  it("sin deviceId no inventa una etiqueta", () => {
+    expect(deviceLabel(null, discos)).toBeUndefined();
+    expect(deviceLabel(undefined, discos)).toBeUndefined();
+  });
+
+  it("un disco que ya no está en el inventario tampoco inventa una etiqueta", () => {
+    expect(deviceLabel("disk-9-desconectado", discos)).toBeUndefined();
   });
 });
 

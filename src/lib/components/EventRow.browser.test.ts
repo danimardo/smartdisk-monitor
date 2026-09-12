@@ -58,4 +58,22 @@ describe("EventRow", () => {
     });
     expect(container.querySelector("button")?.classList.contains("sdm-hover-bloque")).toBe(true);
   });
+
+  it("con deviceLabel muestra el disco de origen, recortado, con el nombre completo como tooltip", async () => {
+    const { container } = await render(EventRow, {
+      props: { level: "info", message: "m", provider: "disk", eventId: 157, deviceLabel: "Copia externa" }
+    });
+    await expect.element(page.getByText("Copia externa")).toBeInTheDocument();
+    const etiqueta = Array.from(container.querySelectorAll("span")).find(
+      (s) => s.textContent === "Copia externa"
+    );
+    expect(etiqueta?.getAttribute("title")).toBe("Copia externa");
+    expect(etiqueta?.classList.contains("truncate")).toBe(true);
+  });
+
+  it("sin deviceLabel (mismo disco, o suceso sin asociar) no muestra ninguna etiqueta de disco", async () => {
+    await render(EventRow, { props: { level: "info", message: "m", provider: "disk", eventId: 157 } });
+    // Sin la etiqueta de disco no debe quedar ningún `title` de disco flotando en la fila.
+    expect(page.getByTitle("Copia externa").query()).toBeNull();
+  });
 });

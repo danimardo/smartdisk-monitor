@@ -159,3 +159,15 @@ export function usedPercent(capacityBytes: number | null, freeBytes: number | nu
   if (isMissing(capacityBytes) || isMissing(freeBytes) || capacityBytes === 0) return null;
   return Math.min(100, Math.max(0, ((capacityBytes - freeBytes) / capacityBytes) * 100));
 }
+
+/** Etiqueta corta de un disco para listas que mezclan varios (eventos de todo el sistema): el
+ *  alias si la persona le puso uno, si no el modelo. `undefined` cuando el suceso no tiene disco
+ *  asociado o ese disco ya no está en el inventario — nunca se inventa un nombre. */
+export function deviceLabel(
+  deviceId: string | null | undefined,
+  devices: { id: string; alias?: string | null; model: string }[]
+): string | undefined {
+  if (!deviceId) return undefined;
+  const disco = devices.find((d) => d.id === deviceId);
+  return disco ? (disco.alias || disco.model) : undefined;
+}

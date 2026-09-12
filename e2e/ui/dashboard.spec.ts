@@ -40,6 +40,8 @@ test.describe("panel general v3", () => {
 
     await expect(page.getByText(es["dashboard.events.title"])).toBeVisible();
     await expect(page.getByText(es["dashboard.spread.title"])).toBeVisible();
+    // Mezcla sucesos de varios discos: cada fila dice de cuál es (`deviceLabel`, sin alias cae al modelo).
+    await expect(page.getByTitle("Samsung SSD 990 PRO 2TB").first()).toBeVisible();
   });
 
   test("pulsar un suceso del panel lleva a ese suceso en la pantalla de eventos", async ({ page }) => {

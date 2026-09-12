@@ -19,6 +19,12 @@
     eventId = 0,
     occurredAt = "",
     mappingConfidence = "exact" as "exact" | "inferred" | "unknown",
+    /** Alias o modelo del disco de origen, ya resuelto por quien llama (`deviceLabel()` en
+     *  `$lib/design/format`) — este componente no conoce el inventario. Solo tiene sentido en una
+     *  lista que mezcla varios discos (Eventos, panel general); se omite cuando no aplica o el
+     *  suceso no tiene disco asociado. Ancho acotado y recortado: el nombre del disco nunca debe
+     *  ser lo que provoque desbordamiento horizontal de la fila. */
+    deviceLabel = undefined as string | undefined,
     highlighted = false,
     /** Si se pasa, la fila es un enlace a esa ruta (panel general → detalle del suceso). Sin él,
      *  es un botón que abre el panel de detalle en la propia pantalla de eventos. */
@@ -53,6 +59,9 @@
     <span class="rounded-pill bg-unknown-soft px-2 py-0.5 text-2xs text-unknown"
       >{t("events.inferredMapping")}</span
     >
+  {/if}
+  {#if deviceLabel}
+    <span class="max-w-[110px] shrink-0 truncate text-xs text-fg-dim" title={deviceLabel}>{deviceLabel}</span>
   {/if}
   <span class="text-xs text-fg-dim">{provider} · {eventId}</span>
   <span class="w-14 text-right text-xs text-fg-faint">{formatTime(occurredAt)}</span>

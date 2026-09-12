@@ -15,6 +15,14 @@ test.describe("eventos", () => {
     await expect(page.getByText(es["events.inferredMapping"])).toBeVisible();
   });
 
+  test("cada fila muestra a qué disco pertenece el suceso", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/events");
+
+    // Ambos sucesos del fixture son de `disk-0`, sin alias: la etiqueta cae al modelo.
+    await expect(page.getByTitle("Samsung SSD 990 PRO 2TB").first()).toBeVisible();
+  });
+
   test("seleccionar un evento carga su detalle y el XML original", async ({ page }) => {
     await instalarIpcFalso(page, RESPUESTAS);
     await page.goto("/events");
@@ -22,6 +30,22 @@ test.describe("eventos", () => {
     await page.getByText(eventos[0].message).click();
     await expect(page.getByRole("heading", { name: es["events.detail.title"] })).toBeVisible();
     await expect(page.getByText(es["events.detail.rawXml"])).toBeVisible();
+  });
+
+  test("el XML original se muestra reindentado y coloreado por fragmento", async ({ page }) => {
+    await instalarIpcFalso(page, RESPUESTAS);
+    await page.goto("/events");
+
+    await page.getByText(eventos[0].message).click();
+    const salida = page.locator("pre[role='region']");
+    // Reindentado: cada etiqueta en su propia línea, con sangría creciente por profundidad
+    // (`xmlEjemplo` del fixture: <Event><System><Provider Name='disk'/></System></Event>).
+    await expect(salida).toHaveText(
+      ["<Event>", "  <System>", "    <Provider Name='disk'/>", "  </System>", "</Event>"].join("\n")
+    );
+    // Coloreado por fragmento: el nombre de una etiqueta va en su propio <span>, nunca como HTML
+    // interpretado del propio suceso (sigue siendo texto — solo cambia de color).
+    await expect(salida.locator("span", { hasText: "Event" }).first()).toBeVisible();
   });
 
   test("filtrar por nivel de error oculta el evento informativo", async ({ page }) => {

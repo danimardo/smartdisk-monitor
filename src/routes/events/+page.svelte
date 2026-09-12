@@ -14,9 +14,10 @@
     VirtualList
   } from "$lib/components";
   import { getEventRawXml, getSystemEvents, toAppError } from "$lib/api";
-  import { formatDateTime } from "$lib/design/format";
+  import { deviceLabel, formatDateTime } from "$lib/design/format";
   import { eventLevelIcon } from "$lib/design/icons";
   import { i18n, t } from "$lib/i18n";
+  import { app } from "$lib/stores/app.svelte";
   import { ia } from "$lib/stores/ia.svelte";
   import { explicacion } from "$lib/stores/explicacion.svelte";
   import type { AppError, HealthState } from "$lib/design/types";
@@ -187,6 +188,7 @@
             eventId={evento.eventId}
             occurredAt={evento.occurredAt}
             mappingConfidence={evento.mappingConfidence}
+            deviceLabel={deviceLabel(evento.deviceId, app.devices)}
             highlighted={evento.id === data.focusId}
             onselect={() => seleccionar(evento)}
           />
@@ -241,7 +243,7 @@
           </p>
         {:else if xml}
           <span class="text-2xs font-semibold text-fg-dim">{t("events.detail.rawXml")}</span>
-          <CodeOutput content={xml} />
+          <CodeOutput content={xml} lang="xml" />
         {/if}
       </div>
     {/if}
@@ -265,4 +267,9 @@
   onconfirmar={() => void explicacion.confirmarPreview()}
   onenviarigual={() => void explicacion.enviarIgual()}
   onquitarfragmentos={() => void explicacion.quitarFragmentos()}
+  onreprocesar={(modelo) => void explicacion.reprocesar(modelo)}
+  esReprocesada={explicacion.esReprocesada}
+  errorFijarPorDefecto={explicacion.errorFijarPorDefecto}
+  onfijarpordefecto={(modelo) => void explicacion.fijarPorDefecto(modelo)}
+  historial={explicacion.historial}
 />
