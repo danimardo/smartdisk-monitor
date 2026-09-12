@@ -201,3 +201,18 @@
        ni un píxel al expandir. -->
   <div class="w-rail flex-none" aria-hidden="true"></div>
 {/if}
+
+<style>
+  /* `tokens.css` redondea a `--sdm-radius-pill` cualquier elemento con el foco (pensado para un
+     botón cuadrado del riel plegado: el anillo queda como un círculo bonito). El panel expandido
+     (spec 013) recibe el foco entero para que funcione `Escape`, y esa misma regla lo convertía en
+     una cápsula gigante que engloba todo el riel, en vez de seguir su propio contorno. Se corrige
+     solo aquí, sin anular `:focus-visible` (sigue habiendo anillo, WCAG 2.4.7): misma doble
+     pseudoclase que usa `tokens.css` para ganar por especificidad, no por orden de aparición. */
+  aside:focus-visible:focus-visible {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-top-right-radius: var(--sdm-radius-window);
+    border-bottom-right-radius: var(--sdm-radius-window);
+  }
+</style>

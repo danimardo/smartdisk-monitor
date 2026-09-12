@@ -140,6 +140,22 @@ describe("Sidebar — riel expandible (spec 013)", () => {
     await expect.element(page.getByRole("dialog")).toHaveFocus();
   });
 
+  it("el anillo de foco del panel sigue su propio contorno, no la cápsula genérica", async () => {
+    // Bug real (captura del usuario): el foco global redondea a `--sdm-radius-pill` (999px),
+    // pensado para un botón cuadrado — sobre el panel entero (alto y estrecho) eso se veía como
+    // una cápsula gigante rodeando todo el riel en vez de un contorno pegado al panel.
+    const { container } = await renderExpandible();
+    await page.getByRole("button", { name: es["nav.sidebar.expand"] }).click();
+    await expect.element(page.getByRole("dialog")).toHaveFocus();
+
+    const panel = container.querySelector('[role="dialog"]') as HTMLElement;
+    const estilo = getComputedStyle(panel);
+    expect(estilo.borderTopLeftRadius).toBe("0px");
+    expect(estilo.borderBottomLeftRadius).toBe("0px");
+    expect(estilo.borderTopRightRadius).toBe("18px");
+    expect(estilo.borderBottomRightRadius).toBe("18px");
+  });
+
   it("Escape cierra el panel y devuelve el foco al botón que lo abrió", async () => {
     await renderExpandible();
     const boton = page.getByRole("button", { name: es["nav.sidebar.expand"] });
