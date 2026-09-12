@@ -1508,3 +1508,14 @@ punta a punta en `cargo test` por el mismo motivo que X.10: necesita red y una c
 en `specs/009-informe-mejorado/quickstart.md`: informe HTML abierto sin conexión (escenario 1);
 resumen con IA con 4 discos y un fallo forzado en uno (escenario 3, verifica la nota de
 degradación); IA apagada = cero tráfico de red (escenario 4).
+
+### Y.9 · `ABIERTO` — prueba de exportación en fallo desde antes de esta spec
+
+`cargo test` falla en
+`reporting::export::tests::una_muestra_entera_sin_valor_real_se_exporta_por_su_valor_entero`
+(`src-tauri/src/reporting/export.rs`): `panicked at ... debe haber una fila de datos`. Detectado al
+cerrar la spec 009 (validación T053/T054), sin tocar entonces porque no formaba parte de esa
+historia — corregir un fallo fuera del alcance de la tarea en curso exige acordarlo antes
+(`AGENTS.md`). Sigue sin corregir: sin `git blame` a mano no se puede fijar la fecha exacta en que
+empezó a fallar, así que no se garantiza que sea reciente. Queda `ABIERTO`, responsable: quien
+retome `reporting::export`.
