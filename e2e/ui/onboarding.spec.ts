@@ -47,7 +47,8 @@ const aparienciaDeFabrica = {
   theme: "system",
   language: null,
   systemLocale: "es-ES",
-  useSystemAccent: false
+  useSystemAccent: false,
+  sidebarExpanded: false
 };
 
 function respuestas(overrides: Record<string, unknown>) {

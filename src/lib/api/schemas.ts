@@ -284,7 +284,8 @@ export const appearanceSettings = z.object({
   theme: z.enum(["light", "dark", "system"]),
   language: z.enum(["es", "en"]).nullable(),
   systemLocale: z.string().min(2),
-  useSystemAccent: z.boolean()
+  useSystemAccent: z.boolean(),
+  sidebarExpanded: z.boolean()
 });
 
 /** `docs/ui-contract.md` §3.1, `docs/open-questions.md` J.32. */

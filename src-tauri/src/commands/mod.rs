@@ -35,6 +35,9 @@ pub struct AppearanceSettings {
     /// debe seguir al idioma de la aplicación (`open-questions.md` A.6).
     pub system_locale: String,
     pub use_system_accent: bool,
+    /// Riel de navegación expandible (spec 013): si el panel con el nombre de cada sección arranca
+    /// abierto. Fábrica: `false` (plegado, solo iconos).
+    pub sidebar_expanded: bool,
 }
 
 /// Espejo de `VolumeSummary` en `src/lib/design/types.ts`.
@@ -351,6 +354,7 @@ fn rusqlite_err_to_app_error(e: rusqlite::Error) -> Box<AppError> {
 const CLAVE_APARIENCIA_TEMA: &str = "settings.appearance.theme";
 const CLAVE_APARIENCIA_IDIOMA: &str = "settings.appearance.language";
 const CLAVE_APARIENCIA_ACENTO_SISTEMA: &str = "settings.appearance.use_system_accent";
+const CLAVE_APARIENCIA_SIDEBAR_EXPANDIDO: &str = "settings.appearance.sidebar_expanded";
 
 pub(crate) fn leer_ajuste_i64(conn: &rusqlite::Connection, key: &str, default: i64) -> i64 {
     repo_varios::get_setting_raw(conn, key)
@@ -461,6 +465,8 @@ fn get_appearance_settings_impl(conn: &rusqlite::Connection) -> AppearanceSettin
         // De fábrica **apagado** (v3, ADR-035): la aplicación estrena identidad propia (paleta
         // Ciruela) y solo hereda el acento de Windows si el usuario lo pide expresamente.
         use_system_accent: leer_ajuste_bool(conn, CLAVE_APARIENCIA_ACENTO_SISTEMA, false),
+        // De fábrica plegado (spec 013): el riel arranca solo con iconos, igual que siempre.
+        sidebar_expanded: leer_ajuste_bool(conn, CLAVE_APARIENCIA_SIDEBAR_EXPANDIDO, false),
     }
 }
 
@@ -1809,6 +1815,10 @@ fn set_setting_impl(
             guardar_ajuste(conn, key, &idioma, &ahora)?;
         }
         CLAVE_APARIENCIA_ACENTO_SISTEMA => {
+            let b = valor_bool(value)?;
+            guardar_ajuste(conn, key, &b, &ahora)?;
+        }
+        CLAVE_APARIENCIA_SIDEBAR_EXPANDIDO => {
             let b = valor_bool(value)?;
             guardar_ajuste(conn, key, &b, &ahora)?;
         }
@@ -9200,6 +9210,30 @@ mod tests_ajustes {
         )
         .unwrap();
         assert!(get_appearance_settings_impl(&conn).use_system_accent);
+    }
+
+    #[test]
+    fn el_riel_expandible_es_un_booleano_simple_plegado_de_fabrica() {
+        let conn = conn_de_prueba();
+        // Sin ajuste guardado: plegado (spec 013, US4) — una instalación recién hecha no ha escrito
+        // ninguna fila todavía.
+        assert!(!get_appearance_settings_impl(&conn).sidebar_expanded);
+
+        set_setting_impl(
+            &conn,
+            "settings.appearance.sidebar_expanded",
+            &serde_json::json!(true),
+        )
+        .unwrap();
+        assert!(get_appearance_settings_impl(&conn).sidebar_expanded);
+
+        set_setting_impl(
+            &conn,
+            "settings.appearance.sidebar_expanded",
+            &serde_json::json!(false),
+        )
+        .unwrap();
+        assert!(!get_appearance_settings_impl(&conn).sidebar_expanded);
     }
 
     #[test]

@@ -5,4 +5,9 @@ export type AppearanceSettings = { theme: string, language: string | null,
  * BCP-47 de Windows. La interfaz usa este, no `navigator.language`: el formato de números
  * debe seguir al idioma de la aplicación (`open-questions.md` A.6).
  */
-systemLocale: string, useSystemAccent: boolean, };
+systemLocale: string, useSystemAccent: boolean, 
+/**
+ * Riel de navegación expandible (spec 013): si el panel con el nombre de cada sección arranca
+ * abierto. Fábrica: `false` (plegado, solo iconos).
+ */
+sidebarExpanded: boolean, };

@@ -30,6 +30,7 @@
     getDevices,
     getLogLevel,
     refreshNow,
+    setSetting,
     subscribe,
     toAppError
   } from "$lib/api";
@@ -49,6 +50,26 @@
    *  FR-005): se reconsulta cada vez que la ventana cambia de tamaño (doble clic, `Win+↑`, arrastre
    *  al borde), no solo tras pulsar el propio botón. */
   let maximizada = $state(false);
+
+  /** Riel expandible (spec 013): se inicializa desde `AppearanceSettings` en el mismo bloque donde
+   *  ya se inicializan tema e idioma, y se persiste como cualquier otra preferencia de apariencia.
+   *
+   *  Dos formas de plegarlo, con distinto efecto sobre la preferencia guardada: pulsar el propio
+   *  botón, `Escape` o un clic fuera son un gesto explícito de "no lo quiero expandido" y sí
+   *  actualizan la preferencia; elegir una sección lo pliega también (corrección post-validación:
+   *  se quedaba tapando la pantalla de destino), pero es solo una consecuencia de navegar, no un
+   *  cambio de preferencia — si no, la próxima vez que se abriera la aplicación ya no arrancaría
+   *  expandida aunque la persona siga prefiriéndolo así. */
+  let expandedSidebar = $state(false);
+  function alternarSidebar() {
+    expandedSidebar = !expandedSidebar;
+    void setSetting("settings.appearance.sidebar_expanded", expandedSidebar).catch((cause) => {
+      log.warn("no se pudo guardar la preferencia del riel expandido", { code: toAppError(cause).code });
+    });
+  }
+  function colapsarSidebarAlNavegar() {
+    expandedSidebar = false;
+  }
 
   /** Refresco manual de datos («Refrescar» de la barra). `refresh_now` corre en un hilo bloqueante
    *  del backend, así que la ventana no se congela; aquí solo se refleja que hay trabajo en curso
@@ -221,6 +242,7 @@
         theme.init(appearance.theme);
         i18n.init(appearance.language, appearance.systemLocale);
         if (appearance.useSystemAccent) await applySystemAccent();
+        expandedSidebar = appearance.sidebarExpanded;
 
         // El backend ya resolvió la precedencia completa del nivel de registro (constitución §XV:
         // --log-level > settings > info); el frontend solo adopta ese valor efectivo, nunca decide
@@ -355,6 +377,9 @@
             {globalIcon}
             globalCount={status.count || null}
             onabout={abrirAcercaDe}
+            expanded={expandedSidebar}
+            onToggleExpand={alternarSidebar}
+            onSelect={colapsarSidebarAlNavegar}
           />
         {/snippet}
 

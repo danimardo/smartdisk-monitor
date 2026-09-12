@@ -115,6 +115,7 @@ interface AppearanceSettings {
   language: "es" | "en" | null;   // null = seguir al sistema
   systemLocale: string;           // BCP-47 de Windows, p. ej. "es-ES". NO usar navigator.language
   useSystemAccent: boolean;       // valor de fábrica: false (v3, ADR-035) — la app estrena paleta propia
+  sidebarExpanded: boolean;       // valor de fábrica: false — riel expandible (spec 013), nota junto a ADR-034
 }
 
 invoke<WindowsAccent>("get_system_accent_color")   // error si el usuario lo tiene desactivado
@@ -183,10 +184,12 @@ interface Settings {
 
 `Settings` es un objeto tipado, no un diccionario libre. Sus límites están en `open-questions.md`
 D.1/C.1/J.13/J.14/J.32 y los valida el backend: la UI puede confiar en que un valor guardado es un
-valor legal. La apariencia (`theme`/`language`/`useSystemAccent`) no vive en `Settings`: sigue
-teniendo su propio `get_appearance_settings()`; se persiste con el mismo `set_setting(key, value)`
-genérico, con las claves `settings.appearance.theme`, `settings.appearance.language` y
-`settings.appearance.use_system_accent`. `reset_settings` con `scope: "all"` también restaura
+valor legal. La apariencia (`theme`/`language`/`useSystemAccent`/`sidebarExpanded`) no vive en
+`Settings`: sigue teniendo su propio `get_appearance_settings()`; se persiste con el mismo
+`set_setting(key, value)` genérico, con las claves `settings.appearance.theme`,
+`settings.appearance.language`, `settings.appearance.use_system_accent` y
+`settings.appearance.sidebar_expanded` (spec `013-sidebar-expandible`). `reset_settings` con
+`scope: "all"` también restaura
 `lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio (y al borrar
 `lifecycle.start_with_system` también quita la tarea programada de autoarranque); nunca toca la
 apariencia ni `settings.onboarding.completedAt`.

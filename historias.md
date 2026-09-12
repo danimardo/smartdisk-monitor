@@ -2335,6 +2335,7 @@ interface AppearanceSettings {
   language: "es" | "en" | null;   // null = seguir al sistema
   systemLocale: string;           // BCP-47 de Windows, p. ej. "es-ES". NO usar navigator.language
   useSystemAccent: boolean;       // valor de fábrica: false (v3, ADR-035) — la app estrena paleta propia
+  sidebarExpanded: boolean;       // valor de fábrica: false — riel expandible (spec 013), nota junto a ADR-034
 }
 
 invoke<WindowsAccent>("get_system_accent_color")   // error si el usuario lo tiene desactivado
@@ -2403,10 +2404,12 @@ interface Settings {
 
 `Settings` es un objeto tipado, no un diccionario libre. Sus límites están en `open-questions.md`
 D.1/C.1/J.13/J.14/J.32 y los valida el backend: la UI puede confiar en que un valor guardado es un
-valor legal. La apariencia (`theme`/`language`/`useSystemAccent`) no vive en `Settings`: sigue
-teniendo su propio `get_appearance_settings()`; se persiste con el mismo `set_setting(key, value)`
-genérico, con las claves `settings.appearance.theme`, `settings.appearance.language` y
-`settings.appearance.use_system_accent`. `reset_settings` con `scope: "all"` también restaura
+valor legal. La apariencia (`theme`/`language`/`useSystemAccent`/`sidebarExpanded`) no vive en
+`Settings`: sigue teniendo su propio `get_appearance_settings()`; se persiste con el mismo
+`set_setting(key, value)` genérico, con las claves `settings.appearance.theme`,
+`settings.appearance.language`, `settings.appearance.use_system_accent` y
+`settings.appearance.sidebar_expanded` (spec `013-sidebar-expandible`). `reset_settings` con
+`scope: "all"` también restaura
 `lifecycle`/`notifications`/`logging`, que no tienen su propio ámbito de reinicio (y al borrar
 `lifecycle.start_with_system` también quita la tarea programada de autoarranque); nunca toca la
 apariencia ni `settings.onboarding.completedAt`.
@@ -6493,6 +6496,46 @@ icono y el nombre accesible correctos (FR-005 de la spec).
   redimensionar mediante asas propias en vez de las nativas que ya gestiona Tauri), ese permiso
   nuevo exige su propia entrada aquí, con el mismo criterio.
 
+### ADR-060 — El riel expandible no reabre el problema que cerró ADR-034
+
+Estado: aceptada. Fecha: 2026-09-12. Matiza ADR-034. Spec: `013-sidebar-expandible`.
+
+#### El problema
+
+`ADR-034` redujo la `Sidebar` de 250 px con etiquetas a un riel de 74 px solo con iconos,
+devolviendo 176 px al contenido — "crítico a 1024 px", el mínimo técnico de la ventana. El usuario
+pidió después poder ver el nombre de cada sección sin depender del *tooltip* al pasar el ratón, lo
+que en apariencia es volver atrás en esa misma decisión.
+
+#### La decisión
+
+El nombre de cada sección se muestra en un panel que **se superpone** al contenido (`position:
+absolute` dentro del `AppShell` ya `relative`, con un hueco de 74 px fijo en el flujo para que nada
+se mueva), nunca lo empuja ni lo encoge. El presupuesto de 176 px que protegió `ADR-034` sigue
+intacto en todo momento, incluida la ventana mínima de 1024 × 560: expandir el riel no reduce el
+ancho de ninguna región de contenido, verificado con la misma batería de `escalado.spec.ts` (T007
+de la spec). El coste que sí asume, a cambio, es que mientras el panel está abierto tapa la franja
+de contenido que queda debajo — una superposición temporal y reversible, no una reducción
+permanente del espacio disponible.
+
+#### Alternativas descartadas
+
+- **Volver a una `Sidebar` de ancho fijo mayor (empujando el contenido).** Es exactamente lo que
+  `ADR-034` corrigió; habría que volver a medir el presupuesto de 1024 px con el nuevo ancho, y en
+  el peor caso (ventana mínima, escalado 150 %) reabriría el riesgo de recorte que ese ADR cerró.
+- **Sin panel: solo mejorar el *tooltip* existente.** No resuelve la necesidad real (verlas todas a
+  la vez, sin pasar el ratón una por una), que fue lo que pidió el usuario.
+
+#### Consecuencias
+
+- Reutiliza material y sombra ya existentes (`sdm-material-overlay`, `--sdm-shadow-lift`): cero
+  tokens visuales nuevos.
+- Sin comando, permiso ni dependencia nuevos: el único campo nuevo (`sidebarExpanded`) usa el
+  mecanismo genérico de `AppearanceSettings`/`set_setting` ya existente.
+- La decisión de mostrar el panel siempre superpuesto, nunca empujando, es un límite de diseño
+  permanente para este componente: cualquier variante futura que quisiera empujar el contenido
+  necesitaría su propia medición del presupuesto de 1024 px, no puede darse por buena sin repetirla.
+
 
 ---
 
@@ -10353,6 +10396,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "nav.monitoredDisks": "Discos monitorizados",
   "nav.pause": "Pausar recopilación",
   "nav.resume": "Reanudar recopilación",
+  "nav.sidebar.expand": "Mostrar los nombres de las secciones",
+  "nav.sidebar.collapse": "Ocultar los nombres de las secciones",
   "disk.temperature": "Temperatura",
   "disk.temperatureShort": "Temp.",
   "disk.wear": "Desgaste",
@@ -10976,6 +11021,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "nav.monitoredDisks": "Monitored disks",
   "nav.pause": "Pause collection",
   "nav.resume": "Resume collection",
+  "nav.sidebar.expand": "Show section names",
+  "nav.sidebar.collapse": "Hide section names",
   "disk.temperature": "Temperature",
   "disk.temperatureShort": "Temp.",
   "disk.wear": "Wear",

@@ -15,7 +15,9 @@ export const apariencia = {
   language: "es",
   systemLocale: "es-ES",
   // De fábrica apagado (v3, ADR-035): una instalación nueva estrena la paleta Ciruela.
-  useSystemAccent: false
+  useSystemAccent: false,
+  // De fábrica plegado (spec 013): el riel arranca solo con iconos.
+  sidebarExpanded: false
 };
 
 export const acento = { hex: "#0067c0", palette: ["#0067c0"] };

@@ -13,9 +13,9 @@ import {
  *  color). Si un componente los duplica, divergen. Estas pruebas fijan el contrato. */
 
 describe("icons — vocabulario", () => {
-  it("hay exactamente 20 símbolos y ninguno repetido", () => {
-    expect(ICON_NAMES).toHaveLength(20);
-    expect(new Set(ICON_NAMES).size).toBe(20);
+  it("hay exactamente 21 símbolos y ninguno repetido", () => {
+    expect(ICON_NAMES).toHaveLength(21);
+    expect(new Set(ICON_NAMES).size).toBe(21);
   });
 
   it("todo icono de los mapas semánticos existe en el juego", () => {

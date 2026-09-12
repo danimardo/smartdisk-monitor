@@ -2478,3 +2478,43 @@ icono y el nombre accesible correctos (FR-005 de la spec).
 - Si en el futuro se añade un control de ventana que necesite un permiso distinto (por ejemplo,
   redimensionar mediante asas propias en vez de las nativas que ya gestiona Tauri), ese permiso
   nuevo exige su propia entrada aquí, con el mismo criterio.
+
+## ADR-060 — El riel expandible no reabre el problema que cerró ADR-034
+
+Estado: aceptada. Fecha: 2026-09-12. Matiza ADR-034. Spec: `013-sidebar-expandible`.
+
+### El problema
+
+`ADR-034` redujo la `Sidebar` de 250 px con etiquetas a un riel de 74 px solo con iconos,
+devolviendo 176 px al contenido — "crítico a 1024 px", el mínimo técnico de la ventana. El usuario
+pidió después poder ver el nombre de cada sección sin depender del *tooltip* al pasar el ratón, lo
+que en apariencia es volver atrás en esa misma decisión.
+
+### La decisión
+
+El nombre de cada sección se muestra en un panel que **se superpone** al contenido (`position:
+absolute` dentro del `AppShell` ya `relative`, con un hueco de 74 px fijo en el flujo para que nada
+se mueva), nunca lo empuja ni lo encoge. El presupuesto de 176 px que protegió `ADR-034` sigue
+intacto en todo momento, incluida la ventana mínima de 1024 × 560: expandir el riel no reduce el
+ancho de ninguna región de contenido, verificado con la misma batería de `escalado.spec.ts` (T007
+de la spec). El coste que sí asume, a cambio, es que mientras el panel está abierto tapa la franja
+de contenido que queda debajo — una superposición temporal y reversible, no una reducción
+permanente del espacio disponible.
+
+### Alternativas descartadas
+
+- **Volver a una `Sidebar` de ancho fijo mayor (empujando el contenido).** Es exactamente lo que
+  `ADR-034` corrigió; habría que volver a medir el presupuesto de 1024 px con el nuevo ancho, y en
+  el peor caso (ventana mínima, escalado 150 %) reabriría el riesgo de recorte que ese ADR cerró.
+- **Sin panel: solo mejorar el *tooltip* existente.** No resuelve la necesidad real (verlas todas a
+  la vez, sin pasar el ratón una por una), que fue lo que pidió el usuario.
+
+### Consecuencias
+
+- Reutiliza material y sombra ya existentes (`sdm-material-overlay`, `--sdm-shadow-lift`): cero
+  tokens visuales nuevos.
+- Sin comando, permiso ni dependencia nuevos: el único campo nuevo (`sidebarExpanded`) usa el
+  mecanismo genérico de `AppearanceSettings`/`set_setting` ya existente.
+- La decisión de mostrar el panel siempre superpuesto, nunca empujando, es un límite de diseño
+  permanente para este componente: cualquier variante futura que quisiera empujar el contenido
+  necesitaría su propia medición del presupuesto de 1024 px, no puede darse por buena sin repetirla.

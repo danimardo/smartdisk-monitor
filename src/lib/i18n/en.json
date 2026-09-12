@@ -31,6 +31,8 @@
   "nav.monitoredDisks": "Monitored disks",
   "nav.pause": "Pause collection",
   "nav.resume": "Resume collection",
+  "nav.sidebar.expand": "Show section names",
+  "nav.sidebar.collapse": "Hide section names",
   "disk.temperature": "Temperature",
   "disk.temperatureShort": "Temp.",
   "disk.wear": "Wear",

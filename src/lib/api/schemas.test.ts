@@ -165,7 +165,13 @@ describe("windowsAccent", () => {
 });
 
 describe("appearanceSettings", () => {
-  const ajustes = { theme: "system", language: null, systemLocale: "es-ES", useSystemAccent: true };
+  const ajustes = {
+    theme: "system",
+    language: null,
+    systemLocale: "es-ES",
+    useSystemAccent: true,
+    sidebarExpanded: false
+  };
 
   it("acepta idioma null, que significa seguir al sistema", () => {
     expect(S.appearanceSettings.safeParse(ajustes).success).toBe(true);
@@ -177,6 +183,10 @@ describe("appearanceSettings", () => {
 
   it("RECHAZA un locale vacío: sin él, el formato de números no tiene base", () => {
     expect(S.appearanceSettings.safeParse({ ...ajustes, systemLocale: "" }).success).toBe(false);
+  });
+
+  it("RECHAZA sidebarExpanded si no es booleano (spec 013)", () => {
+    expect(S.appearanceSettings.safeParse({ ...ajustes, sidebarExpanded: "true" }).success).toBe(false);
   });
 });
 
