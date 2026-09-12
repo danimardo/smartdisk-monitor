@@ -1,6 +1,7 @@
 export { default as AppShell } from "./AppShell.svelte";
 export { default as Sidebar } from "./Sidebar.svelte";
 export { default as Toolbar } from "./Toolbar.svelte";
+export { default as TitleBar } from "./TitleBar.svelte";
 
 export { default as Button } from "./Button.svelte";
 export { default as Card } from "./Card.svelte";

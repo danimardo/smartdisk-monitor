@@ -207,5 +207,18 @@
         stroke-linejoin="round"
       ></path></symbol
     >
+    <symbol id="i-minimize" viewBox="0 0 24 24"
+      ><path d="M6 17h12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+      ></path></symbol
+    >
+    <symbol id="i-maximize" viewBox="0 0 24 24"
+      ><rect x="6" y="6" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7"
+      ></rect></symbol
+    >
+    <symbol id="i-restore" viewBox="0 0 24 24"
+      ><rect x="9" y="5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.7"
+      ></rect><rect x="5" y="9" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.7"
+      ></rect></symbol
+    >
   </defs>
 </svg>

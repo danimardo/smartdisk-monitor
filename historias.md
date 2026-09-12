@@ -6432,6 +6432,57 @@ confirmar el posible cargo) no cambia: solo se dispara cuando la opción **es** 
 - Al vivir el cálculo en `AiModelSelect.svelte`, los dos selectores (Ajustes y el modal de
   explicación) se comportan igual sin mantener dos implementaciones por separado.
 
+### ADR-059 — Permisos de Tauri para la barra de título propia
+
+Estado: aceptada. Fecha: 2026-09-12. Feature: `011-barra-titulo-propia`.
+
+#### El problema
+
+La ventana pasa a construir su propia barra de título (`decorations: false`), sustituyendo la
+decoración nativa de Windows por controles propios de mover, minimizar, maximizar/restaurar y
+cerrar. Tauri 2 bloquea por defecto, para cualquier ventana, las acciones que esos controles
+necesitan invocar desde el frontend: cerrar, minimizar, alternar maximizado, iniciar el arrastre de
+ventana y consultar si está maximizada. No es una elección de este proyecto — es el comportamiento
+de seguridad por defecto del framework, pensado para que contenido web no pueda manipular la
+ventana del sistema operativo sin que la aplicación lo autorice explícitamente.
+
+#### La decisión
+
+`src-tauri/capabilities/default.json` gana cinco permisos nuevos, todos de gestión de la propia
+ventana, ninguno de datos ni de red:
+
+- `core:window:allow-close`
+- `core:window:allow-minimize`
+- `core:window:allow-toggle-maximize`
+- `core:window:allow-start-dragging`
+- `core:window:allow-is-maximized`
+
+Los cuatro primeros son los que documenta la propia guía oficial de Tauri para construir una barra
+de título propia (`learn/window-customization`); el quinto (`allow-is-maximized`) es necesario
+además para que el control de maximizar/restaurar sepa en qué estado está la ventana y muestre el
+icono y el nombre accesible correctos (FR-005 de la spec).
+
+#### Alternativas descartadas
+
+- **No conceder `allow-is-maximized` y asumir siempre "restaurada".** Rompería FR-005 en cuanto la
+  persona maximizara la ventana por cualquier otra vía (doble clic, `Win+↑`): el control seguiría
+  ofreciendo "maximizar" con la ventana ya maximizada. Descartada por dar un dato falso a la
+  interfaz.
+- **Mantener la decoración nativa.** Es la alternativa real a todo este ADR, y ya se descartó al
+  aprobar la spec: sin quitar la decoración no hay barra propia que pintar con el acento de la
+  aplicación.
+
+#### Consecuencias
+
+- Los cinco permisos son estrictamente de gestión de ventana: no exponen datos del disco, del
+  inventario ni de red. Superficie nueva en un binario ya privilegiado (principio IX), acotada al
+  control de la propia ventana.
+- Sin dependencia nueva: los cinco permisos identifican comandos que el *core* de Tauri ya trae
+  integrado (`core:window:*`), no un plugin externo.
+- Si en el futuro se añade un control de ventana que necesite un permiso distinto (por ejemplo,
+  redimensionar mediante asas propias en vez de las nativas que ya gestiona Tauri), ese permiso
+  nuevo exige su propia entrada aquí, con el mismo criterio.
+
 
 ---
 
@@ -9268,6 +9319,7 @@ Fichero de origen: `src/lib/components/index.ts`
 export { default as AppShell } from "./AppShell.svelte";
 export { default as Sidebar } from "./Sidebar.svelte";
 export { default as Toolbar } from "./Toolbar.svelte";
+export { default as TitleBar } from "./TitleBar.svelte";
 
 export { default as Button } from "./Button.svelte";
 export { default as Card } from "./Card.svelte";
@@ -9919,6 +9971,18 @@ export function usedPercent(capacityBytes: number | null, freeBytes: number | nu
   if (isMissing(capacityBytes) || isMissing(freeBytes) || capacityBytes === 0) return null;
   return Math.min(100, Math.max(0, ((capacityBytes - freeBytes) / capacityBytes) * 100));
 }
+
+/** Etiqueta corta de un disco para listas que mezclan varios (eventos de todo el sistema): el
+ *  alias si la persona le puso uno, si no el modelo. `undefined` cuando el suceso no tiene disco
+ *  asociado o ese disco ya no está en el inventario — nunca se inventa un nombre. */
+export function deviceLabel(
+  deviceId: string | null | undefined,
+  devices: { id: string; alias?: string | null; model: string }[]
+): string | undefined {
+  if (!deviceId) return undefined;
+  const disco = devices.find((d) => d.id === deviceId);
+  return disco ? (disco.alias || disco.model) : undefined;
+}
 ```
 
 
@@ -10247,6 +10311,9 @@ Fichero de origen: `src/lib/i18n/es.json`
   "common.refresh": "Refrescar",
   "common.cancel": "Cancelar",
   "common.close": "Cerrar",
+  "titlebar.minimize": "Minimizar",
+  "titlebar.maximize": "Maximizar",
+  "titlebar.restore": "Restaurar",
   "common.continue": "Continuar",
   "common.technicalDetail": "Detalle técnico",
   "common.viewAll": "Ver todos",
@@ -10864,6 +10931,9 @@ Fichero de origen: `src/lib/i18n/en.json`
   "common.refresh": "Refresh",
   "common.cancel": "Cancel",
   "common.close": "Close",
+  "titlebar.minimize": "Minimize",
+  "titlebar.maximize": "Maximize",
+  "titlebar.restore": "Restore",
   "common.continue": "Continue",
   "common.technicalDetail": "Technical detail",
   "common.viewAll": "View all",

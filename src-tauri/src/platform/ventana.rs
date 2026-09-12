@@ -16,8 +16,12 @@ pub const VENTANA_PRINCIPAL: &str = "main";
 
 /// Mínimo técnico de `tauri.conf.json` (`docs/ui-design.md` §4.0). Aquí solo para sanear una
 /// geometría guardada disparatada: nunca se restaura una ventana más pequeña que esto.
+///
+/// `MIN_H` incluye la barra de título propia (spec 011): 560 de contenido + 35 de la barra
+/// (`--sdm-control-lg` en `tokens.css`). Este número tiene que coincidir siempre con `minHeight` de
+/// `tauri.conf.json` — ninguno de los dos lados puede leer el token CSS del otro.
 const MIN_W: i64 = 1024;
-const MIN_H: i64 = 560;
+const MIN_H: i64 = 595;
 
 /// Trae la ventana principal al frente.
 ///

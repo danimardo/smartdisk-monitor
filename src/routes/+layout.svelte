@@ -9,7 +9,14 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { page } from "$app/state";
-  import { AboutDialog, AppShell, IconSprite, Sidebar, Toolbar } from "$lib/components";
+  import { AboutDialog, AppShell, IconSprite, Sidebar, TitleBar, Toolbar } from "$lib/components";
+  import {
+    closeWindow,
+    isWindowMaximized,
+    minimizeWindow,
+    onWindowResized,
+    toggleMaximizeWindow
+  } from "$lib/window";
   import { theme } from "$lib/design/theme.svelte";
   import { applySystemAccent } from "$lib/design/accent";
   import { i18n, t, tp } from "$lib/i18n";
@@ -37,6 +44,11 @@
 
   let ready = $state(false);
   let startupError = $state<AppError | null>(null);
+
+  /** Estado de la ventana para el control de maximizar/restaurar de la barra propia (spec 011,
+   *  FR-005): se reconsulta cada vez que la ventana cambia de tamaño (doble clic, `Win+↑`, arrastre
+   *  al borde), no solo tras pulsar el propio botón. */
+  let maximizada = $state(false);
 
   /** Refresco manual de datos («Refrescar» de la barra). `refresh_now` corre en un hilo bloqueante
    *  del backend, así que la ventana no se congela; aquí solo se refleja que hay trabajo en curso
@@ -182,6 +194,23 @@
 
   onMount(() => {
     let unsubscribe: (() => void) | undefined;
+    let dejarDeEscucharRedimension: (() => void) | undefined;
+
+    // Estado de la barra de título: aparte del arranque principal (try/catch propio) para que un
+    // fallo aquí no dispare `startupError` — perder el reflejo de "maximizada" no debe tumbar el
+    // resto de la aplicación.
+    void (async () => {
+      try {
+        maximizada = await isWindowMaximized();
+        dejarDeEscucharRedimension = await onWindowResized(() => {
+          void isWindowMaximized().then((m) => (maximizada = m));
+        });
+      } catch (cause) {
+        log.warn("no se pudo inicializar el estado de la barra de título", {
+          code: toAppError(cause).code
+        });
+      }
+    })();
 
     // `void` explícito: la promesa se gestiona por completo dentro (try/catch/finally) y no
     // hay nada que esperar fuera. Marcarlo evita que parezca un `await` olvidado.
@@ -267,7 +296,10 @@
       }
     })();
 
-    return () => unsubscribe?.();
+    return () => {
+      unsubscribe?.();
+      dejarDeEscucharRedimension?.();
+    };
   });
 </script>
 
@@ -279,63 +311,77 @@
      `/onboarding` (que se pinta sin `AppShell`). -->
 <IconSprite />
 
-{#if startupError && !ready}
-  <div class="flex h-screen items-center justify-center p-6">
-    <div class="sdm-material max-w-lg rounded-card border border-hairline p-6 shadow-card">
-      <h1 class="mb-2 text-xl font-semibold">{t("startup.failed")}</h1>
-      <p class="mb-4 text-sm text-fg-dim">{t(startupError.messageKey, startupError.messageVars)}</p>
-      {#if startupError.detail}
-        <details class="text-2xs text-fg-faint">
-          <summary class="cursor-pointer">{t("common.technicalDetail")}</summary>
-          <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap">{startupError.detail}</pre>
-        </details>
-      {/if}
-    </div>
-  </div>
-{:else if esOnboarding}
-  {#if ready}
-    {@render children?.()}
-  {:else}
-    <div class="flex h-screen items-center justify-center">
-      <span class="text-sm text-fg-dim">{t("common.loading")}</span>
-    </div>
-  {/if}
-{:else}
-  <AppShell transitionKey={page.url.pathname} busy={refrescando}>
-    {#snippet sidebar()}
-      <Sidebar
-        {sections}
-        active={activeSection}
-        globalState={status.state}
-        {globalLabel}
-        {globalIcon}
-        globalCount={status.count || null}
-        onabout={abrirAcercaDe}
-      />
-    {/snippet}
-
-    {#snippet toolbar()}
-      <Toolbar
-        title={screenTitle}
-        subtitle={screenSubtitle}
-        globalState={status.state}
-        {globalLabel}
-        {freshness}
-        primaryLabel={t("common.refresh")}
-        primaryLoading={refrescando}
-        onprimary={refrescar}
-      />
-    {/snippet}
-
-    {#if ready}
-      {@render children?.()}
-    {:else}
-      <div class="flex flex-1 items-center justify-center">
-        <span class="text-sm text-fg-dim">{t("common.loading")}</span>
+<!-- Barra de título propia (spec 011): fuera de las tres ramas de abajo, mismo motivo que
+     `IconSprite` — el asistente inicial y la pantalla de error de arranque también necesitan poder
+     mover/cerrar la ventana. El contenedor de aquí es el único `h-screen` real; todo lo de dentro
+     pasa a `h-full` (ocupa lo que deja la barra, no el alto entero de la ventana). -->
+<div class="flex h-screen flex-col">
+  <TitleBar
+    maximized={maximizada}
+    onminimize={() => void minimizeWindow()}
+    ontogglemaximize={() => void toggleMaximizeWindow()}
+    onclose={() => void closeWindow()}
+  />
+  <div class="min-h-0 flex-1 overflow-hidden">
+    {#if startupError && !ready}
+      <div class="flex h-full items-center justify-center p-6">
+        <div class="sdm-material max-w-lg rounded-card border border-hairline p-6 shadow-card">
+          <h1 class="mb-2 text-xl font-semibold">{t("startup.failed")}</h1>
+          <p class="mb-4 text-sm text-fg-dim">{t(startupError.messageKey, startupError.messageVars)}</p>
+          {#if startupError.detail}
+            <details class="text-2xs text-fg-faint">
+              <summary class="cursor-pointer">{t("common.technicalDetail")}</summary>
+              <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap">{startupError.detail}</pre>
+            </details>
+          {/if}
+        </div>
       </div>
+    {:else if esOnboarding}
+      {#if ready}
+        {@render children?.()}
+      {:else}
+        <div class="flex h-full items-center justify-center">
+          <span class="text-sm text-fg-dim">{t("common.loading")}</span>
+        </div>
+      {/if}
+    {:else}
+      <AppShell transitionKey={page.url.pathname} busy={refrescando}>
+        {#snippet sidebar()}
+          <Sidebar
+            {sections}
+            active={activeSection}
+            globalState={status.state}
+            {globalLabel}
+            {globalIcon}
+            globalCount={status.count || null}
+            onabout={abrirAcercaDe}
+          />
+        {/snippet}
+
+        {#snippet toolbar()}
+          <Toolbar
+            title={screenTitle}
+            subtitle={screenSubtitle}
+            globalState={status.state}
+            {globalLabel}
+            {freshness}
+            primaryLabel={t("common.refresh")}
+            primaryLoading={refrescando}
+            onprimary={refrescar}
+          />
+        {/snippet}
+
+        {#if ready}
+          {@render children?.()}
+        {:else}
+          <div class="flex flex-1 items-center justify-center">
+            <span class="text-sm text-fg-dim">{t("common.loading")}</span>
+          </div>
+        {/if}
+      </AppShell>
     {/if}
-  </AppShell>
-{/if}
+  </div>
+</div>
 
 <AboutDialog
   open={aboutOpen}

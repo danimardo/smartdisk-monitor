@@ -3,5 +3,13 @@
   "identifier": "default",
   "description": "Mínimo privilegio dentro de un proceso ya elevado (ADR-004). Sin shell genérica, sin fs genérico. Cualquier permiso nuevo exige una entrada en docs/decisions.md.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-save"]
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-maximized"
+  ]
 }

@@ -6,7 +6,12 @@
    *  `transitionKey` distingue un cambio de pantalla real (`docs/ui-design.md`: "Movimiento:
    *  duration-base con ease-sdm en... cambio de pantalla") de un simple cambio de parámetro dentro
    *  de la misma pantalla (un filtro, una página): solo cuando cambia se remonta el contenido y se
-   *  repite la animación de entrada. Sin él, cada pantalla aparecía de golpe, sin transición. */
+   *  repite la animación de entrada. Sin él, cada pantalla aparecía de golpe, sin transición.
+   *
+   *  Redondeo solo abajo (`rounded-b-window`, spec 011 US2, corrección post-validación): arriba ya
+   *  no linda con el borde real de la ventana, sino con `TitleBar` — dos esquinas redondeadas ahí
+   *  quedaban flotando en mitad de la ventana, sin ningún borde real al que imitar. Abajo sí sigue
+   *  siendo el borde real, que Windows 11 redondea por su cuenta (DWM); se mantiene. */
   import { navigating } from "$app/state";
   import { t } from "$lib/i18n";
 
@@ -25,7 +30,7 @@
      resuelva en rutas sin chrome como el asistente inicial (`/onboarding`). -->
 
 <div
-  class="relative flex h-screen overflow-hidden rounded-window bg-[linear-gradient(160deg,var(--sdm-bg),var(--sdm-bg-2))]"
+  class="relative flex h-full overflow-hidden rounded-b-window bg-[linear-gradient(160deg,var(--sdm-bg),var(--sdm-bg-2))]"
 >
   {#if trabajando}
     <div

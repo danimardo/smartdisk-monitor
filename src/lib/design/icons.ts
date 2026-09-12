@@ -29,7 +29,11 @@ export type IconName =
   | "tag"
   | "close"
   /** Marca la ayuda con IA (spec 005/006): la acción «Explícamelo en lenguaje claro». */
-  | "sparkles";
+  | "sparkles"
+  /** Barra de título propia (spec 011): los tres controles de ventana. */
+  | "minimize"
+  | "maximize"
+  | "restore";
 
 /** Todos los `IconName`, para pruebas y para validar el sprite. */
 export const ICON_NAMES: readonly IconName[] = [
@@ -49,7 +53,10 @@ export const ICON_NAMES: readonly IconName[] = [
   "check",
   "tag",
   "close",
-  "sparkles"
+  "sparkles",
+  "minimize",
+  "maximize",
+  "restore"
 ];
 
 /** Estado de salud → icono. `unknown` usa `usb` porque el 90 % de los casos reales son puentes USB

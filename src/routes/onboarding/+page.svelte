@@ -212,7 +212,7 @@
   }
 </script>
 
-<div class="flex min-h-screen flex-col bg-bg">
+<div class="flex h-full min-h-0 flex-col bg-bg">
   <!-- Cabecera propia de 56 px (FR-033): logo, indicador de paso, salida siempre visible. -->
   <header class="flex h-14 flex-none items-center gap-3 border-b border-hairline px-6">
     <span class="sdm-display text-sm font-semibold">SmartDisk Monitor</span>
