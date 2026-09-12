@@ -877,6 +877,9 @@ Criterios de aceptación:
   para inspeccionar el pasado reciente.
 - La zona horaria presentada es la local.
 - Las discontinuidades se muestran como ausencia de datos, no como cero.
+- El detalle de disco muestra, debajo de sus gráficas y contadores, los eventos de Windows más
+  recientes asociados a ese disco, con enlace a su histórico completo ya filtrado en la pantalla de
+  Eventos (spec `012-eventos-por-disco`).
 
 #### US-021 — Consultar eventos (P0)
 
@@ -2594,6 +2597,13 @@ sistema (`open-questions.md` J.4). **Se renderiza como texto, jamás como HTML.*
 La ruta acepta `?focus=<system_events.id>` (spec `003-puente-eventos-alertas`): al llegar desde el
 enlace «Ver el suceso» del detalle de una alerta de evento, la pantalla resalta y abre ese suceso.
 Un id que no esté en la página cargada no es un error: la pantalla se comporta como sin parámetro.
+
+La ruta también acepta `?deviceId=<device.id>` (`open-questions.md` J.10; usado desde la sección
+«Eventos de este disco» del detalle de un disco, spec `012-eventos-por-disco`): preaplica ese
+dispositivo a la consulta inicial de eventos. No hay un control visible de dispositivo en la
+`FilterBar` (solo nivel y proveedor); es un filtro de entrada, no una selección que la persona vea
+o pueda cambiar desde esa pantalla. Ambos parámetros, `focus` y `deviceId`, pueden combinarse;
+ninguno es obligatorio.
 
 #### 3.6 Pruebas
 
@@ -10678,6 +10688,8 @@ Fichero de origen: `src/lib/i18n/es.json`
   "dateRange.from": "Desde",
   "dateRange.to": "Hasta",
   "disk.counters": "Contadores",
+  "disk.events.title": "Eventos de este disco",
+  "disk.events.empty": "Este disco no tiene eventos recientes",
   "smart.counter.health_passed": "Autoevaluación superada",
   "smart.counter.critical_warning": "Aviso crítico (bits)",
   "smart.counter.media_errors_total": "Errores de medio",
@@ -11298,6 +11310,8 @@ Fichero de origen: `src/lib/i18n/en.json`
   "dateRange.from": "From",
   "dateRange.to": "To",
   "disk.counters": "Counters",
+  "disk.events.title": "Events for this disk",
+  "disk.events.empty": "This disk has no recent events",
   "smart.counter.health_passed": "Self-assessment passed",
   "smart.counter.critical_warning": "Critical warning (bits)",
   "smart.counter.media_errors_total": "Media errors",

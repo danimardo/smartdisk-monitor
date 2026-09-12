@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { detalleDisco0, RESPUESTAS } from "./fixtures/respuestas";
+import { detalleDisco0, eventos, RESPUESTAS } from "./fixtures/respuestas";
 import { instalarIpcFalso, llamadas } from "./ipc-falso";
 import es from "../../src/lib/i18n/es.json" with { type: "json" };
 
@@ -130,5 +130,70 @@ test.describe("detalle de disco", () => {
     await expect(page.getByRole("button", { name: es["disk.retryFolderProtection"] })).toHaveCount(0);
     const comandos = (await llamadas(page)).map((l) => l.comando);
     expect(comandos).not.toContain("check_smartctl_defender_exception");
+  });
+
+  test.describe("eventos de este disco (spec 012)", () => {
+    test("muestra los eventos recientes del disco y etiqueta la asociación inferida", async ({ page }) => {
+      await instalarIpcFalso(page, RESPUESTAS);
+      await page.goto(`/disks/${detalleDisco0.id}`);
+
+      const seccion = page.locator("section", { hasText: es["disk.events.title"] });
+      await expect(seccion.getByText(eventos[0].message)).toBeVisible();
+      await expect(seccion.getByText(eventos[1].message)).toBeVisible();
+      await expect(seccion.getByText(es["events.inferredMapping"])).toBeVisible();
+    });
+
+    test("un disco sin eventos asociados muestra el estado vacío de la sección, sin ocultarla", async ({
+      page
+    }) => {
+      await instalarIpcFalso(page, {
+        ...RESPUESTAS,
+        get_system_events: { events: [], nextCursor: null, total: 0 }
+      });
+      await page.goto(`/disks/${detalleDisco0.id}`);
+
+      const seccion = page.locator("section", { hasText: es["disk.events.title"] });
+      await expect(seccion.getByText(es["disk.events.empty"])).toBeVisible();
+    });
+
+    test("un fallo al consultar los eventos degrada solo esa sección, el resto del detalle sigue", async ({
+      page
+    }) => {
+      await instalarIpcFalso(page, {
+        ...RESPUESTAS,
+        get_system_events: {
+          __rechazar__: { code: "events.query_failed", messageKey: "error.unexpected", retryable: true }
+        }
+      });
+      await page.goto(`/disks/${detalleDisco0.id}`);
+
+      await expect(page.getByRole("heading", { name: detalleDisco0.model })).toBeVisible();
+      await expect(page.getByText(es["disk.temperature"]).first()).toBeVisible();
+      const seccion = page.locator("section", { hasText: es["disk.events.title"] });
+      await expect(seccion.getByText(es["error.unexpected"])).toBeVisible();
+    });
+
+    test("pulsar un evento de la sección lleva a su detalle en la pantalla de Eventos", async ({ page }) => {
+      await instalarIpcFalso(page, RESPUESTAS);
+      await page.goto(`/disks/${detalleDisco0.id}`);
+
+      // El primer suceso del fixture (`eventos[0]`, id "1") es un enlace, no un botón.
+      const fila = page.getByRole("link", { name: /Volumen C: es correcto/ });
+      await expect(fila).toHaveAttribute("href", "/events?focus=1");
+      await fila.click();
+      await expect(page).toHaveURL(/\/events\?focus=1/);
+      await expect(page.getByRole("heading", { name: es["events.detail.title"] })).toBeVisible();
+    });
+
+    test('"Ver todos" lleva a Eventos con el filtro de este disco ya aplicado', async ({ page }) => {
+      await instalarIpcFalso(page, RESPUESTAS);
+      await page.goto(`/disks/${detalleDisco0.id}`);
+
+      const seccion = page.locator("section", { hasText: es["disk.events.title"] });
+      const enlace = seccion.getByRole("link", { name: es["common.viewAll"] });
+      await expect(enlace).toHaveAttribute("href", `/events?deviceId=${detalleDisco0.id}`);
+      await enlace.click();
+      await expect(page).toHaveURL(`/events?deviceId=${detalleDisco0.id}`);
+    });
   });
 });

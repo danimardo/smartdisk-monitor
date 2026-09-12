@@ -9,6 +9,7 @@
     DataRow,
     DateRangePicker,
     EmptyState,
+    EventRow,
     ExplicacionModal,
     Icon,
     MetricCard,
@@ -20,6 +21,7 @@
     addSmartctlDefenderException,
     checkSmartctlDefenderException,
     getMetricSeries,
+    getSystemEvents,
     toAppError
   } from "$lib/api";
   import { healthToken } from "$lib/design/health";
@@ -41,7 +43,7 @@
   import { explicacion } from "$lib/stores/explicacion.svelte";
   import { goto } from "$app/navigation";
   import type { AppError } from "$lib/design/types";
-  import type { MetricSeries } from "$lib/api";
+  import type { MetricSeries, SystemEvent } from "$lib/api";
   import type { Punto } from "$lib/design/series";
   import type { PageData } from "./$types";
 
@@ -216,6 +218,39 @@
         }
       })();
     }
+  });
+
+  /** Eventos de Windows recientes de este disco (spec 012): resumen de hasta 5, sin filtros ni
+   *  paginación propios — para eso ya está la pantalla de Eventos, a un enlace de distancia. Mismo
+   *  patrón de aislamiento de fallos que `serieTemp`/`serieActividad`: un fallo aquí no afecta al
+   *  resto de la pantalla. */
+  let eventosDisco = $state<SystemEvent[]>([]);
+  let eventosError = $state<AppError | null>(null);
+  let eventosCargando = $state(false);
+
+  $effect(() => {
+    const id = disk.id;
+    let cancelado = false;
+    eventosCargando = true;
+    void (async () => {
+      try {
+        const pagina = await getSystemEvents({ deviceId: id, limit: 5 });
+        if (!cancelado) {
+          eventosDisco = pagina.events;
+          eventosError = null;
+        }
+      } catch (cause) {
+        if (!cancelado) {
+          eventosDisco = [];
+          eventosError = toAppError(cause);
+        }
+      } finally {
+        if (!cancelado) eventosCargando = false;
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
   });
 
   const resolucionTemp = $derived(serieTemp.serie ? t(`chart.resolution.${serieTemp.serie.resolution}`) : "");
@@ -440,6 +475,38 @@
       {/if}
     </Card>
   </div>
+
+  <Card title={t("disk.events.title")}>
+    {#snippet action()}
+      <a href="/events?deviceId={disk.id}" class="text-xs font-medium text-accent hover:underline"
+        >{t("common.viewAll")}</a
+      >
+    {/snippet}
+    {#if eventosError}
+      <EmptyState
+        kind="error"
+        title={t("error.screenFailed")}
+        body={t(eventosError.messageKey, eventosError.messageVars)}
+        detail={eventosError.detail ?? ""}
+      />
+    {:else if eventosCargando && eventosDisco.length === 0}
+      <span class="text-xs text-fg-dim">{t("common.loading")}</span>
+    {:else if eventosDisco.length === 0}
+      <EmptyState kind="empty" title={t("disk.events.empty")} body="" />
+    {:else}
+      {#each eventosDisco as evento (evento.id)}
+        <EventRow
+          level={evento.level}
+          message={evento.message}
+          provider={evento.provider}
+          eventId={evento.eventId}
+          occurredAt={evento.occurredAt}
+          mappingConfidence={evento.mappingConfidence}
+          href="/events?focus={evento.id}"
+        />
+      {/each}
+    {/if}
+  </Card>
 </div>
 
 <ExplicacionModal
@@ -459,4 +526,9 @@
   onconfirmar={() => void explicacion.confirmarPreview()}
   onenviarigual={() => void explicacion.enviarIgual()}
   onquitarfragmentos={() => void explicacion.quitarFragmentos()}
+  onreprocesar={(modelo) => void explicacion.reprocesar(modelo)}
+  esReprocesada={explicacion.esReprocesada}
+  errorFijarPorDefecto={explicacion.errorFijarPorDefecto}
+  onfijarpordefecto={(modelo) => void explicacion.fijarPorDefecto(modelo)}
+  historial={explicacion.historial}
 />

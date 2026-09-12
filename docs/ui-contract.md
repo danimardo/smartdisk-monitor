@@ -378,6 +378,13 @@ La ruta acepta `?focus=<system_events.id>` (spec `003-puente-eventos-alertas`): 
 enlace «Ver el suceso» del detalle de una alerta de evento, la pantalla resalta y abre ese suceso.
 Un id que no esté en la página cargada no es un error: la pantalla se comporta como sin parámetro.
 
+La ruta también acepta `?deviceId=<device.id>` (`open-questions.md` J.10; usado desde la sección
+«Eventos de este disco» del detalle de un disco, spec `012-eventos-por-disco`): preaplica ese
+dispositivo a la consulta inicial de eventos. No hay un control visible de dispositivo en la
+`FilterBar` (solo nivel y proveedor); es un filtro de entrada, no una selección que la persona vea
+o pueda cambiar desde esa pantalla. Ambos parámetros, `focus` y `deviceId`, pueden combinarse;
+ninguno es obligatorio.
+
 ### 3.6 Pruebas
 
 ```ts

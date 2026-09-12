@@ -153,6 +153,9 @@ Criterios de aceptación:
   para inspeccionar el pasado reciente.
 - La zona horaria presentada es la local.
 - Las discontinuidades se muestran como ausencia de datos, no como cero.
+- El detalle de disco muestra, debajo de sus gráficas y contadores, los eventos de Windows más
+  recientes asociados a ese disco, con enlace a su histórico completo ya filtrado en la pantalla de
+  Eventos (spec `012-eventos-por-disco`).
 
 ### US-021 — Consultar eventos (P0)
 

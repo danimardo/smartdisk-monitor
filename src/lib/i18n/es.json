@@ -374,6 +374,8 @@
   "dateRange.from": "Desde",
   "dateRange.to": "Hasta",
   "disk.counters": "Contadores",
+  "disk.events.title": "Eventos de este disco",
+  "disk.events.empty": "Este disco no tiene eventos recientes",
   "smart.counter.health_passed": "Autoevaluación superada",
   "smart.counter.critical_warning": "Aviso crítico (bits)",
   "smart.counter.media_errors_total": "Errores de medio",
