@@ -2775,6 +2775,7 @@ type OrigenExplicacion = {
   idioma: "es" | "en";
   revision: "ninguna" | "enviar_igual" | "quitar_fragmentos";
   previewConfirmada: boolean;
+  modeloSolicitado: string | null; // spec 010: modelo para reprocesar; null = usa settings.ai.model
 };
 type ResultadoExplicacion =
   | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean; sinVolcado: boolean; sinSuceso: boolean }
@@ -2803,6 +2804,11 @@ type ResultadoExplicacion =
 - El detalle técnico se **anonimiza** en Rust (número de serie, nombre de equipo, nombre de
   usuario, rutas de perfil) antes de salir del proceso. La marca/modelo/firmware del disco **sí**
   se envían.
+- **Spec `010-reprocesar-explicacion-ia`**: `modeloSolicitado` permite reprocesar la misma
+  petición con otro modelo desde el propio modal de resultado/error, sin volver a construir el
+  `origen`. Sigue la convención de `deviceId`/`alertGroupId`/`eventId`: campo obligatorio, `null`
+  cuando no aplica. Con un valor, sustituye a `settings.ai.model` solo para esa llamada; nunca se
+  persiste ahí — fijarlo como modelo por defecto es una llamada aparte a `set_setting`.
 - Errores: los códigos `ia.*` de §1.
 - **Segundo uso de la ayuda con IA** (constitución 1.11.0, ADR-057): el resumen por disco del
   informe HTML, §3.7 (`preview_informe_ia`/`export_report`). Comparte credencial, modelo y pila de
@@ -6378,6 +6384,53 @@ disco de sus alertas, sucesos y estado SMART.
   de cada disco) y el orden del progreso sin tocar la red **ni añadir una dependencia de ejecutor
   async** — las pruebas usan un `Waker` mínimo hecho a mano, porque sus futuras se resuelven en el
   primer sondeo (mismo criterio de «extraer la costura en el borde de red» que `resultado_a_seccion`).
+
+### ADR-058 — El selector de modelo deshabilita los de pago con la clave de demostración
+
+Estado: aceptada. Fecha: 2026-09-12. Enmienda ADR-054. Feature: `010-reprocesar-explicacion-ia`.
+
+#### El problema
+
+ADR-054 decidió, para la clave de demostración compartida —capada por OpenRouter a modelos
+gratuitos—, no añadir ninguna validación que impidiera elegir un modelo de pago: *"si luego la
+persona elige un modelo de pago, OpenRouter rechazará la petición (...): no se añade una validación
+que bloquee el cambio de modelo (más código para un caso que el proveedor ya cubre)"*.
+
+Al construir la feature 010 (reprocesar la explicación con otro modelo desde el propio resultado),
+el responsable del producto pidió justo esa validación: que los modelos de pago se vean pero no se
+puedan elegir mientras la clave activa sea la de demostración, en vez de dejar que la persona los
+elija y se encuentre con el error del proveedor. Con dos selectores de modelo en la aplicación
+(Ajustes y el nuevo del modal de explicación), dejar sin resolver esto significaba que solo uno de
+los dos evitara el error, un comportamiento inconsistente entre pantallas.
+
+#### La decisión
+
+`AiModelSelect.svelte` (el componente que usan los dos selectores) marca `disabled` cada opción de
+modelo de pago cuando `EstadoIaWire.usandoClaveCompartida` es `true` (dato que ya expone el backend
+desde ADR-054, sin campo nuevo). La opción **sigue listada**, nunca desaparece —coherente con que el
+resto de la aplicación muestra las acciones no disponibles deshabilitadas con su motivo, en vez de
+ocultarlas—, y un aviso breve (`settings.ai.model.paidDisabledDemo`) explica por qué. En cuanto la
+persona configura su propia clave, `usandoClaveCompartida` pasa a `false` y las opciones se
+habilitan de nuevo, sin ninguna acción adicional.
+
+El diálogo de confirmación de FR-015a (spec 005: elegir un modelo de pago con una clave propia pide
+confirmar el posible cargo) no cambia: solo se dispara cuando la opción **es** seleccionable.
+
+#### Alternativas descartadas
+
+- **Ocultar los modelos de pago en vez de deshabilitarlos.** Es lo que ADR-054 no hacía por no
+  añadir código; ocultarlos habría sido más código todavía y menos coherente con el resto de la
+  interfaz (`docs/ui-design.md`: un dato ausente nunca se hace desaparecer sin más).
+- **Dejarlo como decidió ADR-054** (confiar en el error del proveedor). Descartada: es precisamente
+  la experiencia que motivó este ADR — un error de OpenRouter después de elegir, en vez de que la
+  opción ya se vea no disponible antes de intentarlo.
+
+#### Consecuencias
+
+- Sin campo nuevo en `EstadoIaWire` ni en ningún contrato: `usandoClaveCompartida` ya cruzaba a la
+  interfaz. Sin permiso de Tauri nuevo, sin dependencia nueva.
+- Al vivir el cálculo en `AiModelSelect.svelte`, los dos selectores (Ajustes y el modal de
+  explicación) se comportan igual sin mantener dos implementaciones por separado.
 
 
 ---
@@ -10411,6 +10464,7 @@ Fichero de origen: `src/lib/i18n/es.json`
   "settings.ai.model.paidBody": "«{name}» no es un modelo gratuito.",
   "settings.ai.model.paidImpact": "Cada explicación que generes con este modelo puede generar cargos en tu cuenta de OpenRouter.",
   "settings.ai.model.paidConfirm": "Usar este modelo",
+  "settings.ai.model.paidDisabledDemo": "Los modelos de pago no están disponibles mientras uses la clave de demostración. Pon tu propia clave para poder elegirlos.",
   "settings.ai.sendWithoutReview.label": "Enviar sin revisar",
   "settings.ai.sendWithoutReview.hint": "Omite la pantalla de revisión de fragmentos dudosos. El texto se sigue anonimizando (número de serie, WWN, nombre del equipo, usuario, SID y rutas) antes de salir del equipo.",
   "settings.ai.sendWithoutReview.confirmTitle": "Activar el envío sin revisión",
@@ -10521,6 +10575,13 @@ Fichero de origen: `src/lib/i18n/es.json`
   "ai.modal.truncated": "El detalle técnico era largo y se envió un extracto.",
   "ai.modal.withoutDump": "Esta explicación se hizo sin el detalle técnico completo del disco (no se pudo leer en ese momento).",
   "ai.modal.withoutEvent": "Esta explicación se hizo sin el contenido del suceso de Windows que originó la alerta.",
+  "ai.modal.reprocess.invite": "¿Te convence esta respuesta o prefieres probarla con otro modelo?",
+  "ai.modal.reprocess.modelLabel": "Modelo para reprocesar",
+  "ai.modal.reprocess.action": "Reprocesar",
+  "ai.modal.reprocess.historyEntry": "Respuesta de {model}",
+  "ai.modal.reprocess.setDefault": "Usar este modelo a partir de ahora",
+  "ai.modal.reprocess.setDefaultDone": "Ahora es tu modelo predeterminado.",
+  "ai.modal.reprocess.setDefaultError": "No se ha podido guardar el modelo predeterminado.",
   "ai.preview.body": "Esto es exactamente lo que se enviará a OpenRouter para generar la explicación. Solo se muestra la primera vez.",
   "ai.preview.confirm": "Enviar y explicar",
   "ai.review.body": "El texto a enviar contiene fragmentos que podrían identificar tu equipo y que no se han podido sustituir automáticamente. Revísalo antes de continuar.",
@@ -11020,6 +11081,7 @@ Fichero de origen: `src/lib/i18n/en.json`
   "settings.ai.model.paidBody": "“{name}” is not a free model.",
   "settings.ai.model.paidImpact": "Every explanation you generate with this model may incur charges on your OpenRouter account.",
   "settings.ai.model.paidConfirm": "Use this model",
+  "settings.ai.model.paidDisabledDemo": "Paid models aren't available while you're using the demo key. Set your own key to be able to choose them.",
   "settings.ai.sendWithoutReview.label": "Send without review",
   "settings.ai.sendWithoutReview.hint": "Skips the flagged-fragments review screen. The text is still anonymised (serial number, WWN, computer name, user, SID and paths) before it leaves your machine.",
   "settings.ai.sendWithoutReview.confirmTitle": "Turn on send without review",
@@ -11130,6 +11192,13 @@ Fichero de origen: `src/lib/i18n/en.json`
   "ai.modal.truncated": "The technical detail was long, so an excerpt was sent.",
   "ai.modal.withoutDump": "This explanation was made without the disk's full technical detail (it could not be read at the time).",
   "ai.modal.withoutEvent": "This explanation was made without the content of the Windows event that raised the alert.",
+  "ai.modal.reprocess.invite": "Does this answer work for you, or would you rather try another model?",
+  "ai.modal.reprocess.modelLabel": "Model to reprocess with",
+  "ai.modal.reprocess.action": "Reprocess",
+  "ai.modal.reprocess.historyEntry": "Answer from {model}",
+  "ai.modal.reprocess.setDefault": "Use this model from now on",
+  "ai.modal.reprocess.setDefaultDone": "This is now your default model.",
+  "ai.modal.reprocess.setDefaultError": "Couldn't save the default model.",
   "ai.preview.body": "This is exactly what will be sent to OpenRouter to generate the explanation. Shown only the first time.",
   "ai.preview.confirm": "Send and explain",
   "ai.review.body": "The text to send contains fragments that could identify your computer and could not be replaced automatically. Review it before continuing.",

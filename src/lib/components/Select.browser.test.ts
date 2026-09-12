@@ -45,4 +45,27 @@ describe("Select", () => {
     const altoSm = sm.container.querySelector("select")!.getBoundingClientRect().height;
     expect(altoSm).toBeLessThan(altoLg);
   });
+
+  it("una opción con `disabled: true` se renderiza como `<option disabled>` (spec 010)", async () => {
+    const { container } = await render(Select, {
+      props: {
+        label: "Modelo",
+        value: "15",
+        options: [
+          { id: "15", label: "15 minutos" },
+          { id: "60", label: "1 hora", disabled: true }
+        ]
+      }
+    });
+    const [primera, segunda] = Array.from(container.querySelectorAll("option"));
+    expect(primera.disabled).toBe(false);
+    expect(segunda.disabled).toBe(true);
+  });
+
+  it("una opción sin `disabled` se comporta como hoy (no deshabilitada)", async () => {
+    const { container } = await render(Select, { props: { label: "x", value: "15", options: opciones } });
+    for (const opt of container.querySelectorAll("option")) {
+      expect(opt.disabled).toBe(false);
+    }
+  });
 });

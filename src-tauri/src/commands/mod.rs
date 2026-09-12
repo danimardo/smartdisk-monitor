@@ -1065,7 +1065,12 @@ fn reunir_datos_explicacion(
 ) -> AppResult<DatosExplicacion> {
     use crate::domain::ia;
 
-    let modelo = leer_ajuste_string(conn, "settings.ai.model", ia::MODELO_AUTOMATICO);
+    // Spec 010: un modelo pedido explícitamente (reprocesar con otro modelo) sustituye al ajuste
+    // general solo para esta llamada; no se persiste nada aquí.
+    let modelo = origen
+        .modelo_solicitado
+        .clone()
+        .unwrap_or_else(|| leer_ajuste_string(conn, "settings.ai.model", ia::MODELO_AUTOMATICO));
     let preview_ack = leer_ajuste_bool(conn, "settings.ai.preview_acknowledged", false);
     let send_without_review = leer_ajuste_bool(conn, "settings.ai.send_without_review", false);
 
@@ -8194,6 +8199,7 @@ mod tests_comandos_alertas {
             idioma: "es".to_string(),
             revision: crate::domain::ia::RevisionEnvio::Ninguna,
             preview_confirmada: false,
+            modelo_solicitado: None,
         }
     }
 
@@ -8279,6 +8285,7 @@ mod tests_comandos_alertas {
             idioma: "es".to_string(),
             revision: crate::domain::ia::RevisionEnvio::Ninguna,
             preview_confirmada: false,
+            modelo_solicitado: None,
         }
     }
 
@@ -8388,6 +8395,48 @@ mod tests_comandos_alertas {
                 .unwrap()
                 .send_without_review
         );
+    }
+
+    // ---------------------------------------------- 010: reprocesar con otro modelo gratuito
+
+    #[test]
+    fn reunir_datos_usa_el_modelo_solicitado_sin_leer_el_ajuste() {
+        // T101: el override no depende de la rama de `origen.tipo` (se lee una sola vez, antes del
+        // `match`), así que basta comprobarlo sobre una rama para cubrir las tres.
+        let conn = conn_de_prueba();
+        let gid = crear_grupo_con_regla(&conn, "smart.wear_high");
+        guardar_ajuste(
+            &conn,
+            "settings.ai.model",
+            &"openrouter/free",
+            "2026-09-08T00:00:00Z",
+        )
+        .unwrap();
+
+        let origen = crate::domain::ia::OrigenExplicacion {
+            modelo_solicitado: Some("vendor/x:free".to_string()),
+            ..origen_alerta(&gid)
+        };
+        let datos = reunir_datos_explicacion(&conn, &origen).unwrap();
+        assert_eq!(datos.modelo, "vendor/x:free");
+    }
+
+    #[test]
+    fn reunir_datos_sin_modelo_solicitado_sigue_leyendo_el_ajuste() {
+        // Regresión: sin el campo (`None`, como cualquier payload previo a la 010), el
+        // comportamiento no cambia.
+        let conn = conn_de_prueba();
+        let gid = crear_grupo_con_regla(&conn, "smart.wear_high");
+        guardar_ajuste(
+            &conn,
+            "settings.ai.model",
+            &"vendor/y:free",
+            "2026-09-08T00:00:00Z",
+        )
+        .unwrap();
+
+        let datos = reunir_datos_explicacion(&conn, &origen_alerta(&gid)).unwrap();
+        assert_eq!(datos.modelo, "vendor/y:free");
     }
 }
 

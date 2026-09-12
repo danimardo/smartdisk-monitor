@@ -406,7 +406,9 @@ export const origenExplicacion = z.object({
   eventId: z.string().nullable(),
   idioma: z.enum(["es", "en"]),
   revision: z.enum(["ninguna", "enviar_igual", "quitar_fragmentos"]),
-  previewConfirmada: z.boolean()
+  previewConfirmada: z.boolean(),
+  /** Spec 010: modelo elegido para reprocesar; `null` = usa `settings.ai.model` como siempre. */
+  modeloSolicitado: z.string().nullable()
 });
 
 /** Resultado de `explicar_detalle_tecnico`: o la explicación, o una pantalla de revisión. El

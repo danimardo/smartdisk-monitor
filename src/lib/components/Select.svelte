@@ -7,7 +7,7 @@
     value = "",
     label = "",
     hint = "",
-    options = [] as { id: string; label: string }[],
+    options = [] as { id: string; label: string; disabled?: boolean }[],
     disabled = false,
     size = "lg" as "sm" | "lg",
     /** Callback opcional (`interfaz.md`): el componente funciona sin él. */
@@ -29,7 +29,7 @@
     aria-label={label}
     onchange={(e) => onchange?.(e.currentTarget.value)}
   >
-    {#each options as opt (opt.id)}<option value={opt.id}>{opt.label}</option>{/each}
+    {#each options as opt (opt.id)}<option value={opt.id} disabled={opt.disabled}>{opt.label}</option>{/each}
   </select>
   {#if hint && !compacto}<span class="text-xs text-fg-dim" style="text-wrap: pretty">{hint}</span>{/if}
 </label>

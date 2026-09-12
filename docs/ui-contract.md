@@ -558,6 +558,7 @@ type OrigenExplicacion = {
   idioma: "es" | "en";
   revision: "ninguna" | "enviar_igual" | "quitar_fragmentos";
   previewConfirmada: boolean;
+  modeloSolicitado: string | null; // spec 010: modelo para reprocesar; null = usa settings.ai.model
 };
 type ResultadoExplicacion =
   | { estado: "ok"; markdown: string; modeloUsado: string; detalleRecortado: boolean; sinVolcado: boolean; sinSuceso: boolean }
@@ -586,6 +587,11 @@ type ResultadoExplicacion =
 - El detalle técnico se **anonimiza** en Rust (número de serie, nombre de equipo, nombre de
   usuario, rutas de perfil) antes de salir del proceso. La marca/modelo/firmware del disco **sí**
   se envían.
+- **Spec `010-reprocesar-explicacion-ia`**: `modeloSolicitado` permite reprocesar la misma
+  petición con otro modelo desde el propio modal de resultado/error, sin volver a construir el
+  `origen`. Sigue la convención de `deviceId`/`alertGroupId`/`eventId`: campo obligatorio, `null`
+  cuando no aplica. Con un valor, sustituye a `settings.ai.model` solo para esa llamada; nunca se
+  persiste ahí — fijarlo como modelo por defecto es una llamada aparte a `set_setting`.
 - Errores: los códigos `ia.*` de §1.
 - **Segundo uso de la ayuda con IA** (constitución 1.11.0, ADR-057): el resumen por disco del
   informe HTML, §3.7 (`preview_informe_ia`/`export_report`). Comparte credencial, modelo y pila de

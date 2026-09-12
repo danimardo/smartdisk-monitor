@@ -7,10 +7,14 @@
   import { listarModelosIa, toAppError } from "$lib/api";
   import type { AppError, ModeloIaWire } from "$lib/api";
   import { t } from "$lib/i18n";
+  import { ia } from "$lib/stores/ia.svelte";
 
   let {
     modelo = "openrouter/free",
     disabled = false,
+    /** Spec 010: el selector de reproceso del modal de IA lo pone a `false` — el modo automático no
+     *  es comparable de una llamada a otra. Ajustes lo deja en `true` (comportamiento de siempre). */
+    incluirAutomatico = true,
     onchange = undefined as ((id: string) => void) | undefined
   } = $props();
 
@@ -38,16 +42,21 @@
     };
   });
 
-  /** Siempre incluye «automático», aunque la lista no cargue. */
+  /** Incluye «automático» salvo que `incluirAutomatico` sea `false` (spec 010). Un modelo de pago
+   *  se deshabilita —nunca se oculta— mientras la clave activa sea la de demostración compartida
+   *  (spec 010, US4/FR-010: esa clave solo cubre modelos gratuitos, ADR-054/ADR-058). */
   const opciones = $derived([
-    { id: "openrouter/free", label: t("settings.ai.model.auto") },
+    ...(incluirAutomatico ? [{ id: "openrouter/free", label: t("settings.ai.model.auto") }] : []),
     ...modelos
       .filter((m) => m.id !== "openrouter/free")
       .map((m) => ({
         id: m.id,
-        label: m.esDePago ? t("settings.ai.model.paidSuffix", { name: m.nombre }) : m.nombre
+        label: m.esDePago ? t("settings.ai.model.paidSuffix", { name: m.nombre }) : m.nombre,
+        disabled: m.esDePago && ia.usandoClaveCompartida
       }))
   ]);
+
+  const hayPagoDeshabilitado = $derived(ia.usandoClaveCompartida && modelos.some((m) => m.esDePago));
 
   function elegir(id: string) {
     const dato = modelos.find((m) => m.id === id);
@@ -70,6 +79,11 @@
   {#if error}
     <p class="m-0 text-xs text-warn" style="text-wrap: pretty">
       {t("settings.ai.model.listUnavailable")}
+    </p>
+  {/if}
+  {#if hayPagoDeshabilitado}
+    <p class="m-0 text-xs text-fg-dim" style="text-wrap: pretty">
+      {t("settings.ai.model.paidDisabledDemo")}
     </p>
   {/if}
 </div>

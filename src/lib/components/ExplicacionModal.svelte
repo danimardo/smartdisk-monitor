@@ -5,6 +5,7 @@
    *
    *  La respuesta del modelo es **contenido no confiable** (principio XVI): se renderiza con
    *  `<Markdown>`, que nunca usa `{@html}`. */
+  import AiModelSelect from "./AiModelSelect.svelte";
   import Button from "./Button.svelte";
   import Icon from "./Icon.svelte";
   import Markdown from "./Markdown.svelte";
@@ -31,11 +32,24 @@
     onretry = undefined as (() => void) | undefined,
     onconfirmar = undefined as (() => void) | undefined,
     onenviarigual = undefined as (() => void) | undefined,
-    onquitarfragmentos = undefined as (() => void) | undefined
+    onquitarfragmentos = undefined as (() => void) | undefined,
+    /** Spec 010, US1: reprocesa la misma petición con el modelo elegido en el selector de abajo. */
+    onreprocesar = undefined as ((modelo: string) => void) | undefined,
+    /** Spec 010, US2 (FR-008): `true` si `modeloUsado` viene de un reproceso, nunca de la respuesta
+     *  inicial del modo automático — decide si se ofrece «fijar por defecto». */
+    esReprocesada = false,
+    onfijarpordefecto = undefined as ((modelo: string) => void) | undefined,
+    errorFijarPorDefecto = null as AppError | null,
+    /** Spec 010, US3 (FR-007): respuestas que dejaron de estar en primer plano al reprocesar. */
+    historial = [] as { modelo: string; markdown?: string; error?: AppError }[]
   } = $props();
 
   let panel = $state<HTMLDivElement | undefined>();
   let disparador: HTMLElement | null = null;
+  /** Modelo elegido en el selector de reproceso. Empieza vacío a propósito: obliga a una elección
+   *  explícita antes de poder reprocesar, en vez de adivinar un valor inicial que luego habría que
+   *  mantener sincronizado con `modeloUsado` en cada respuesta nueva. */
+  let modeloElegido = $state("");
 
   $effect(() => {
     if (open) {
@@ -105,6 +119,26 @@
             <Button variant="primary" onclick={() => onretry?.()}>{t("ai.modal.retry")}</Button>
           {/if}
         </div>
+        <div class="flex flex-col gap-2 border-t border-hairline pt-3">
+          <p class="m-0 text-sm text-fg-dim" style="text-wrap: pretty">
+            {t("ai.modal.reprocess.invite")}
+          </p>
+          <div class="flex flex-wrap items-end gap-2">
+            <AiModelSelect
+              incluirAutomatico={false}
+              modelo={modeloElegido}
+              onchange={(id) => (modeloElegido = id)}
+            />
+            <Button
+              variant="secondary"
+              disabled={!modeloElegido}
+              onclick={() => onreprocesar?.(modeloElegido)}
+            >
+              {t("ai.modal.reprocess.action")}
+            </Button>
+          </div>
+        </div>
+        {@render historialLista()}
       {:else if fase === "resultado"}
         <Markdown source={markdown} />
         {#if detalleRecortado}
@@ -127,7 +161,39 @@
           <p class="m-0 text-2xs text-fg-faint" style="text-wrap: pretty">
             {t("ai.modal.disclaimer")}
           </p>
+          {#if esReprocesada}
+            <div class="flex flex-col items-start gap-1">
+              <Button variant="secondary" onclick={() => onfijarpordefecto?.(modeloUsado)}>
+                {t("ai.modal.reprocess.setDefault")}
+              </Button>
+              {#if errorFijarPorDefecto}
+                <p class="m-0 text-2xs text-warn" style="text-wrap: pretty">
+                  {t("ai.modal.reprocess.setDefaultError")}
+                </p>
+              {/if}
+            </div>
+          {/if}
         </div>
+        <div class="flex flex-col gap-2 border-t border-hairline pt-3">
+          <p class="m-0 text-sm text-fg-dim" style="text-wrap: pretty">
+            {t("ai.modal.reprocess.invite")}
+          </p>
+          <div class="flex flex-wrap items-end gap-2">
+            <AiModelSelect
+              incluirAutomatico={false}
+              modelo={modeloElegido}
+              onchange={(id) => (modeloElegido = id)}
+            />
+            <Button
+              variant="secondary"
+              disabled={!modeloElegido}
+              onclick={() => onreprocesar?.(modeloElegido)}
+            >
+              {t("ai.modal.reprocess.action")}
+            </Button>
+          </div>
+        </div>
+        {@render historialLista()}
       {:else}
         <!-- vistaPrevia | revision -->
         <p class="m-0 text-sm text-fg-dim" style="text-wrap: pretty">
@@ -161,6 +227,26 @@
           {/if}
         </div>
       {/if}
+
+      {#snippet historialLista()}
+        <!-- Spec 010, US3: respuestas archivadas al reprocesar, plegadas para no ocupar espacio. -->
+        {#each historial as intento}
+          <details>
+            <summary class="cursor-pointer text-xs font-semibold text-fg-dim">
+              {t("ai.modal.reprocess.historyEntry", { model: intento.modelo })}
+            </summary>
+            <div class="mt-2">
+              {#if intento.error}
+                <p class="m-0 text-sm text-crit" style="text-wrap: pretty">
+                  {t(intento.error.messageKey)}
+                </p>
+              {:else}
+                <Markdown source={intento.markdown ?? ""} />
+              {/if}
+            </div>
+          </details>
+        {/each}
+      {/snippet}
     </div>
   </div>
 {/if}

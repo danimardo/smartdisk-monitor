@@ -443,7 +443,8 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
         eventId: "42",
         idioma: "es",
         revision: "ninguna",
-        previewConfirmada: false
+        previewConfirmada: false,
+        modeloSolicitado: null
       }).success
     ).toBe(true);
   });
@@ -456,7 +457,8 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
         alertGroupId: null,
         idioma: "es",
         revision: "ninguna",
-        previewConfirmada: false
+        previewConfirmada: false,
+        modeloSolicitado: null
       }).success
     ).toBe(false);
   });
@@ -466,6 +468,51 @@ describe("ayuda con IA (spec 005-explicacion-ia)", () => {
       S.origenExplicacion.safeParse({
         tipo: "informe",
         deviceId: null,
+        alertGroupId: null,
+        eventId: null,
+        idioma: "es",
+        revision: "ninguna",
+        previewConfirmada: false,
+        modeloSolicitado: null
+      }).success
+    ).toBe(false);
+  });
+
+  it("origenExplicacion acepta `modeloSolicitado` con un modelo concreto (spec 010)", () => {
+    expect(
+      S.origenExplicacion.safeParse({
+        tipo: "smart",
+        deviceId: "d1",
+        alertGroupId: null,
+        eventId: null,
+        idioma: "es",
+        revision: "ninguna",
+        previewConfirmada: false,
+        modeloSolicitado: "vendor/x:free"
+      }).success
+    ).toBe(true);
+  });
+
+  it("origenExplicacion RECHAZA `modeloSolicitado` de un tipo que no sea texto o nulo", () => {
+    expect(
+      S.origenExplicacion.safeParse({
+        tipo: "smart",
+        deviceId: "d1",
+        alertGroupId: null,
+        eventId: null,
+        idioma: "es",
+        revision: "ninguna",
+        previewConfirmada: false,
+        modeloSolicitado: 123
+      }).success
+    ).toBe(false);
+  });
+
+  it("origenExplicacion RECHAZA si falta la clave `modeloSolicitado` (campo obligatorio, no opcional)", () => {
+    expect(
+      S.origenExplicacion.safeParse({
+        tipo: "smart",
+        deviceId: "d1",
         alertGroupId: null,
         eventId: null,
         idioma: "es",

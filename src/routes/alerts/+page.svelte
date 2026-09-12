@@ -441,4 +441,9 @@
   onconfirmar={() => void explicacion.confirmarPreview()}
   onenviarigual={() => void explicacion.enviarIgual()}
   onquitarfragmentos={() => void explicacion.quitarFragmentos()}
+  onreprocesar={(modelo) => void explicacion.reprocesar(modelo)}
+  esReprocesada={explicacion.esReprocesada}
+  errorFijarPorDefecto={explicacion.errorFijarPorDefecto}
+  onfijarpordefecto={(modelo) => void explicacion.fijarPorDefecto(modelo)}
+  historial={explicacion.historial}
 />

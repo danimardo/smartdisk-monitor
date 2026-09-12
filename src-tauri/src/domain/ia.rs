@@ -136,6 +136,10 @@ pub struct OrigenExplicacion {
     pub idioma: String,
     pub revision: RevisionEnvio,
     pub preview_confirmada: bool,
+    /// Spec 010: modelo elegido para reprocesar, sustituyendo a `settings.ai.model` solo para esta
+    /// llamada. Lo rellena el store de la interfaz (`explicacion.svelte.ts`), nunca quien lanza una
+    /// explicación desde cero. `None`/`null` ⇒ comportamiento de siempre (usa el ajuste general).
+    pub modelo_solicitado: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -1079,6 +1083,36 @@ mod tests {
             }],
             error: None,
         }
+    }
+
+    /// Spec 010: `modelo_solicitado` es opcional y no rompe la deserialización de un payload de
+    /// la 006 que no lo conoce (ausencia de campo ⇒ `None`, no error).
+    #[test]
+    fn origen_explicacion_deserializa_con_y_sin_modelo_solicitado() {
+        let con_campo = r#"{
+            "tipo": "smart",
+            "deviceId": "d1",
+            "alertGroupId": null,
+            "eventId": null,
+            "idioma": "es",
+            "revision": "ninguna",
+            "previewConfirmada": false,
+            "modeloSolicitado": "vendor/x:free"
+        }"#;
+        let o: OrigenExplicacion = serde_json::from_str(con_campo).unwrap();
+        assert_eq!(o.modelo_solicitado.as_deref(), Some("vendor/x:free"));
+
+        let sin_campo_de_la_006 = r#"{
+            "tipo": "smart",
+            "deviceId": "d1",
+            "alertGroupId": null,
+            "eventId": null,
+            "idioma": "es",
+            "revision": "ninguna",
+            "previewConfirmada": false
+        }"#;
+        let o: OrigenExplicacion = serde_json::from_str(sin_campo_de_la_006).unwrap();
+        assert_eq!(o.modelo_solicitado, None);
     }
 
     #[test]

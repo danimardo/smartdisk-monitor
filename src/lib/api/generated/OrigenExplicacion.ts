@@ -23,4 +23,10 @@ eventId: string | null,
 /**
  * `"es"` o `"en"`; el backend lo revalida contra `settings.appearance.language`.
  */
-idioma: string, revision: RevisionEnvio, previewConfirmada: boolean, };
+idioma: string, revision: RevisionEnvio, previewConfirmada: boolean, 
+/**
+ * Spec 010: modelo elegido para reprocesar, sustituyendo a `settings.ai.model` solo para esta
+ * llamada. Lo rellena el store de la interfaz (`explicacion.svelte.ts`), nunca quien lanza una
+ * explicación desde cero. `None`/`null` ⇒ comportamiento de siempre (usa el ajuste general).
+ */
+modeloSolicitado: string | null, };

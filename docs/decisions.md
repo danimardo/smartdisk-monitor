@@ -2380,3 +2380,51 @@ disco de sus alertas, sucesos y estado SMART.
   de cada disco) y el orden del progreso sin tocar la red **ni añadir una dependencia de ejecutor
   async** — las pruebas usan un `Waker` mínimo hecho a mano, porque sus futuras se resuelven en el
   primer sondeo (mismo criterio de «extraer la costura en el borde de red» que `resultado_a_seccion`).
+
+## ADR-058 — El selector de modelo deshabilita los de pago con la clave de demostración
+
+Estado: aceptada. Fecha: 2026-09-12. Enmienda ADR-054. Feature: `010-reprocesar-explicacion-ia`.
+
+### El problema
+
+ADR-054 decidió, para la clave de demostración compartida —capada por OpenRouter a modelos
+gratuitos—, no añadir ninguna validación que impidiera elegir un modelo de pago: *"si luego la
+persona elige un modelo de pago, OpenRouter rechazará la petición (...): no se añade una validación
+que bloquee el cambio de modelo (más código para un caso que el proveedor ya cubre)"*.
+
+Al construir la feature 010 (reprocesar la explicación con otro modelo desde el propio resultado),
+el responsable del producto pidió justo esa validación: que los modelos de pago se vean pero no se
+puedan elegir mientras la clave activa sea la de demostración, en vez de dejar que la persona los
+elija y se encuentre con el error del proveedor. Con dos selectores de modelo en la aplicación
+(Ajustes y el nuevo del modal de explicación), dejar sin resolver esto significaba que solo uno de
+los dos evitara el error, un comportamiento inconsistente entre pantallas.
+
+### La decisión
+
+`AiModelSelect.svelte` (el componente que usan los dos selectores) marca `disabled` cada opción de
+modelo de pago cuando `EstadoIaWire.usandoClaveCompartida` es `true` (dato que ya expone el backend
+desde ADR-054, sin campo nuevo). La opción **sigue listada**, nunca desaparece —coherente con que el
+resto de la aplicación muestra las acciones no disponibles deshabilitadas con su motivo, en vez de
+ocultarlas—, y un aviso breve (`settings.ai.model.paidDisabledDemo`) explica por qué. En cuanto la
+persona configura su propia clave, `usandoClaveCompartida` pasa a `false` y las opciones se
+habilitan de nuevo, sin ninguna acción adicional.
+
+El diálogo de confirmación de FR-015a (spec 005: elegir un modelo de pago con una clave propia pide
+confirmar el posible cargo) no cambia: solo se dispara cuando la opción **es** seleccionable.
+
+### Alternativas descartadas
+
+- **Ocultar los modelos de pago en vez de deshabilitarlos.** Es lo que ADR-054 no hacía por no
+  añadir código; ocultarlos habría sido más código todavía y menos coherente con el resto de la
+  interfaz (`docs/ui-design.md`: un dato ausente nunca se hace desaparecer sin más).
+- **Dejarlo como decidió ADR-054** (confiar en el error del proveedor). Descartada: es precisamente
+  la experiencia que motivó este ADR — un error de OpenRouter después de elegir, en vez de que la
+  opción ya se vea no disponible antes de intentarlo.
+
+### Consecuencias
+
+- Sin campo nuevo en `EstadoIaWire` ni en ningún contrato: `usandoClaveCompartida` ya cruzaba a la
+  interfaz. Sin permiso de Tauri nuevo, sin dependencia nueva.
+- Al vivir el cálculo en `AiModelSelect.svelte`, los dos selectores (Ajustes y el modal de
+  explicación) se comportan igual sin mantener dos implementaciones por separado.
+
